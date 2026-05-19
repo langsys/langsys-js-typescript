@@ -1,0 +1,56 @@
+{
+    "name": "langsys-js-typescript",
+    "version": "0.1.0",
+    "description": "Framework-agnostic TypeScript SDK for Langsys translation management — realtime continuous translations with automatic token discovery.",
+    "author": "Langsys",
+    "license": "MIT",
+    "homepage": "https://github.com/langsys/langsys-js-typescript",
+    "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/langsys/langsys-js-typescript.git"
+    },
+    "bugs": {
+        "url": "https://github.com/langsys/langsys-js-typescript/issues"
+    },
+    "engines": {
+        "node": ">=18"
+    },
+    "main": "dist/index.js",
+    "module": "dist/index.mjs",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsup",
+        "dev": "tsup --watch",
+        "typecheck": "tsc --noEmit",
+        "prepublishOnly": "npm run build",
+        "release": "./_dev_/publish.sh"
+    },
+    "keywords": [
+        "i18n",
+        "l10n",
+        "language",
+        "localization",
+        "internationalization",
+        "translation",
+        "langsys",
+        "sdk",
+        "typescript"
+    ],
+    "devDependencies": {
+        "tsup": "^8.4.0",
+        "typescript": "^5.8.3"
+    }
+}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Langsys JS — vanilla example</title>
+        <style>
+            body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+            h1 { margin-bottom: 0.2em; }
+            select { font: inherit; padding: 0.3rem 0.5rem; }
+            .row { display: flex; gap: 1rem; align-items: center; margin: 1rem 0; }
+            .card { border: 1px solid #ddd; border-radius: 6px; padding: 1rem 1.2rem; }
+            code { background: #f4f4f8; padding: 0.1em 0.3em; border-radius: 3px; }
+        </style>
+    </head>
+    <body>
+        <h1 id="title">Welcome to the Langsys demo</h1>
+        <p id="tagline">Realtime, continuous translations — with automatic token discovery.</p>
+
+        <div class="row">
+            <label>Locale:</label>
+            <select id="locale">
+                <option value="en-us">English (US)</option>
+                <option value="es-es">Español</option>
+                <option value="fr-fr">Français</option>
+            </select>
+        </div>
+
+        <div id="article" class="card">
+            <h2>How it works</h2>
+            <p>Write natural-language text in your markup. Langsys discovers each token, sends it to your Translation Manager, and replaces it with the localized version at runtime.</p>
+            <p>No extraction step. No hand-maintained JSON. Just ship the app.</p>
+        </div>
+
+        <p><strong>Note:</strong> This demo does not call the live API — replace <code>YOUR_PROJECT_ID</code> and <code>YOUR_API_KEY</code> to try a real project.</p>
+
+        <script type="module">
+            import { LangsysApp, Translate, createSignal } from '../dist/index.mjs';
+
+            const userLocale = createSignal('en-us');
+
+            // Wire the locale dropdown to the signal.
+            const select = document.getElementById('locale');
+            select.addEventListener('change', (e) => userLocale.set(e.target.value));
+            userLocale.subscribe((v) => {
+                select.value = v;
+            });
+
+            // Swap in your real credentials to use the live API.
+            await LangsysApp.init({
+                projectid: 'YOUR_PROJECT_ID',
+                key: 'YOUR_API_KEY',
+                UserLocaleStore: userLocale,
+                baseLocale: 'en-us',
+                debug: true,
+            });
+
+            // The article is HTML with multiple text nodes — register it as a content block.
+            new Translate(document.getElementById('article'), { category: 'Demo', label: 'How it works' });
+        </script>
+    </body>
+</html>
