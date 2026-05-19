@@ -94,8 +94,43 @@ If templates aren't re-rendering after a locale change, the issue is almost alwa
 - `npm run dev` — tsup in watch mode.
 - `npm run typecheck` — `tsc --noEmit`. Should always be clean.
 - `npm run prepublishOnly` — runs build (called automatically by `npm publish`).
+- `npm run release` — interactive version bump + tag + GitHub release. **Does not publish to npm directly.** See "Releasing" below.
 
 The vanilla `example/index.html` can be opened directly in a browser after a build — it imports from `../dist/index.mjs`. Edit the placeholder `projectid` / `key` to hit the live API.
+
+## Releasing
+
+Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC)](https://docs.npmjs.com/trusted-publishers). No long-lived npm tokens or local OTPs are needed.
+
+**Flow:**
+
+1. Commit + push your changes to `main`.
+2. Run `npm run release` (which calls `_dev_/publish.sh`):
+   - Prompts for the new version (suggests next patch).
+   - Bumps `package.json`, runs `npm install` + `npm run build` locally as a final sanity check.
+   - Amends the last commit with the version bump, force-pushes `main`.
+   - Creates and pushes a `v$NEW_VERSION` tag.
+   - Creates a GitHub release with auto-generated notes.
+   - **Stops there.** Hands off to the Action.
+3. The `Publish to npm` workflow (`.github/workflows/publish.yml`) fires on the release event:
+   - Job is gated on the `npm-publish` GitHub Environment, which is configured to only allow refs matching `v*`.
+   - Runs `npm ci`, `npm run typecheck`, `npm run build`, then `npm publish --provenance`.
+   - OIDC short-lived credentials are minted automatically; provenance metadata is attached.
+
+**Wiring requirements (one-time):**
+
+- `package-lock.json` is committed (for `npm ci` reproducibility) — do not re-add it to `.gitignore`.
+- `.github/workflows/{ci,publish}.yml` exist and declare `permissions.id-token: write` on the publish job.
+- npm's package settings (https://www.npmjs.com/package/langsys-js-typescript/access) have a Trusted Publisher entry: GitHub Actions, org `langsys`, repo `langsys-js-typescript`, workflow `publish.yml`, environment `npm-publish`.
+- The GitHub repo has an Environment named `npm-publish` with a deployment-tag restriction of `v*`.
+
+**If a release fails partway:**
+
+`publish.sh` has a rollback path that resets the amended commit + force-pushes back, deletes the local + remote tag, and reverts `package.json`. It will offer to run it on error. If the npm publish step itself fails (e.g., transient OIDC trust mismatch), the GitHub release and tag still exist — re-running the workflow from the Actions tab is usually enough; otherwise delete the release + tag, fix the issue, and try again.
+
+**CI workflow (`ci.yml`):**
+
+Runs on every push to `main` and every PR. `npm ci` → `npm run typecheck` → `npm run build`. Failures here block merges.
 
 ## Design invariants
 
