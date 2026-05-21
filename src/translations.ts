@@ -39,6 +39,10 @@ export class Translations {
     private timer: ReturnType<typeof setInterval> | null = null;
     private flushScheduled = false;
     private isFirstClientRun = true;
+    private readyResolve: () => void = () => {};
+    private readyPromise: Promise<void> = new Promise((resolve) => {
+        this.readyResolve = resolve;
+    });
     public debug: Logger;
 
     /** Reactive holder for the current translation function. Re-emits on every catalog/locale change. */
@@ -54,6 +58,17 @@ export class Translations {
         currentlyLoadedLocale.subscribe(() => this.tSignal.set(this.buildTFn()));
 
         if (config.key && config.projectid) this.setup(config);
+    }
+
+    /**
+     * Resolves once the first `getTranslations` call has completed (or
+     * immediately if no fetch is configured). Callers that need to read
+     * `sTranslations` before issuing a write — e.g. the `Translate` DOM
+     * class deciding whether to POST a content block — should await this
+     * to avoid acting on an empty cache during the cold-start race.
+     */
+    public ready(): Promise<void> {
+        return this.readyPromise;
     }
 
     /** Current translation function. Reads fresh state on every call. */
@@ -308,6 +323,7 @@ export class Translations {
         this.debug.log('GET TRANSLATIONS API RESPONSE', response);
         if (response.errors) {
             this.debug.error('Error', response.errors[0]);
+            this.readyResolve();
             return;
         }
 
@@ -330,6 +346,7 @@ export class Translations {
         // Small delay so consumers see translations + locale updates on the same tick.
         setTimeout(() => currentlyLoadedLocale.set(this.locale), 100);
         this.lastLoaded[this.locale] = new Date().getTime() / 1000;
+        this.readyResolve();
     }
 }
 

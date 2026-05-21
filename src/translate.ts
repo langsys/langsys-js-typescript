@@ -1,9 +1,10 @@
 import { LangsysAppAPI } from './api.js';
 import { LangsysApp } from './langsys-app.js';
 import { logger } from './logger.js';
-import { config as configStore, contentBlocks, currentlyLoadedLocale } from './stores.js';
+import { config as configStore, currentlyLoadedLocale, sTranslations } from './stores.js';
 import type { Unsubscriber } from './signal.js';
 import type { iContentBlock } from './types/content-block.js';
+import type { iTranslations } from './types/translations.js';
 import { isEmpty, md5 } from './utils.js';
 
 /** Options for the `Translate` class. Matches the Svelte component's props. */
@@ -155,27 +156,55 @@ export class Translate {
         if (isEmpty(this.custom_id)) this.custom_id = this.generateCustomId(contentBlock);
         contentBlock.custom_id = this.custom_id;
 
-        const current = contentBlocks.get();
-        const existing = current.find((b) => b.custom_id === this.custom_id);
-        if (!existing) {
-            if (configStore.key_type === 'write') {
-                LangsysAppAPI.post('projects/[projectid]/content-blocks', contentBlock as unknown as Record<string, unknown>)
-                    .then((response) => {
-                        if (!response.status) {
-                            logger.error('Could not save content block', response.errors);
-                        } else {
-                            contentBlocks.update((blocks) => [...blocks, contentBlock]);
-                        }
-                    })
-                    .catch((err) => logger.error('Could not save content block', err));
-            } else if (configStore.debug) {
-                logger.log(`Skipping content block save (API key is ${configStore.key_type || 'unknown'})`);
-            }
+        // Wait for the first GET /translations to settle before deciding whether
+        // to POST — otherwise on a cold cache the lookup misses and we'd POST
+        // every CB on every first visit even when the backend already has it.
+        await LangsysApp.Translations.ready();
 
+        const lookupCat = contentBlock.category || '__uncategorized__';
+        const cats = sTranslations.get();
+        const cbData = cats[lookupCat]?.[this.custom_id];
+        const alreadyKnown = typeof cbData === 'object' && cbData !== null;
+
+        if (alreadyKnown) {
+            // Backend already has this block — translate locally, no POST.
             if (this.tokens.length > 1 && this.element) {
                 this.translate(Array.from(this.element.childNodes));
                 this.lastTranslatedLocale = currentlyLoadedLocale.get();
             }
+            return;
+        }
+
+        if (configStore.key_type === 'write') {
+            LangsysAppAPI.post('projects/[projectid]/content-blocks', contentBlock as unknown as Record<string, unknown>)
+                .then((response) => {
+                    if (!response.status) {
+                        logger.error('Could not save content block', response.errors);
+                    } else {
+                        // Mirror the standalone-phrase path: stamp the new key
+                        // into sTranslations so subsequent mounts in this session
+                        // (and after reload, since sTranslations is persisted)
+                        // see it as already-known and skip the POST.
+                        sTranslations.update((current) => {
+                            if (!current[lookupCat]) {
+                                current[lookupCat] = {
+                                    __category__: lookupCat,
+                                    __symbol__: lookupCat,
+                                } as iTranslations;
+                            }
+                            (current[lookupCat] as unknown as Record<string, unknown>)[this.custom_id] = {};
+                            return { ...current };
+                        });
+                    }
+                })
+                .catch((err) => logger.error('Could not save content block', err));
+        } else if (configStore.debug) {
+            logger.log(`Skipping content block save (API key is ${configStore.key_type || 'unknown'})`);
+        }
+
+        if (this.tokens.length > 1 && this.element) {
+            this.translate(Array.from(this.element.childNodes));
+            this.lastTranslatedLocale = currentlyLoadedLocale.get();
         }
     }
 
@@ -349,7 +378,13 @@ export class Translate {
     }
 
     private generateCustomId(contentBlock: iContentBlock): string {
-        return md5(`${contentBlock.category}-${contentBlock.tokens.join('-')}`);
+        // JSON-stringify the [category, tokens] tuple so each token is
+        // unambiguously delimited. The previous `tokens.join('-')` was
+        // collision-prone for any token containing a hyphen (e.g. `e-mail`,
+        // `read-only`): `['e-mail', 'address']` and `['e', 'mail-address']`
+        // both joined to the same string. Note this changes the hash of
+        // every existing content block — see CHANGELOG for migration.
+        return md5(JSON.stringify([contentBlock.category, contentBlock.tokens]));
     }
 
     private applyStylesToNode(node: HTMLElement, indices: number[]) {

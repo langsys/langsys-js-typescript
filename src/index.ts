@@ -18,7 +18,7 @@ export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber
 export { persist } from './persist.js';
 
 // Stores (advanced usage — direct subscription to translations / locale)
-export { sTranslations, currentlyLoadedLocale, contentBlocks } from './stores.js';
+export { sTranslations, currentlyLoadedLocale } from './stores.js';
 
 // Logger
 export { Logger, logger } from './logger.js';

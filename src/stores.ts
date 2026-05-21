@@ -1,7 +1,6 @@
 import { createSignal } from './signal.js';
 import { persist } from './persist.js';
 import type { iCategories } from './types/translations.js';
-import type { iContentBlock } from './types/content-block.js';
 import type { iLangsysConfig } from './types/config.js';
 
 const initialTranslations: iCategories = {
@@ -14,8 +13,6 @@ const initialTranslations: iCategories = {
 export const sTranslations = persist<iCategories>('translations', initialTranslations);
 
 export const currentlyLoadedLocale = createSignal<string>('');
-
-export const contentBlocks = createSignal<iContentBlock[]>([]);
 
 export const config: iLangsysConfig = {
     projectid: '',
