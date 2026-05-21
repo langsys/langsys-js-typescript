@@ -99,6 +99,13 @@ export class Translations {
     private buildTFn(): TFunction {
         return <P extends string>(category: string, phrase: P, ...args: TArgs<P>): string => {
             const cats = sTranslations.get();
+            // '__uncategorized__' is a server-internal bucket name used only
+            // in GET /translations responses to group null-category phrases.
+            // We normalize to it for the local cats lookup (so we read from
+            // the same bucket the server writes to), but we MUST NOT leak
+            // the sentinel back into the missingToken queue — that queue
+            // feeds the POST wire payload, and clients are not allowed to
+            // send the reserved sentinel as a category.
             const lookupCat = category || '__uncategorized__';
             const value = cats[lookupCat]?.[phrase];
 
@@ -107,7 +114,7 @@ export class Translations {
                 this.debug.log('TRANSLATION FOUND', [lookupCat, phrase, value]);
                 translated = value;
             } else {
-                this.missingToken(lookupCat, phrase);
+                this.missingToken(category, phrase);
                 translated = phrase;
             }
 
@@ -268,11 +275,16 @@ export class Translations {
         const currentData = sTranslations.get();
         this.missingTokens = this.missingTokens.filter((tokenObj) => {
             tokenObj.projectid = this.config.projectid;
-            if (tokenObj.category in currentData && tokenObj.token in currentData[tokenObj.category]) {
+            // The server response keys null-category phrases under
+            // '__uncategorized__', so map empty client-side category to that
+            // bucket for the dedup check only. The queue itself keeps the
+            // original (possibly empty) category for the wire payload.
+            const lookupCat = tokenObj.category || '__uncategorized__';
+            if (lookupCat in currentData && tokenObj.token in currentData[lookupCat]) {
                 this.debug.log('Missing token already exists! Skipping:', {
                     category: tokenObj.category,
                     token: tokenObj.token,
-                    existing: currentData[tokenObj.category][tokenObj.token],
+                    existing: currentData[lookupCat][tokenObj.token],
                 });
                 return false;
             }
@@ -283,8 +295,16 @@ export class Translations {
 
         this.debug.log('CREATE MISSING TOKENS', this.missingTokens);
         try {
+            // Wire boundary: empty category → null. '__uncategorized__' is
+            // server-internal and is rejected as a client input.
+            const tokensForApi = this.missingTokens.map((tokenObj) => ({
+                projectid: tokenObj.projectid,
+                token: tokenObj.token,
+                category: tokenObj.category || null,
+            }));
+
             const response: ResponseObject = await LangsysAppAPI.post('projects/[projectid]/tokens', {
-                tokens: this.missingTokens,
+                tokens: tokensForApi,
             });
             if (!response.status) {
                 if (response.errors) {
@@ -295,14 +315,17 @@ export class Translations {
             }
 
             this.missingTokens.forEach((tokenObj) => {
-                if (!currentData[tokenObj.category]) {
-                    currentData[tokenObj.category] = {
-                        __category__: tokenObj.category,
-                        __symbol__: tokenObj.category,
+                // Same bucket normalization as the dedup check: write into
+                // the cats bucket that matches the server response shape.
+                const lookupCat = tokenObj.category || '__uncategorized__';
+                if (!currentData[lookupCat]) {
+                    currentData[lookupCat] = {
+                        __category__: lookupCat,
+                        __symbol__: lookupCat,
                     } as iTranslations;
                 }
-                currentData[tokenObj.category][tokenObj.token] = tokenObj.token;
-                currentData[tokenObj.category]['__category__'] = tokenObj.category;
+                currentData[lookupCat][tokenObj.token] = tokenObj.token;
+                currentData[lookupCat]['__category__'] = lookupCat;
             });
             sTranslations.set({ ...currentData });
             this.missingTokens = [];
