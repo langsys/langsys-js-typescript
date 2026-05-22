@@ -3,7 +3,7 @@
  *
  * The big trick here is `ExtractParamKeys` — a recursive template-literal
  * type that pulls placeholder names out of a phrase at compile time, so
- * `t('Cat', 'Hello, {name}!', { name: 'Sarah' })` is type-checked: passing
+ * `t('Hello, {name}!', { name: 'Sarah' })` is type-checked: passing
  * an object without `name`, or with a key not in the phrase, is a TS error.
  */
 
@@ -38,7 +38,20 @@ export type TArgs<P extends string> = [ExtractParamKeys<P>] extends [never]
 /** Loose params type — used inside generic stores where the phrase isn't a known literal. */
 export type TranslationParams = Record<string, ParamPrimitive>;
 
-/** The translation function signature. */
+/**
+ * The translation function signature.
+ *
+ *   t('Save')                                     // no category, no params
+ *   t('Save', 'UI')                               // categorized
+ *   t('Hello, {name}!', { name: 'X' })            // no category, with params
+ *   t('Hello, {name}!', 'Greetings', { name: 'X' }) // category + params
+ *
+ * Two overloads discriminate on the type at position 2 (string → category,
+ * object → params). `category` is required for the second overload —
+ * pass any non-empty string. There is no "null category" wire concept:
+ * absent category means absent.
+ */
 export interface TFunction {
-    <P extends string>(category: string, phrase: P, ...args: TArgs<P>): string;
+    <P extends string>(phrase: P, ...args: TArgs<P>): string;
+    <P extends string>(phrase: P, category: string, ...args: TArgs<P>): string;
 }
