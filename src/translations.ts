@@ -5,7 +5,7 @@ import { createSignal, type Signal } from './signal.js';
 import { currentlyLoadedLocale, sTranslations } from './stores.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
-import type { ParamsFor, TArgs, TFunction } from './types/translation-fn.js';
+import type { TFunction } from './types/translation-fn.js';
 import type { iCategories, iTranslations } from './types/translations.js';
 
 interface iTokenUpdate {
@@ -97,7 +97,16 @@ export class Translations {
     }
 
     private buildTFn(): TFunction {
-        return <P extends string>(category: string, phrase: P, ...args: TArgs<P>): string => {
+        // Single runtime body covers both overload shapes. Position 2 is the
+        // discriminator: string ⇒ category, object ⇒ params (no category).
+        //   t(phrase)                                  → category='', params=undefined
+        //   t(phrase, {params...})                     → category='', params={params}
+        //   t(phrase, 'Category')                      → category='Category', params=undefined
+        //   t(phrase, 'Category', {params...})         → category='Category', params={params}
+        const fn = ((phrase: string, ...rest: unknown[]): string => {
+            const category = typeof rest[0] === 'string' ? rest[0] : '';
+            const params = (typeof rest[0] === 'object' ? rest[0] : rest[1]) as Record<string, unknown> | undefined;
+
             const cats = sTranslations.get();
             // '__uncategorized__' is a server-internal bucket name used only
             // in GET /translations responses to group null-category phrases.
@@ -118,9 +127,9 @@ export class Translations {
                 translated = phrase;
             }
 
-            const params = args[0] as ParamsFor<P> | undefined;
-            return params ? interpolate(translated, params as Record<string, unknown>) : translated;
-        };
+            return params ? interpolate(translated, params) : translated;
+        }) as TFunction;
+        return fn;
     }
 
     private missingToken(category: string, token: string | undefined | null) {

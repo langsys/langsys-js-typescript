@@ -2,7 +2,7 @@
  * Langsys SDK — framework-agnostic TypeScript
  *
  * Realtime continuous translations with automatic token discovery for any
- * web app. The public translation surface is `t(category, phrase, params?)`
+ * web app. The public translation surface is `t(phrase, category?, params?)`
  * — the phrase itself is the lookup key (and the source-language default).
  * Frameworks subscribe to `tSignal` for reactive re-renders.
  */
@@ -49,14 +49,13 @@ export type { iCategories, iTranslations } from './types/translations.js';
 // LangsysApp singleton (reads fresh state on every call). `tSignal` is the
 // reactive primitive frameworks bind to.
 import { LangsysApp as _LangsysApp } from './langsys-app.js';
-import type { TArgs, TFunction } from './types/translation-fn.js';
+import type { TFunction } from './types/translation-fn.js';
 
-export const t: TFunction = (<P extends string>(
-    category: string,
-    phrase: P,
-    ...args: TArgs<P>
-): string => {
-    return _LangsysApp.Translations.t(category, phrase, ...args);
+export const t: TFunction = ((phrase: string, ...rest: unknown[]): string => {
+    // Forward all args verbatim; the underlying TFunction implementation
+    // handles the (phrase) / (phrase, params) / (phrase, category) /
+    // (phrase, category, params) overload discrimination at runtime.
+    return (_LangsysApp.Translations.t as (...a: unknown[]) => string)(phrase, ...rest);
 }) as TFunction;
 
 export const tSignal = _LangsysApp.Translations.tSignal;

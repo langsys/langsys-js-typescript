@@ -112,7 +112,7 @@ export class Translate {
         const { category = '' } = this.options;
 
         if (this.tokens.length === 1) {
-            this.element.innerText = LangsysApp.Translations.t(category, this.tokens[0]);
+            this.element.innerText = LangsysApp.Translations.t(this.tokens[0], category);
         } else {
             this.translate(Array.from(this.element.childNodes));
             this.lastTranslatedLocale = currentLocale;
@@ -135,7 +135,7 @@ export class Translate {
         const { category = '' } = this.options;
 
         if (this.tokens.length === 1) {
-            this.element.innerText = LangsysApp.Translations.t(category, this.tokens[0]);
+            this.element.innerText = LangsysApp.Translations.t(this.tokens[0], category);
         } else {
             const contentBlock: iContentBlock = {
                 custom_id: '',
