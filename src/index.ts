@@ -13,6 +13,16 @@ export { Translations } from './translations.js';
 export { Translate, type TranslateOptions } from './translate.js';
 export { LangsysAppAPI } from './api.js';
 
+// Content-block helpers (framework-agnostic — for React/Vue/Angular/other
+// wrappers that own their own DOM rendering and only need the registration
+// + dedup primitives, not the Svelte/vanilla in-place DOM mutator).
+export {
+    generateCustomId,
+    isContentBlockKnown,
+    registerContentBlock,
+    tokenizeElement,
+} from './content-block.js';
+
 // Reactive primitives
 export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber, type Updater } from './signal.js';
 export { persist } from './persist.js';
@@ -29,7 +39,7 @@ export { interpolate } from './interpolate.js';
 
 // Type re-exports
 export type { ResponseObject as iLangsysResponse } from './types/api.js';
-export type { iLangsysConfig, iLangsysInitConfig } from './types/config.js';
+export type { iLangsysConfig, iLangsysInitConfig, LocaleSource } from './types/config.js';
 export type { iContentBlock } from './types/content-block.js';
 export type { iCountry, iCountryDialCode, iCountryList } from './types/countries.js';
 export type { iCurrency, iCurrencyList } from './types/currencies.js';

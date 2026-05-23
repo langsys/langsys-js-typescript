@@ -48,7 +48,8 @@ class LangsysAppClass {
 
     /**
      * Initialize Langsys. Configuration must include at least `projectid`,
-     * `key`, and `UserLocaleStore` (any Signal<string>).
+     * `key`, and `UserLocaleStore` (anything satisfying `LocaleSource` — see
+     * its docstring for framework-specific adapters).
      */
     public async init(initConfig: iLangsysInitConfig): Promise<ResponseObject> {
         const projectid = initConfig.projectid;
@@ -80,9 +81,9 @@ class LangsysAppClass {
             this.debug.error('LangsysApp.init missing API key in configuration object!');
             return { status: false, errors: ['Missing API key'] };
         }
-        if (!UserLocaleStore?.subscribe) {
+        if (!UserLocaleStore?.subscribe || typeof UserLocaleStore.get !== 'function') {
             this.debug.error(
-                "LangsysApp.init missing UserLocaleStore — pass a Signal<string> (createSignal('en-us') works if you have nothing of your own)."
+                "LangsysApp.init missing UserLocaleStore — pass any object satisfying LocaleSource (get + subscribe). createSignal('en-us') works if you have nothing of your own."
             );
             return { status: false, errors: ['Missing UserLocaleStore'] };
         }
