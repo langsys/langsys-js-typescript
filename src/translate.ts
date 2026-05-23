@@ -1,11 +1,17 @@
-import { LangsysAppAPI } from './api.js';
+import {
+    generateCustomId,
+    isContentBlockKnown,
+    registerContentBlock,
+    tokenizeElement,
+    TRANSLATABLE_ATTRIBUTES,
+    VALUE_TRANSLATABLE_ELEMENTS,
+    VALUE_TRANSLATABLE_INPUT_TYPES,
+} from './content-block.js';
 import { LangsysApp } from './langsys-app.js';
-import { logger } from './logger.js';
-import { config as configStore, currentlyLoadedLocale, sTranslations } from './stores.js';
+import { currentlyLoadedLocale, config as configStore } from './stores.js';
 import type { Unsubscriber } from './signal.js';
 import type { iContentBlock } from './types/content-block.js';
-import type { iTranslations } from './types/translations.js';
-import { isEmpty, md5 } from './utils.js';
+import { isEmpty } from './utils.js';
 
 /** Options for the `Translate` class. Matches the Svelte component's props. */
 export interface TranslateOptions {
@@ -19,45 +25,6 @@ export interface TranslateOptions {
 
 type iNode = Node & { originalNodeValue?: string | null };
 type iElement = HTMLElement & { originalAttributes?: Record<string, string> };
-
-/**
- * HTML attributes whose values should be harvested for translation.
- */
-const TRANSLATABLE_ATTRIBUTES = [
-    'placeholder',
-    'alt',
-    'title',
-    'aria-label',
-    'aria-placeholder',
-    'data-error',
-    'data-error-message',
-    'data-validation-message',
-    'data-invalid-message',
-    'data-required-message',
-    'data-pattern-message',
-];
-
-const VALUE_TRANSLATABLE_ELEMENTS = ['button'];
-const VALUE_TRANSLATABLE_INPUT_TYPES = ['submit', 'button'];
-
-/**
- * Semantic CSS properties captured on cloned content for the Translation Manager
- * so translators see the content styled the way end-users do.
- */
-const SEMANTIC_STYLE_PROPERTIES = [
-    'font-size', 'font-weight', 'font-style', 'font-variant', 'line-height',
-    'letter-spacing', 'word-spacing', 'text-align', 'text-decoration',
-    'text-transform', 'text-indent', 'text-shadow', 'white-space', '-webkit-font-smoothing',
-    'color', 'background-color', 'background-image', 'background-position',
-    'background-size', 'background-repeat',
-    'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
-    'border-radius', 'border-color', 'border-width', 'border-style',
-    'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-    'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-    'box-shadow', 'opacity', 'filter',
-    'display', 'visibility', 'list-style', 'list-style-type',
-    'cursor',
-];
 
 /**
  * Wrap a DOM element and manage translation for its contents.
@@ -75,7 +42,6 @@ const SEMANTIC_STYLE_PROPERTIES = [
 export class Translate {
     private element: HTMLElement;
     private options: TranslateOptions;
-    private contentClone: HTMLElement | null = null;
     private tokens: string[] = [];
     private parseComplete = false;
     private isTokenizing = false;
@@ -128,9 +94,13 @@ export class Translate {
         }
 
         this.isTokenizing = true;
-        this.contentClone = this.element.cloneNode(true) as HTMLElement;
-        const nodes = Array.from(this.contentClone.childNodes || []);
-        this.tokenize(nodes);
+
+        // Framework-agnostic tokenization + style-snapshot lives in
+        // content-block.ts. We store the clone locally only because the
+        // existing translate() DOM-mutator references it for content-block
+        // detection (`this.tokens` drives the single-vs-multi branch below).
+        const { tokens, content } = tokenizeElement(this.element);
+        this.tokens = tokens;
 
         const { category = '' } = this.options;
 
@@ -141,7 +111,7 @@ export class Translate {
                 custom_id: '',
                 category,
                 label: this.options.label,
-                content: this.contentClone!.outerHTML,
+                content,
                 tokens: this.tokens,
             };
             await this.handleContentBlock(contentBlock);
@@ -153,7 +123,9 @@ export class Translate {
     }
 
     private async handleContentBlock(contentBlock: iContentBlock) {
-        if (isEmpty(this.custom_id)) this.custom_id = this.generateCustomId(contentBlock);
+        if (isEmpty(this.custom_id)) {
+            this.custom_id = generateCustomId(contentBlock.category, contentBlock.tokens);
+        }
         contentBlock.custom_id = this.custom_id;
 
         // Wait for the first GET /translations to settle before deciding whether
@@ -161,12 +133,7 @@ export class Translate {
         // every CB on every first visit even when the backend already has it.
         await LangsysApp.Translations.ready();
 
-        const lookupCat = contentBlock.category || '__uncategorized__';
-        const cats = sTranslations.get();
-        const cbData = cats[lookupCat]?.[this.custom_id];
-        const alreadyKnown = typeof cbData === 'object' && cbData !== null;
-
-        if (alreadyKnown) {
+        if (isContentBlockKnown(contentBlock.category, this.custom_id)) {
             // Backend already has this block — translate locally, no POST.
             if (this.tokens.length > 1 && this.element) {
                 this.translate(Array.from(this.element.childNodes));
@@ -175,107 +142,17 @@ export class Translate {
             return;
         }
 
-        if (configStore.key_type === 'write') {
-            LangsysAppAPI.post('projects/[projectid]/content-blocks', contentBlock as unknown as Record<string, unknown>)
-                .then((response) => {
-                    if (!response.status) {
-                        logger.error('Could not save content block', response.errors);
-                    } else {
-                        // Mirror the standalone-phrase path: stamp the new key
-                        // into sTranslations so subsequent mounts in this session
-                        // (and after reload, since sTranslations is persisted)
-                        // see it as already-known and skip the POST.
-                        sTranslations.update((current) => {
-                            if (!current[lookupCat]) {
-                                current[lookupCat] = {
-                                    __category__: lookupCat,
-                                    __symbol__: lookupCat,
-                                } as iTranslations;
-                            }
-                            (current[lookupCat] as unknown as Record<string, unknown>)[this.custom_id] = {};
-                            return { ...current };
-                        });
-                    }
-                })
-                .catch((err) => logger.error('Could not save content block', err));
-        } else if (configStore.debug) {
-            logger.log(`Skipping content block save (API key is ${configStore.key_type || 'unknown'})`);
-        }
+        // Fire-and-forget: registerContentBlock handles its own errors via
+        // the logger. We don't await here because the DOM render path below
+        // doesn't depend on the POST completing — translations are looked up
+        // from sTranslations on every render, which updates reactively when
+        // the GET response arrives.
+        void registerContentBlock(contentBlock);
 
         if (this.tokens.length > 1 && this.element) {
             this.translate(Array.from(this.element.childNodes));
             this.lastTranslatedLocale = currentlyLoadedLocale.get();
         }
-    }
-
-    private tokenize(nodes: iNode[], indices: number[] = []) {
-        nodes.forEach((node, index) => {
-            if (node?.nodeType === Node.ELEMENT_NODE) {
-                const element = node as HTMLElement;
-                if (element.getAttribute('translate') === 'no') return;
-            }
-
-            if (node?.hasChildNodes()) {
-                this.applyStylesToNode(node as HTMLElement, [...indices, index]);
-            }
-
-            if (node?.nodeType === Node.ELEMENT_NODE) {
-                this.tokenizeAttributes(node as HTMLElement);
-            }
-
-            const contentToken = node.nodeValue?.replace(/\s+/g, ' ').trim();
-            if (node?.nodeType === Node.TEXT_NODE && contentToken) {
-                this.tokens.push(contentToken);
-                return;
-            }
-
-            if (!node?.hasChildNodes()) return;
-            this.tokenize(Array.from(node.childNodes), [...indices, index]);
-        });
-    }
-
-    private tokenizeAttributes(element: HTMLElement) {
-        const tagName = element.tagName.toLowerCase();
-
-        if (tagName === 'img') {
-            const img = element as HTMLImageElement;
-            if (img.src) element.setAttribute('src', img.src);
-        }
-
-        for (const attr of TRANSLATABLE_ATTRIBUTES) {
-            const value = element.getAttribute(attr)?.trim();
-            if (value) this.tokens.push(value);
-        }
-
-        if (VALUE_TRANSLATABLE_ELEMENTS.includes(tagName)) {
-            const value = element.getAttribute('value')?.trim();
-            if (value) this.tokens.push(value);
-        }
-
-        if (tagName === 'input') {
-            const inputType = element.getAttribute('type')?.toLowerCase();
-            if (inputType && VALUE_TRANSLATABLE_INPUT_TYPES.includes(inputType)) {
-                const value = element.getAttribute('value')?.trim();
-                if (value) this.tokens.push(value);
-            }
-        }
-
-        if (tagName === 'select') {
-            const options = element.querySelectorAll('option');
-            options.forEach((option) => {
-                const optionText = option.textContent?.trim();
-                if (optionText) this.tokens.push(optionText);
-            });
-        }
-    }
-
-    private findNode(nodes: iNode[], indices: number[]): Element | undefined {
-        let currentNode: Node | undefined = nodes[indices[0]];
-        for (let i = 1; i < indices.length; i++) {
-            if (!currentNode || !currentNode.hasChildNodes()) return undefined;
-            currentNode = Array.from(currentNode.childNodes)[indices[i]];
-        }
-        return currentNode as Element;
     }
 
     private translate(nodes: iNode[]) {
@@ -377,41 +254,6 @@ export class Translate {
         else element.setAttribute(attr, element.originalAttributes![attr]);
     }
 
-    private generateCustomId(contentBlock: iContentBlock): string {
-        // JSON-stringify the [category, tokens] tuple so each token is
-        // unambiguously delimited. The previous `tokens.join('-')` was
-        // collision-prone for any token containing a hyphen (e.g. `e-mail`,
-        // `read-only`): `['e-mail', 'address']` and `['e', 'mail-address']`
-        // both joined to the same string. Note this changes the hash of
-        // every existing content block — see CHANGELOG for migration.
-        return md5(JSON.stringify([contentBlock.category, contentBlock.tokens]));
-    }
-
-    private applyStylesToNode(node: HTMLElement, indices: number[]) {
-        if (!this.element || typeof window === 'undefined') return;
-        const domNode = this.findNode(Array.from(this.element.childNodes), indices);
-        if (!domNode) return;
-
-        const tagName = domNode.tagName.toLowerCase();
-        const reference = document.createElement(tagName);
-        reference.style.visibility = 'hidden';
-        reference.style.position = 'absolute';
-        document.body.appendChild(reference);
-
-        const computed = window.getComputedStyle(domNode);
-        const defaults = window.getComputedStyle(reference);
-
-        for (const prop of SEMANTIC_STYLE_PROPERTIES) {
-            const value = computed.getPropertyValue(prop);
-            const defaultValue = defaults.getPropertyValue(prop);
-            if (value && value !== defaultValue) {
-                node.style.setProperty(prop, value);
-            }
-        }
-
-        document.body.removeChild(reference);
-        node.removeAttribute('class');
-    }
 }
 
 export default Translate;
