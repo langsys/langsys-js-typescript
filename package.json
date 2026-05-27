@@ -35,6 +35,8 @@
         "build": "tsup",
         "dev": "tsup --watch",
         "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "prepublishOnly": "npm run build",
         "release": "./_dev_/publish.sh"
     },
@@ -51,6 +53,10 @@
     ],
     "devDependencies": {
         "tsup": "^8.4.0",
-        "typescript": "^5.8.3"
+        "typescript": "^5.8.3",
+        "vitest": "^4.1.7"
+    },
+    "dependencies": {
+        "intl-messageformat": "^11.2.7"
     }
 }

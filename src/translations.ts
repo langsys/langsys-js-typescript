@@ -127,7 +127,7 @@ export class Translations {
                 translated = phrase;
             }
 
-            return params ? interpolate(translated, params) : translated;
+            return params ? interpolate(translated, params, currentlyLoadedLocale.get()) : translated;
         }) as TFunction;
         return fn;
     }

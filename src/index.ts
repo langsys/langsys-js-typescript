@@ -35,7 +35,7 @@ export { Logger, logger } from './logger.js';
 
 // Utility exports
 export { md5, isEmpty } from './utils.js';
-export { interpolate } from './interpolate.js';
+export { interpolate, isICU } from './interpolate.js';
 
 // Type re-exports
 export type { ResponseObject as iLangsysResponse } from './types/api.js';
