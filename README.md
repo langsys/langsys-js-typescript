@@ -9,7 +9,7 @@ This is the base SDK. Framework-specific bindings (`langsys-js-svelte`, and simi
 ## What's inside
 
 - `LangsysApp` singleton — init, locale switching, localized country/currency/locale helpers, preferred-locale detection.
-- `t(category, phrase, params?)` — the everyday translation function. The phrase is both the lookup key *and* the base-language default. Curly-brace placeholders interpolate from `params` and are compile-time type-checked.
+- `t(phrase, category?, params?)` — the everyday translation function. The phrase is both the lookup key *and* the base-language default. Curly-brace placeholders interpolate from `params` and are compile-time type-checked.
 - `tSignal: Signal<TFunction>` — reactive primitive that re-emits a fresh `t` on every translations/locale change. Framework bindings subscribe to this to drive re-renders.
 - `Translate` class — wraps a DOM element, walks text + translatable attributes, registers a content block with the Translation Manager, re-translates on locale change.
 - `Signal<T>` — tiny subscribe/set/update/get primitive. Compatible with Svelte's store contract by design, so the Svelte binding is nearly trivial.
@@ -42,13 +42,13 @@ const response = await LangsysApp.init({
 
 if (!response.status) console.error('Langsys init failed', response.errors);
 
-// 3. Translate
-document.querySelector('h1')!.textContent = t('Home', 'Welcome to my app');
-document.querySelector('#tagline')!.textContent = t('Marketing', 'We translate everything');
+// 3. Translate — t(phrase, category?, params?)
+document.querySelector('h1')!.textContent = t('Welcome to my app', 'Home');
+document.querySelector('#tagline')!.textContent = t('We translate everything', 'Marketing');
 
 // 4. Interpolate
 document.querySelector('#greeting')!.textContent =
-    t('Greetings', 'Hello, {name}!', { name: 'Sarah' });
+    t('Hello, {name}!', 'Greetings', { name: 'Sarah' });
 
 // 5. Change locale — all subscribed consumers re-translate
 userLocale.set('es-es');
@@ -56,27 +56,27 @@ userLocale.set('es-es');
 
 ### How `t()` works
 
-The phrase is the lookup key. The first time `t('Home', 'Welcome to my app')` runs with a write key, Langsys registers the phrase in the Translation Manager under the "Home" category. On subsequent locale changes, the SDK fetches translations and `t()` returns the translated version. If no translation exists yet, you get back the original phrase — your base language stays visible while translations get filled in.
+The signature is `t(phrase, category?, params?)` — the phrase comes first, the category is optional, params come last. The phrase is the lookup key. The first time `t('Welcome to my app', 'Home')` runs with a write key, Langsys registers the phrase in the Translation Manager under the "Home" category. On subsequent locale changes, the SDK fetches translations and `t()` returns the translated version. If no translation exists yet, you get back the original phrase — your base language stays visible while translations get filled in.
 
 #### Compile-time-checked interpolation
 
 Placeholder names are extracted from the phrase string literal via template-literal types, so missing or extra keys in `params` are TypeScript errors at the call site:
 
 ```ts
-t('Greetings', 'Hello, {name}!', { name: 'Sarah' });           // OK
-t('Greetings', 'Hello, {name}!', {});                          // ❌ Property 'name' missing
-t('Greetings', 'Hello, {name}!', { name: 'x', extra: 'y' });   // ❌ Unknown property 'extra'
+t('Hello, {name}!', 'Greetings', { name: 'Sarah' });           // OK
+t('Hello, {name}!', 'Greetings', {});                          // ❌ Property 'name' missing
+t('Hello, {name}!', 'Greetings', { name: 'x', extra: 'y' });   // ❌ Unknown property 'extra'
 ```
 
 Allowed value types: `string | number | Date | boolean`. Dates serialize to ISO 8601.
 
-> Future versions will swap the simple `{name}` runtime for ICU MessageFormat — adding plural / select / date formatting — without changing the public signature. Today's `t('Cart', '{count} items', { count })` will evolve to `t('Cart', '{count, plural, one {# item} other {# items}}', { count })`.
+> Future versions will swap the simple `{name}` runtime for ICU MessageFormat — adding plural / select / date formatting — without changing the public signature. Today's `t('{count} items', 'Cart', { count })` will evolve to `t('{count, plural, one {# item} other {# items}}', 'Cart', { count })`.
 
 #### Categorization disambiguates context
 
 ```ts
-t('Main Menu', 'Home');         // 'Inicio' in Spanish
-t('Home repairs', 'Home');      // 'Hogar' in Spanish
+t('Home', 'Main Menu');         // 'Inicio' in Spanish
+t('Home', 'Home repairs');      // 'Hogar' in Spanish
 ```
 
 The same phrase in different categories can have different translations. Without categorization, "Home" would only have one. Langsys's philosophy: *translate once, use everywhere* — categorize when the same phrase legitimately means different things in different parts of the app.
@@ -101,7 +101,7 @@ import { tSignal } from 'langsys-js-typescript';
 
 const unsub = tSignal.subscribe((t) => {
     // t is the current translation function — call it for the latest translations
-    document.querySelector('h1')!.textContent = t('Home', 'Welcome');
+    document.querySelector('h1')!.textContent = t('Welcome', 'Home');
 });
 ```
 
@@ -122,11 +122,11 @@ export function useT(): TFunction {
 // In a component:
 function Header() {
     const t = useT();
-    return <h1>{t('Home', 'Welcome, {name}!', { name: 'Sarah' })}</h1>;
+    return <h1>{t('Welcome, {name}!', 'Home', { name: 'Sarah' })}</h1>;
 }
 ```
 
-When a `langsys-js-react` package exists, it'll ship that hook plus a `<TranslateBlock>` wrapper around the DOM `Translate` class. Until then, the snippet above is the whole binding.
+The dedicated [`langsys-js-react`](https://github.com/langsys/langsys-js-react) package ships that hook (as `useT`) plus a `<Translate>` component around the DOM `Translate` class. The snippet above is the whole binding if you'd rather not add the dependency.
 
 ### Svelte
 
@@ -195,7 +195,7 @@ const locale = LangsysApp.detectPreferredLocale(
 );
 ```
 
-The matcher tries exact match first (`en-US`), then language-only (`en` matches `en-GB`), then returns `null`.
+The matcher tries exact match first (`en-US`), then language-only (`en` matches `en-GB`). When you pass `supported` and none match, it falls back to the user's top preference (normalized); it returns `false` only when no preference can be determined at all.
 
 ## Localized country / currency / locale lists
 
@@ -261,7 +261,7 @@ import type {
 - `LangsysApp.getCurrencies(inLocale?)` / `.getCurrencyName(code, inLocale?)`
 - `LangsysApp.getLocales(inLocale?)` / `.getLocalesFlat(inLocale?)` / `.getLocalesData(inLocale?, force?)`
 - `LangsysApp.getLocaleName(code, short?, inLocale?)` / `.getLocaleNameWithLookup(...)`
-- Top-level: `t`, `tSignal`, `currentlyLoadedLocale`, `sTranslations`, `contentBlocks`, `LangsysAppAPI`, `Translate`, `createSignal`, `getValue`, `persist`, `interpolate`, `Logger`, `logger`, `md5`, `isEmpty`.
+- Top-level: `t`, `tSignal`, `currentlyLoadedLocale`, `sTranslations`, `LangsysAppAPI`, `Translate`, `createSignal`, `getValue`, `persist`, `interpolate`, `Logger`, `logger`, `md5`, `isEmpty`.
 
 ## License
 
