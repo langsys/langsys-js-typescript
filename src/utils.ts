@@ -25,6 +25,31 @@ export function structuredCloneShim<T>(obj: T): T {
     return clone(obj);
 }
 
+/**
+ * UTF-8-encode a string to a "binary string" (one char per byte) so md5()
+ * hashes the UTF-8 byte sequence rather than UTF-16 code units. Without this,
+ * any non-ASCII input would hash differently from standard MD5 (and from the
+ * PHP/Python/other-language SDKs). Handles the full BMP plus surrogate pairs.
+ */
+function toUtf8Binary(str: string): string {
+    let out = '';
+    for (let k = 0; k < str.length; k++) {
+        const c = str.charCodeAt(k);
+        if (c < 0x80) {
+            out += String.fromCharCode(c);
+        } else if (c < 0x800) {
+            out += String.fromCharCode(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+        } else if (c >= 0xd800 && c <= 0xdbff) {
+            const c2 = str.charCodeAt(++k);
+            const cp = 0x10000 + ((c & 0x3ff) << 10) + (c2 & 0x3ff);
+            out += String.fromCharCode(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+        } else {
+            out += String.fromCharCode(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+        }
+    }
+    return out;
+}
+
 // prettier-ignore
 export function md5(inputString: string) {
     if (typeof inputString !== 'string') inputString = JSON.stringify(inputString);
@@ -42,7 +67,7 @@ export function md5(inputString: string) {
         for (i = 0; i < x.length; i++) blks[i >> 2] |= x.charCodeAt(i) << ((i % 4) * 8);
         blks[i >> 2] |= 0x80 << ((i % 4) * 8); blks[nblk * 16 - 2] = x.length * 8; return blks;
     }
-    let i, x = sb('' + inputString), a = 1732584193, b = -271733879, c = -1732584194, d = 271733878, olda, oldb, oldc, oldd;
+    let i, x = sb(toUtf8Binary('' + inputString)), a = 1732584193, b = -271733879, c = -1732584194, d = 271733878, olda, oldb, oldc, oldd;
     for (i = 0; i < x.length; i += 16) {
         olda = a; oldb = b; oldc = c; oldd = d;
         a = ff(a, b, c, d, x[i + 0], 7, -680876936); d = ff(d, a, b, c, x[i + 1], 12, -389564586); c = ff(c, d, a, b, x[i + 2], 17, 606105819);
