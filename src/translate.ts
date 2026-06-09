@@ -168,6 +168,8 @@ export class Translate {
             if (node?.nodeType === Node.ELEMENT_NODE) {
                 const element = node as HTMLElement;
                 if (element.getAttribute('translate') === 'no') return;
+                // A <Phrase> subtree manages its own rendering — don't recurse.
+                if (element.hasAttribute('data-ls-phrase')) return;
                 this.translateAttributes(node as iElement);
             }
 

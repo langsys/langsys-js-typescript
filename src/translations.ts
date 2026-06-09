@@ -96,6 +96,19 @@ export class Translations {
         return typeof value === 'string' ? value : null;
     }
 
+    /**
+     * Raw stored translation for a phrase, without interpolation or
+     * missing-token registration. Returns null when no (non-empty) translation
+     * is cached. Used by the `Phrase` rich-text handler, which needs the
+     * un-interpolated template (it supplies its own markup-token values).
+     */
+    public lookup(phrase: string, category: string): string | null {
+        const cats = sTranslations.get();
+        const lookupCat = category || '__uncategorized__';
+        const value = cats[lookupCat]?.[phrase];
+        return typeof value === 'string' && value.length > 0 ? value : null;
+    }
+
     private buildTFn(): TFunction {
         // Single runtime body covers both overload shapes. Position 2 is the
         // discriminator: string ⇒ category, object ⇒ params (no category).

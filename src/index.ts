@@ -11,6 +11,15 @@
 export { LangsysApp } from './langsys-app.js';
 export { Translations } from './translations.js';
 export { Translate, type TranslateOptions } from './translate.js';
+export { Phrase, PHRASE_MARKER_ATTR, type PhraseOptions } from './phrase.js';
+export {
+    encodeRichText,
+    reconstitute,
+    markupTokenValues,
+    stripSentinels,
+    type RichSlot,
+    type EncodedRichText,
+} from './richtext.js';
 export { LangsysAppAPI } from './api.js';
 
 // Content-block helpers (framework-agnostic — for React/Vue/Angular/other

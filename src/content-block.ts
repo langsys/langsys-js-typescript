@@ -192,6 +192,9 @@ function _walkForTokens(
         if (node.nodeType === Node.ELEMENT_NODE) {
             const el = node as HTMLElement;
             if (el.getAttribute('translate') === 'no') return;
+            // A <Phrase> subtree is its own self-managed rich phrase — skip it
+            // here so the content block doesn't tokenize its inner text.
+            if (el.hasAttribute('data-ls-phrase')) return;
         }
 
         if (node.hasChildNodes()) {
