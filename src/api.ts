@@ -8,7 +8,7 @@ type Method = 'GET' | 'POST' | 'DELETE' | 'PATCH' | 'PUT';
 class LangsysAppAPIClass {
     private apiurl = 'https://api.langsys.dev/api';
     public config: iLangsysConfig;
-    private headers: { 'Content-Type': string; 'x-Authorization': string };
+    private headers: { 'Content-Type': string; 'x-Authorization': string; 'X-Langsys-Capabilities': string };
 
     constructor() {
         this.config = {
@@ -20,6 +20,10 @@ class LangsysAppAPIClass {
         this.headers = {
             'Content-Type': 'application/json; charset=utf-8',
             'x-Authorization': this.config.key,
+            // Declare ICU MessageFormat rendering so the server sends raw ICU
+            // (plural/select) instead of flat-template downgrades. Pre-ICU
+            // builds omit this header and keep receiving flat strings.
+            'X-Langsys-Capabilities': 'icu',
         };
     }
 
