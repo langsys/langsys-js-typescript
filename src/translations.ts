@@ -319,21 +319,26 @@ export class Translations {
         try {
             // Wire boundary: empty category → null. '__uncategorized__' is
             // server-internal and is rejected as a client input.
-            const tokensForApi = this.missingTokens.map((tokenObj) => ({
-                projectid: tokenObj.projectid,
-                token: tokenObj.token,
+            const phraseItems = this.missingTokens.map((tokenObj) => ({
+                type: 'phrase',
+                phrase: tokenObj.token,
                 category: tokenObj.category || null,
             }));
 
-            const response: ResponseObject = await LangsysAppAPI.post('projects/[projectid]/tokens', {
-                tokens: tokensForApi,
-            });
-            if (!response.status) {
-                if (response.errors) {
-                    this.debug.log('TOKEN UPDATE FAIL', this.missingTokens);
-                    this.debug.error('Error updating project tokens', response.errors);
+            // /translatable-items caps each request (default 200 items); chunk so
+            // a page registering many new phrases at once never overflows it.
+            const BATCH_SIZE = 200;
+            for (let offset = 0; offset < phraseItems.length; offset += BATCH_SIZE) {
+                const response: ResponseObject = await LangsysAppAPI.createTranslatableItems(
+                    phraseItems.slice(offset, offset + BATCH_SIZE),
+                );
+                if (!response.status) {
+                    if (response.errors) {
+                        this.debug.log('TOKEN UPDATE FAIL', this.missingTokens);
+                        this.debug.error('Error updating project tokens', response.errors);
+                    }
+                    return false;
                 }
-                return false;
             }
 
             this.missingTokens.forEach((tokenObj) => {

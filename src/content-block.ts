@@ -122,10 +122,16 @@ export async function registerContentBlock(
     }
 
     try {
-        const response = await LangsysAppAPI.post(
-            'projects/[projectid]/content-blocks',
-            contentBlock as unknown as Record<string, unknown>,
-        );
+        const response = await LangsysAppAPI.createTranslatableItems([
+            {
+                type: 'content_block',
+                custom_id: contentBlock.custom_id,
+                category: contentBlock.category,
+                content: contentBlock.content,
+                label: contentBlock.label,
+                phrases: contentBlock.tokens.map((phrase) => ({ phrase })),
+            },
+        ]);
         if (!response.status) {
             logger.error('Could not save content block', response.errors);
             return { status: false, errors: response.errors as unknown[] | undefined };

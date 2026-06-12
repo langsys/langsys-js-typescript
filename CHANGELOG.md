@@ -1,3 +1,13 @@
+## 0.2.1 - 2026-06-11
+
+### Changed
+
+- **Migrated off the deprecated API routes onto the current endpoints.** No public API change — the same `t()`, `<Phrase>`, and `<Translate>` usage now talks to:
+    - Reads: `GET /translations?project_id=…&locale=…` (was the deprecated `GET /projects/{id}/translations`).
+    - Writes: `POST /translatable-items` with a unified `{ project_id, translatable_items: [{ type: 'phrase' | 'content_block', … }] }` body (was the deprecated `POST /projects/{id}/tokens` and `POST /projects/{id}/content-blocks`).
+- Missing-phrase registration now chunks into batches of 200 to respect the `/translatable-items` per-request cap.
+- Added `LangsysAppAPI.createTranslatableItems()` as the single write entry point for both phrases and content blocks.
+
 ## 0.1.0 - 2026-05-19
 
 Initial public release. Framework-agnostic TypeScript SDK for the Langsys Translation Manager — the foundation that `langsys-js-svelte` (and future framework-specific bindings) build on.

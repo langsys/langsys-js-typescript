@@ -45,7 +45,19 @@ class LangsysAppAPIClass {
     }
 
     public async getTranslations(locale: string) {
-        return await this.get('projects/[projectid]/translations', { locale });
+        return await this.get('translations', { project_id: this.config.projectid, locale });
+    }
+
+    /**
+     * Register phrases and/or content blocks via the current unified endpoint.
+     * Each item carries `type: 'phrase' | 'content_block'`. Replaces the
+     * deprecated `projects/{id}/tokens` and `projects/{id}/content-blocks` routes.
+     */
+    public async createTranslatableItems(items: Array<Record<string, unknown>>) {
+        return await this.post('translatable-items', {
+            project_id: this.config.projectid,
+            translatable_items: items,
+        });
     }
 
     public async post(path: string, data: Record<string, unknown> = {}) {

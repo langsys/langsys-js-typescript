@@ -39,14 +39,33 @@ describe('LangsysAppAPI capability negotiation', () => {
         expect(headers['X-Langsys-Capabilities']).toBe('icu');
     });
 
-    it('hits the project translations endpoint with the locale', async () => {
+    it('reads from the modern /translations endpoint with project_id + locale', async () => {
         const fetchMock = mockFetchOnce();
         configure();
 
         await LangsysAppAPI.getTranslations('es-es');
 
         const [url] = fetchMock.mock.calls[0] as [string];
-        expect(url).toContain('projects/proj-123/translations');
+        expect(url).toContain('/translations?');
+        // Not the deprecated project-scoped route.
+        expect(url).not.toContain('projects/proj-123/translations');
+        expect(url).toContain('project_id=proj-123');
         expect(url).toContain('locale=es-es');
+    });
+
+    it('registers via the modern /translatable-items endpoint with the unified body', async () => {
+        const fetchMock = mockFetchOnce();
+        configure();
+
+        await LangsysAppAPI.createTranslatableItems([{ type: 'phrase', phrase: 'Home', category: 'UI' }]);
+
+        const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(url).toContain('/translatable-items');
+        // Not the deprecated tokens / content-blocks routes.
+        expect(url).not.toContain('/tokens');
+        expect(url).not.toContain('/content-blocks');
+        const body = JSON.parse(init.body as string);
+        expect(body.project_id).toBe('proj-123');
+        expect(body.translatable_items[0]).toMatchObject({ type: 'phrase', phrase: 'Home', category: 'UI' });
     });
 });
