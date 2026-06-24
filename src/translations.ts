@@ -252,6 +252,19 @@ export class Translations {
     }
 
     /**
+     * Record that a locale's catalog is already present without fetching —
+     * e.g. after an SSR handoff seeds `sTranslations` + `currentlyLoadedLocale`.
+     * This primes the same `lastLoaded` cache `change()` consults, so the first
+     * settle for that locale is a cache hit (no redundant fetch) while every
+     * later switch *to* it still flows through `change()` normally.
+     */
+    public markLoaded(locale: string): void {
+        if (!locale) return;
+        this.locale = locale;
+        this.lastLoaded[locale] = new Date().getTime() / 1000;
+    }
+
+    /**
      * React to a user-locale change. Fetches translations if we haven't
      * loaded this locale within the last 60s (or if forced).
      */

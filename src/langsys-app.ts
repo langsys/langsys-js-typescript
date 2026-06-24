@@ -132,13 +132,23 @@ class LangsysAppClass {
 
         this.Translations.setup(this.config);
 
+        // The SSR handoff already populated the stores for this locale, so prime
+        // the fetch cache (after setup, which would otherwise reset this.locale).
+        // The first settle for this locale is then a cache hit — no redundant
+        // fetch — while switching *back* to it later still flows through
+        // change() and rebuilds the t-signal. (Do NOT gate change() on a
+        // "skip fetch" flag here: it would otherwise stay armed and silently
+        // skip every return to the initial locale.)
+        if (initialTranslations && initialTranslationsLocale) {
+            this.Translations.markLoaded(initialTranslationsLocale);
+        }
+
         // Prefetch and wire up reactive locale change handling.
         this.config.sUserLocale.subscribe((locale) => {
             if (!validateResponse.status) return;
             this.getLocalesData(locale);
             this.debug.log('SUBSCRIBING TO USER LOCALE STORE');
-            const skipFetch = initialTranslationsLocale === locale && !!initialTranslations;
-            this.translationsLoadingPromise = this.Translations.change(locale, false, skipFetch);
+            this.translationsLoadingPromise = this.Translations.change(locale, false);
         });
 
         return validateResponse;
