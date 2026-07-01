@@ -64,6 +64,33 @@ describe('Translations.t — flat lookup', () => {
     });
 });
 
+describe('Translations.ready — SSR seed path', () => {
+    beforeEach(resetStores);
+
+    it('stays pending until a catalog load event occurs', async () => {
+        const translations = newTranslations();
+        const settled = await Promise.race([
+            translations.ready().then(() => true),
+            new Promise((resolve) => setTimeout(() => resolve(false), 20)),
+        ]);
+        expect(settled).toBe(false);
+    });
+
+    it('resolves once markLoaded() records a seeded catalog, since the cache hit means no fetch will ever fire', async () => {
+        const translations = newTranslations();
+        translations.markLoaded('es-es');
+        await expect(translations.ready()).resolves.toBeUndefined();
+        // The seeded locale is a cache hit — change() must still short-circuit.
+        await expect(translations.change('es-es', false)).resolves.toBe(false);
+    });
+
+    it('resolves via the legacy skipFetch path of change()', async () => {
+        const translations = newTranslations();
+        await expect(translations.change('es-es', false, true)).resolves.toBe(true);
+        await expect(translations.ready()).resolves.toBeUndefined();
+    });
+});
+
 describe('Translations.t — ICU rendering through interpolate', () => {
     beforeEach(resetStores);
 

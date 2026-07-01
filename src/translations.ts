@@ -262,6 +262,10 @@ export class Translations {
         if (!locale) return;
         this.locale = locale;
         this.lastLoaded[locale] = new Date().getTime() / 1000;
+        // A seeded catalog counts as "ready": the cache hit above means no
+        // fetch will ever fire to resolve the promise, and content-block /
+        // Phrase consumers awaiting ready() would otherwise hang forever.
+        this.readyResolve();
     }
 
     /**
@@ -276,6 +280,7 @@ export class Translations {
             this.debug.log('Using pre-fetched translations for locale', locale);
             this.locale = locale;
             this.lastLoaded[locale] = new Date().getTime() / 1000;
+            this.readyResolve();
             return true;
         }
 
