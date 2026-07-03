@@ -17,6 +17,12 @@ describe('isICU', () => {
         expect(isICU('{t, time, short}')).toBe(true);
     });
 
+    it('detects style-less ICU args ({n, number} with locale-default style)', () => {
+        expect(isICU('{n, number}')).toBe(true);
+        expect(isICU('{d, date}')).toBe(true);
+        expect(isICU('{t, time}')).toBe(true);
+    });
+
     it('does not detect simple interpolation', () => {
         expect(isICU('Hello, {name}!')).toBe(false);
         expect(isICU('{count} items in your cart')).toBe(false);
@@ -51,14 +57,26 @@ describe('interpolate — simple {name} path', () => {
         expect(interpolate('Hello, {name}!', { name: undefined })).toBe('Hello, {name}!');
     });
 
-    it('coerces non-string values via String()', () => {
-        expect(interpolate('Count: {n}', { n: 42 })).toBe('Count: 42');
+    it('coerces booleans via String()', () => {
         expect(interpolate('On: {b}', { b: true })).toBe('On: true');
     });
 
-    it('serializes Date values as ISO 8601', () => {
-        const d = new Date('2026-05-27T00:00:00.000Z');
-        expect(interpolate('When: {d}', { d })).toBe('When: 2026-05-27T00:00:00.000Z');
+    it('formats numbers with the target locale CLDR rules', () => {
+        expect(interpolate('Count: {n}', { n: 42 })).toBe('Count: 42');
+        expect(interpolate('Count: {n}', { n: 1234.5 }, 'en')).toBe('Count: 1,234.5');
+        expect(interpolate('Count: {n}', { n: 1234.5 }, 'de-DE')).toBe('Count: 1.234,5');
+    });
+
+    it('leaves string-typed numeric params untouched (opt-out for IDs)', () => {
+        expect(interpolate('Order {id}', { id: '12345' }, 'en')).toBe('Order 12345');
+    });
+
+    it('formats Date values per locale (medium date style)', () => {
+        const d = new Date('2026-05-27T12:00:00.000Z');
+        const expectedEn = new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(d);
+        const expectedDe = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' }).format(d);
+        expect(interpolate('When: {d}', { d }, 'en')).toBe(`When: ${expectedEn}`);
+        expect(interpolate('When: {d}', { d }, 'de-DE')).toBe(`When: ${expectedDe}`);
     });
 
     it('trims keys with whitespace', () => {
@@ -96,6 +114,17 @@ describe('interpolate — ICU plural path', () => {
         const tpl = '{n, plural, other {fallback #}}';
         expect(interpolate(tpl, { n: 1 }, 'en')).toBe('fallback 1');
         expect(interpolate(tpl, { n: 100 }, 'en')).toBe('fallback 100');
+    });
+});
+
+describe('interpolate — style-less ICU args', () => {
+    it('formats {n, number} via the ICU path with locale-default style', () => {
+        expect(interpolate('Total: {n, number}', { n: 1234.5 }, 'en')).toBe('Total: 1,234.5');
+        expect(interpolate('Total: {n, number}', { n: 1234.5 }, 'de-DE')).toBe('Total: 1.234,5');
+    });
+
+    it('does not render {n, number} as a literal string', () => {
+        expect(interpolate('Total: {n, number}', { n: 7 }, 'en')).not.toContain('{');
     });
 });
 

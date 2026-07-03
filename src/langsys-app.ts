@@ -1,4 +1,5 @@
 import { LangsysAppAPI } from './api.js';
+import { canonicalizeLocale, maximizedLangScript } from './locale.js';
 import { Logger } from './logger.js';
 import { config as configStore, currentlyLoadedLocale, sTranslations } from './stores.js';
 import { Translations } from './translations.js';
@@ -83,12 +84,14 @@ class LangsysAppClass {
         }
         if (!UserLocaleStore?.subscribe || typeof UserLocaleStore.get !== 'function') {
             this.debug.error(
-                "LangsysApp.init missing UserLocaleStore — pass any object satisfying LocaleSource (get + subscribe). createSignal('en-us') works if you have nothing of your own."
+                "LangsysApp.init missing UserLocaleStore — pass any object satisfying LocaleSource (get + subscribe). createSignal('en-US') works if you have nothing of your own."
             );
             return { status: false, errors: ['Missing UserLocaleStore'] };
         }
 
-        baseLocale = baseLocale.toLowerCase();
+        // BCP 47 canonical form (`en-US`, `zh-Hant-TW`) — the CLDR-compliant
+        // backend and every internal cache key use this as the identity.
+        baseLocale = canonicalizeLocale(baseLocale);
 
         if (!emulateFailureToLoad) {
             this.config = {
@@ -143,9 +146,12 @@ class LangsysAppClass {
             this.Translations.markLoaded(initialTranslationsLocale);
         }
 
-        // Prefetch and wire up reactive locale change handling.
-        this.config.sUserLocale.subscribe((locale) => {
+        // Prefetch and wire up reactive locale change handling. The store
+        // emits whatever the app put in it — canonicalize here so downstream
+        // caches and API routes only ever see BCP 47 canonical form.
+        this.config.sUserLocale.subscribe((rawLocale) => {
             if (!validateResponse.status) return;
+            const locale = canonicalizeLocale(rawLocale);
             this.getLocalesData(locale);
             this.debug.log('SUBSCRIBING TO USER LOCALE STORE');
             this.translationsLoadingPromise = this.Translations.change(locale, false);
@@ -155,7 +161,7 @@ class LangsysAppClass {
     }
 
     public async getDialCodes(inLocale?: string): Promise<iCountryDialCode[]> {
-        const locale = inLocale || this.config.sUserLocale.get() || this.config.baseLocale;
+        const locale = this.resolveLocale(inLocale);
         if (this.dialCodes.length && this.dialCodesLocale === locale) return this.dialCodes;
 
         const route = `countries/dial-codes/${locale}`;
@@ -170,7 +176,7 @@ class LangsysAppClass {
     }
 
     public async getCurrencies(inLocale?: string): Promise<iCurrencyList> {
-        const locale = inLocale || this.config.sUserLocale.get() || this.config.baseLocale;
+        const locale = this.resolveLocale(inLocale);
         if (this.currencies.length && this.currenciesLocale === locale) return this.currencies;
 
         const route = `currencies/${locale}`;
@@ -185,7 +191,7 @@ class LangsysAppClass {
     }
 
     public async getCountries(inLocale?: string): Promise<iCountryList> {
-        const locale = inLocale || this.config.sUserLocale.get() || this.config.baseLocale;
+        const locale = this.resolveLocale(inLocale);
         if (this.countries.length && this.countriesLocale === locale) return this.countries;
 
         const route = `countries/${locale}`;
@@ -201,7 +207,7 @@ class LangsysAppClass {
 
     public async getCountryName(forCountryCode: string, inLocale?: string): Promise<string> {
         if (!forCountryCode) return '';
-        const locale = inLocale || this.config.sUserLocale.get() || this.config.baseLocale;
+        const locale = this.resolveLocale(inLocale);
         if (!this.countries.length || this.countriesLocale !== locale) await this.getCountries(inLocale);
 
         const country = this.countries.find((c) => c.code.toLowerCase() === forCountryCode.toLowerCase())?.label;
@@ -211,7 +217,7 @@ class LangsysAppClass {
 
     public async getCurrencyName(forCurrencyCode: string, inLocale?: string): Promise<string> {
         if (!forCurrencyCode) return '';
-        const locale = inLocale || this.config.sUserLocale.get() || this.config.baseLocale;
+        const locale = this.resolveLocale(inLocale);
         if (!this.currencies.length || this.currenciesLocale !== locale) await this.getCurrencies(inLocale);
 
         const currency = this.currencies.find((c) => c.code?.toLowerCase() === forCurrencyCode.toLowerCase())?.name;
@@ -223,7 +229,7 @@ class LangsysAppClass {
         format: '' | 'flat' | 'data' = '',
         inLocale?: string
     ): Promise<iLocaleDefault | iLocaleFlat[] | iLocaleData[]> {
-        const locale = inLocale || this.config.sUserLocale.get() || this.config.baseLocale;
+        const locale = this.resolveLocale(inLocale);
         const route = `locales/${locale}` + (format ? `/${format}` : '');
         const response = await LangsysAppAPI.get(route);
         if (response.errors || !response.status) {
@@ -246,7 +252,7 @@ class LangsysAppClass {
     }
 
     public async getLocalesData(inLocale?: string, forceRefresh = false): Promise<iLocaleData[]> {
-        const locale = inLocale || this.config.sUserLocale.get() || this.config.baseLocale;
+        const locale = this.resolveLocale(inLocale);
         if (this.locales?.[locale]?.length && !forceRefresh) return this.locales[locale];
         this.locales[locale] = (await this.getLocalesFormat('data', inLocale)) as iLocaleData[];
         return this.locales[locale];
@@ -258,16 +264,17 @@ class LangsysAppClass {
 
     public async getLocaleNameWithLookup(forLocale: string, shortName = false, inLocale?: string): Promise<string> {
         if (!forLocale) return '';
-        const locale = inLocale || this.config.sUserLocale.get() || this.config.baseLocale;
+        const locale = this.resolveLocale(inLocale);
         await this.getLocalesData(locale);
         return this.getLocaleName(forLocale, shortName, locale);
     }
 
     public getLocaleName(forLocale: string, shortName = false, inLocale?: string): string {
-        const locale = inLocale || this.config.sUserLocale.get() || this.config.baseLocale;
+        const locale = this.resolveLocale(inLocale);
+        const target = canonicalizeLocale(forLocale).toLowerCase();
         let name = '';
         this.locales[locale]?.every((loc) => {
-            if (loc.code === forLocale) {
+            if (loc.code.toLowerCase() === target) {
                 name = shortName ? loc.lang_name : loc.locale_name;
                 return false;
             }
@@ -300,7 +307,7 @@ class LangsysAppClass {
             if (bestMatch) return bestMatch;
         }
 
-        return this.normalizeLocale(userLocales[0]);
+        return canonicalizeLocale(userLocales[0]);
     }
 
     private getUserLanguagePreferences(acceptLanguageHeader?: string | null): string[] {
@@ -349,35 +356,35 @@ class LangsysAppClass {
     private findBestLocaleMatch(userLocales: string[], supportedLocales: string[]): string | null {
         if (!userLocales.length || !supportedLocales.length) return null;
 
-        const normalizedSupported = supportedLocales.map((l) => this.normalizeLocale(l));
+        const supported = supportedLocales.map((l) => canonicalizeLocale(l));
 
+        // Pass 1: exact match in canonical form.
         for (const userLocale of userLocales) {
-            const normalizedUser = this.normalizeLocale(userLocale);
-            if (normalizedSupported.includes(normalizedUser)) return normalizedUser;
+            const user = canonicalizeLocale(userLocale);
+            if (supported.includes(user)) return user;
         }
 
+        // Pass 2: same language + script after CLDR likely-subtags expansion
+        // (`zh-TW` → zh-Hant, bare `zh` → zh-Hans), region ignored. This is
+        // deliberately NOT bare-language truncation: a zh-Hant-TW user must
+        // fall through unmatched rather than land on a zh/zh-Hans catalog.
         for (const userLocale of userLocales) {
-            const userLang = this.getLanguageCode(userLocale);
-            for (const supported of normalizedSupported) {
-                if (this.getLanguageCode(supported) === userLang) return supported;
-            }
+            const userKey = maximizedLangScript(userLocale);
+            if (!userKey) continue;
+            const match = supported.find((s) => maximizedLangScript(s) === userKey);
+            if (match) return match;
         }
 
         return null;
     }
 
-    private normalizeLocale(locale: string): string {
-        if (!locale || typeof locale !== 'string') return locale;
-        const parts = locale.split(/[-_]/);
-        if (parts.length === 1) return parts[0].toLowerCase();
-        const language = parts[0].toLowerCase();
-        const region = parts[1].toUpperCase();
-        return `${language}-${region}`;
-    }
-
-    private getLanguageCode(locale: string): string {
-        if (!locale || typeof locale !== 'string') return '';
-        return locale.split(/[-_]/)[0].toLowerCase();
+    /**
+     * Resolve the effective locale for a data-fetching helper: explicit
+     * argument, else the user's current locale, else the base locale —
+     * always in BCP 47 canonical form so cache keys and API routes agree.
+     */
+    private resolveLocale(inLocale?: string): string {
+        return canonicalizeLocale(inLocale || this.config.sUserLocale.get() || this.config.baseLocale);
     }
 }
 

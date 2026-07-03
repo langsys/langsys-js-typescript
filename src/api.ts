@@ -1,3 +1,4 @@
+import { canonicalizeLocale } from './locale.js';
 import { createSignal } from './signal.js';
 import type { HttpResponse, ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
@@ -45,7 +46,8 @@ class LangsysAppAPIClass {
     }
 
     public async getTranslations(locale: string) {
-        return await this.get('translations', { project_id: this.config.projectid, locale });
+        // The CLDR-compliant backend keys catalogs by canonical BCP 47 tags.
+        return await this.get('translations', { project_id: this.config.projectid, locale: canonicalizeLocale(locale) });
     }
 
     /**

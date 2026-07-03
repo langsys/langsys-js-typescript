@@ -23,7 +23,8 @@ src/
     signal.ts               # Signal<T> + createSignal + getValue
     persist.ts              # persist<T>(key, initial) — Signal backed by localStorage with SSR-safe fallback
     stores.ts               # Module-scoped state: sTranslations (persist), currentlyLoadedLocale, contentBlocks, shared config
-    interpolate.ts          # {name}-style placeholder substitution
+    interpolate.ts          # {name}-style + ICU MessageFormat placeholder substitution (CLDR number/date formatting in both paths)
+    locale.ts               # canonicalizeLocale (BCP 47 canonical form) + maximizedLangScript (CLDR likely-subtags matching)
     logger.ts               # Logger + logger singleton — debug-gated, styled grouping in browser / plain in Node
     utils.ts                # md5, isEmpty, structuredCloneShim
     types/
@@ -136,7 +137,9 @@ Runs on every push to `main` and every PR. `npm ci` → `npm run typecheck` → 
 
 Things to preserve when making changes:
 
-1. **Zero runtime dependencies.** The whole point of being framework-agnostic is to drop in anywhere without dragging in baggage. Any new dep needs a strong justification.
+1. **One runtime dependency: `intl-messageformat`.** The whole point of being framework-agnostic is to drop in anywhere without dragging in baggage — any additional dep needs a strong justification. Locale plumbing (canonicalization, likely-subtags matching, number/date formatting) rides on the platform's native `Intl` APIs, never bundled CLDR data.
+
+1a. **Locale identifiers are BCP 47 canonical everywhere.** `canonicalizeLocale` runs at every input boundary (init config, user-locale store emissions, `detectPreferredLocale`, API params); cache keys, equality checks, and wire values all use the canonical form (`en-US`, `zh-Hant-TW`). Don't add locale-string comparisons that bypass it.
 
 2. **`Signal<T>` stays Svelte-store-compatible.** `subscribe(run)` must fire immediately with the current value; `set/update/get` keep their current shapes. The Svelte binding relies on this structural compatibility.
 

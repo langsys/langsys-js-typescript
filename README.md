@@ -29,14 +29,14 @@ import { LangsysApp, createSignal, t } from 'langsys-js-typescript';
 
 // 1. A reactive holder for the user's current locale. Use `createSignal` if you
 //    have nothing of your own — any object with subscribe/set/update/get works.
-const userLocale = createSignal('en-us');
+const userLocale = createSignal('en-US');
 
 // 2. Initialize
 const response = await LangsysApp.init({
     projectid: process.env.LANGSYS_PROJECT_ID!,
     key: process.env.LANGSYS_API_KEY!,
     UserLocaleStore: userLocale,
-    baseLocale: 'en-us',
+    baseLocale: 'en-US',
     debug: false,
 });
 
@@ -51,7 +51,7 @@ document.querySelector('#greeting')!.textContent =
     t('Hello, {name}!', 'Greetings', { name: 'Sarah' });
 
 // 5. Change locale — all subscribed consumers re-translate
-userLocale.set('es-es');
+userLocale.set('es-ES');
 ```
 
 ### How `t()` works
@@ -68,9 +68,9 @@ t('Hello, {name}!', 'Greetings', {});                          // ❌ Property '
 t('Hello, {name}!', 'Greetings', { name: 'x', extra: 'y' });   // ❌ Unknown property 'extra'
 ```
 
-Allowed value types: `string | number | Date | boolean`. Dates serialize to ISO 8601.
+Allowed value types: `string | number | Date | boolean`. Numbers and Dates format per the active locale's CLDR rules (`1234.5` → `1.234,5` in `de-DE`; Dates use the medium date style). Pass values as strings to opt out — e.g. IDs and codes that must not get grouping separators.
 
-> Future versions will swap the simple `{name}` runtime for ICU MessageFormat — adding plural / select / date formatting — without changing the public signature. Today's `t('{count} items', 'Cart', { count })` will evolve to `t('{count, plural, one {# item} other {# items}}', 'Cart', { count })`.
+> Translations containing ICU MessageFormat syntax — `{count, plural, one {# item} other {# items}}`, `{gender, select, …}`, `{n, number}`, `{d, date}` — are rendered with full CLDR plural rules for the active locale (Arabic's six categories, Russian's four, etc.). Plain `{name}` slots keep working unchanged.
 
 #### Categorization disambiguates context
 
@@ -167,9 +167,9 @@ await LangsysApp.init({
     projectid: env.LANGSYS_PROJECT_ID,
     key: env.LANGSYS_API_KEY,
     UserLocaleStore: userLocale,
-    baseLocale: 'en-us',
+    baseLocale: 'en-US',
     initialTranslations,                       // fetched on the server
-    initialTranslationsLocale: 'es-es',
+    initialTranslationsLocale: 'es-ES',
     ssrTokenStrategy: 'client',                // 'client' | 'server' | 'auto'
 });
 ```
@@ -187,7 +187,7 @@ const locale = LangsysApp.detectPreferredLocale();
 // SSR — parse Accept-Language header
 const locale = LangsysApp.detectPreferredLocale(req.headers['accept-language']);
 
-// Match against your app's supported locales, falling back to language-only matches
+// Match against your app's supported locales (script-aware CLDR matching)
 const supported = (await LangsysApp.getLocalesFlat()).map((l) => l.code);
 const locale = LangsysApp.detectPreferredLocale(
     req.headers['accept-language'],
@@ -195,7 +195,7 @@ const locale = LangsysApp.detectPreferredLocale(
 );
 ```
 
-The matcher tries exact match first (`en-US`), then language-only (`en` matches `en-GB`). When you pass `supported` and none match, it falls back to the user's top preference (normalized); it returns `false` only when no preference can be determined at all.
+The matcher tries an exact match first (`en-US`), then falls back to same-language-and-script matching using CLDR likely-subtags data (`es-MX` matches `es-ES`; `zh-TW` matches `zh-Hant` but never `zh-Hans` — cross-script fallbacks are deliberately refused). All results come back in BCP 47 canonical form (`en-US`, `zh-Hant-TW`). When you pass `supported` and none match, it falls back to the user's top preference (canonicalized); it returns `false` only when no preference can be determined at all.
 
 ## Localized country / currency / locale lists
 
@@ -204,7 +204,7 @@ const countries    = await LangsysApp.getCountries();    // [{ code, label }, ..
 const dialCodes    = await LangsysApp.getDialCodes();    // [{ country_code, dial_code, name }, ...]
 const currencies   = await LangsysApp.getCurrencies();   // [{ code, name, symbol, ... }, ...]
 const locales      = await LangsysApp.getLocales();      // { LanguageName: [{ code, name }] }
-const localeName   = await LangsysApp.getLocaleNameWithLookup('es-es', true, 'fr-fr'); // 'espagnol'
+const localeName   = await LangsysApp.getLocaleNameWithLookup('es-ES', true, 'fr-FR'); // 'espagnol'
 ```
 
 ## The `Signal<T>` primitive

@@ -5,6 +5,8 @@ import { IntlMessageFormat } from 'intl-messageformat';
  *
  *   - Matches `{var, plural, …}`, `{var, select, …}`, `{var, selectordinal, …}`,
  *     `{var, number, …}`, `{var, date, …}`, `{var, time, …}`.
+ *   - Also matches the style-less forms `{var, number}`, `{var, date}`,
+ *     `{var, time}` — valid ICU with the locale-default style.
  *   - Doesn't match plain interpolation slots like `{name}` or `{count}`.
  *
  * Exported because the Translation Manager UI needs the same detection logic
@@ -14,7 +16,9 @@ export function isICU(template: string): boolean {
     return ICU_PATTERN.test(template);
 }
 
-const ICU_PATTERN = /\{[^{}]+,\s*(plural|select|selectordinal|number|date|time)\s*,/;
+// `[,}]` after the keyword: a style argument may follow (`{n, number, ::…}`)
+// or the argument may close immediately (`{n, number}` — locale-default style).
+const ICU_PATTERN = /\{[^{}]+,\s*(plural|select|selectordinal|number|date|time)\s*[,}]/;
 
 /**
  * Substitute placeholders in a translated string with values from `params`.
@@ -26,7 +30,11 @@ const ICU_PATTERN = /\{[^{}]+,\s*(plural|select|selectordinal|number|date|time)\
  *     etc.) and gender-select branches.
  *   - Simple `{name}` interpolation: cheap regex replacement. Unknown
  *     placeholders are left untouched so missing data is visible to the
- *     developer rather than silently rendering empty strings.
+ *     developer rather than silently rendering empty strings. Number and
+ *     Date values are formatted per the target locale's CLDR rules
+ *     (`Intl.NumberFormat` / `Intl.DateTimeFormat`) — pass numbers as
+ *     strings to opt out (e.g. IDs and codes that must not get grouping
+ *     separators).
  *
  * Malformed ICU falls through to simple interpolation rather than throwing,
  * so the developer sees a broken-but-visible string instead of a runtime crash.
@@ -43,15 +51,15 @@ export function interpolate(
 ): string {
     if (isICU(template)) {
         try {
-            return new IntlMessageFormat(template, locale ?? 'en').format(params) as string;
+            return new IntlMessageFormat(template, locale || 'en').format(params) as string;
         } catch {
-            return simpleInterpolate(template, params);
+            return simpleInterpolate(template, params, locale);
         }
     }
-    return simpleInterpolate(template, params);
+    return simpleInterpolate(template, params, locale);
 }
 
-function simpleInterpolate(template: string, params: Record<string, unknown>): string {
+function simpleInterpolate(template: string, params: Record<string, unknown>, locale?: string): string {
     // The `[^{},]` character class excludes `{`, `}`, and `,` from placeholder
     // names so we don't accidentally consume ICU-shaped slots that somehow
     // routed through this path (e.g. malformed ICU after fall-through).
@@ -60,7 +68,24 @@ function simpleInterpolate(template: string, params: Record<string, unknown>): s
         if (!(key in params)) return match;
         const value = params[key];
         if (value === undefined || value === null) return match;
-        if (value instanceof Date) return value.toISOString();
+        // CLDR-formatted output for numbers and dates, mirroring what the ICU
+        // defaults (`{n, number}`, `{d, date}` → medium) would produce. The
+        // try/catch guards against invalid locale tags — fall back to the
+        // locale-blind rendering rather than throwing mid-render.
+        if (value instanceof Date) {
+            try {
+                return new Intl.DateTimeFormat(locale || 'en', { dateStyle: 'medium' }).format(value);
+            } catch {
+                return value.toISOString();
+            }
+        }
+        if (typeof value === 'number' || typeof value === 'bigint') {
+            try {
+                return new Intl.NumberFormat(locale || 'en').format(value);
+            } catch {
+                return String(value);
+            }
+        }
         return String(value);
     });
 }

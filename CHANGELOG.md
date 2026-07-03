@@ -1,3 +1,22 @@
+## 0.3.0 - 2026-07-03
+
+Full CLDR compliance, matching the backend's CLDR migration. Everything rides on the platform's native `Intl` APIs — no new dependencies, no bundled locale data.
+
+### Changed
+
+- **Locale identifiers are now BCP 47 canonical everywhere.** `en-us` → `en-US`, `zh-hant-tw` → `zh-Hant-TW`, `en_US` → `en-US`, legacy aliases resolved (`iw` → `he`). Canonicalization happens at every input boundary (init config, user-locale store emissions, `detectPreferredLocale`, API params), so the canonical form is what goes on the wire and what keys every internal cache. Lowercase locales in existing configs keep working — they're canonicalized on the way in.
+- **`detectPreferredLocale` matching is script-aware** via CLDR likely-subtags (`Intl.Locale.maximize()`). `es-MX` matches a supported `es-ES` or `es`; `zh-TW` matches `zh-Hant` and never `zh-Hans` — cross-script fallbacks are refused instead of guessed. Previously matching truncated to the bare language code, which could hand a Traditional Chinese reader a Simplified catalog.
+- **Simple `{name}` interpolation formats numbers and Dates per the target locale's CLDR rules.** Numbers go through `Intl.NumberFormat` (`1234.5` → `1.234,5` in `de-DE`); Dates through `Intl.DateTimeFormat` medium date style (previously ISO 8601). Pass values as strings to opt out — e.g. IDs that must not get grouping separators.
+
+### Fixed
+
+- **Style-less ICU arguments (`{n, number}`, `{d, date}`, `{t, time}`) now format correctly.** The ICU detector required a style argument, so these valid ICU forms fell through to simple interpolation and rendered as literal `{n, number}` text.
+- Locale equality checks (fetch dedup, country/currency/dial-code caches) no longer miss when the same locale arrives with different casing.
+
+### Added
+
+- `canonicalizeLocale(locale)` — exported BCP 47 canonicalizer, useful when seeding your own `UserLocaleStore`.
+
 ## 0.2.1 - 2026-06-11
 
 ### Changed

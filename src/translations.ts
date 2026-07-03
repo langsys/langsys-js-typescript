@@ -1,5 +1,6 @@
 import { LangsysAppAPI } from './api.js';
 import { interpolate } from './interpolate.js';
+import { canonicalizeLocale } from './locale.js';
 import { Logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
 import { currentlyLoadedLocale, sTranslations } from './stores.js';
@@ -51,7 +52,7 @@ export class Translations {
     constructor(config: iLangsysConfig) {
         this.config = config;
         this.debug = new Logger(!!config.debug);
-        this.locale = config.baseLocale || '';
+        this.locale = canonicalizeLocale(config.baseLocale || '');
 
         this.tSignal = createSignal<TFunction>(this.buildTFn());
         sTranslations.subscribe(() => this.tSignal.set(this.buildTFn()));
@@ -228,7 +229,7 @@ export class Translations {
         if (!this.config.projectid || !this.config.key) return;
 
         if (this.config.debug) this.debug.debugEnabled = this.config.debug;
-        if (config.baseLocale) this.locale = config.baseLocale;
+        if (config.baseLocale) this.locale = canonicalizeLocale(config.baseLocale);
 
         this.debug.log('TRANSLATION SETUP INITIATED', this.config);
 
@@ -260,6 +261,7 @@ export class Translations {
      */
     public markLoaded(locale: string): void {
         if (!locale) return;
+        locale = canonicalizeLocale(locale);
         this.locale = locale;
         this.lastLoaded[locale] = new Date().getTime() / 1000;
         // A seeded catalog counts as "ready": the cache hit above means no
@@ -275,6 +277,9 @@ export class Translations {
     public async change(locale: string, force = false, skipFetch = false): Promise<boolean> {
         if (!locale) return false;
         if (!this.config.projectid || !this.config.key) return false;
+        // Canonical form is the cache identity — `en-us` and `en-US` must hit
+        // the same `lastLoaded` entry and compare equal to `this.locale`.
+        locale = canonicalizeLocale(locale);
 
         if (skipFetch) {
             this.debug.log('Using pre-fetched translations for locale', locale);
