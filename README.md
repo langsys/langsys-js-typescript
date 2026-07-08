@@ -182,6 +182,19 @@ handle.setParams({ name: 'Sarah', count: 6 });
 
 The placeholders are part of the registered phrase, so translators see `{name}` and `{count}` and keep them in the translation.
 
+#### `%key%` — the markup-safe spelling
+
+In compiled frameworks, bare `{key}` written in markup never reaches the SDK — Svelte compiles it to an expression and JSX evaluates it. Content passed through `<Translate>`/`<Phrase>` therefore also accepts `%key%`, which survives compilation as literal text:
+
+```svelte
+<Translate category="Dashboard" params={{ name, count }}>
+    <h2>Hello %name%</h2>
+    <p>You have %count% new messages.</p>
+</Translate>
+```
+
+Both spellings are equivalent: `%key%` is normalized to canonical `{key}` at tokenization, so the Translation Manager, the wire, and translators only ever see `{key}`, and existing `{key}` content in vanilla HTML keeps working unchanged. Keys must be identifiers (`[A-Za-z_][A-Za-z0-9_]*`), so literal `%` signs in prose ("20% off") are never touched. `t()` phrases are plain JS strings with no compiler in the way — they stay `{key}`-only.
+
 ## Server-Side Rendering
 
 Pre-fetch translations on the server and seed them through `initialTranslations` to skip the duplicate client fetch on hydration:

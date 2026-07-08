@@ -26,6 +26,7 @@
  */
 
 import { LangsysAppAPI } from './api.js';
+import { normalizeMarkupPlaceholders } from './interpolate.js';
 import { logger } from './logger.js';
 import { config as configStore, sTranslations } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
@@ -167,7 +168,7 @@ export function tokenizeElement(element: HTMLElement): { tokens: string[]; conte
     const tokens: string[] = [];
     const clone = element.cloneNode(true) as HTMLElement;
     _walkForTokens(element, Array.from(clone.childNodes), tokens, []);
-    return { tokens, content: clone.outerHTML };
+    return { tokens, content: normalizeMarkupPlaceholders(clone.outerHTML) };
 }
 
 // ---------------------------------------------------------------------
@@ -213,7 +214,7 @@ function _walkForTokens(
 
         const contentToken = node.nodeValue?.replace(/\s+/g, ' ').trim();
         if (node.nodeType === Node.TEXT_NODE && contentToken) {
-            tokens.push(contentToken);
+            tokens.push(normalizeMarkupPlaceholders(contentToken));
             return;
         }
 
@@ -232,19 +233,19 @@ function _tokenizeAttributes(element: HTMLElement, tokens: string[]): void {
 
     for (const attr of TRANSLATABLE_ATTRIBUTES) {
         const value = element.getAttribute(attr)?.trim();
-        if (value) tokens.push(value);
+        if (value) tokens.push(normalizeMarkupPlaceholders(value));
     }
 
     if (VALUE_TRANSLATABLE_ELEMENTS.includes(tagName)) {
         const value = element.getAttribute('value')?.trim();
-        if (value) tokens.push(value);
+        if (value) tokens.push(normalizeMarkupPlaceholders(value));
     }
 
     if (tagName === 'input') {
         const inputType = element.getAttribute('type')?.toLowerCase();
         if (inputType && VALUE_TRANSLATABLE_INPUT_TYPES.includes(inputType)) {
             const value = element.getAttribute('value')?.trim();
-            if (value) tokens.push(value);
+            if (value) tokens.push(normalizeMarkupPlaceholders(value));
         }
     }
 
@@ -252,7 +253,7 @@ function _tokenizeAttributes(element: HTMLElement, tokens: string[]): void {
         const options = element.querySelectorAll('option');
         options.forEach((option) => {
             const optionText = option.textContent?.trim();
-            if (optionText) tokens.push(optionText);
+            if (optionText) tokens.push(normalizeMarkupPlaceholders(optionText));
         });
     }
 }

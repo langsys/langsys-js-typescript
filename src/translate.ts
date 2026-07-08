@@ -7,7 +7,7 @@ import {
     VALUE_TRANSLATABLE_ELEMENTS,
     VALUE_TRANSLATABLE_INPUT_TYPES,
 } from './content-block.js';
-import { interpolate } from './interpolate.js';
+import { interpolate, normalizeMarkupPlaceholders } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { currentlyLoadedLocale, config as configStore } from './stores.js';
 import type { Unsubscriber } from './signal.js';
@@ -198,7 +198,9 @@ export class Translate {
             if (isEmpty(node.nodeValue?.trim())) return;
 
             if (isEmpty(node.originalNodeValue)) {
-                node.originalNodeValue = node.nodeValue;
+                // Snapshot in canonical placeholder form so lookups, replaces,
+                // and interpolation all operate on `{key}`.
+                node.originalNodeValue = normalizeMarkupPlaceholders(node.nodeValue!);
             }
 
             const contentToken = node.originalNodeValue?.replace(/\s+/g, ' ').trim();
@@ -258,7 +260,7 @@ export class Translate {
                 const optionEl = option as iElement;
                 if (!optionEl.originalAttributes) optionEl.originalAttributes = {};
                 if (optionEl.originalAttributes['textContent'] === undefined) {
-                    optionEl.originalAttributes['textContent'] = option.textContent || '';
+                    optionEl.originalAttributes['textContent'] = normalizeMarkupPlaceholders(option.textContent || '');
                 }
                 const originalText = optionEl.originalAttributes['textContent'].trim();
                 if (originalText) {
@@ -274,7 +276,7 @@ export class Translate {
         if (!currentValue) return;
 
         if (element.originalAttributes![attr] === undefined) {
-            element.originalAttributes![attr] = currentValue;
+            element.originalAttributes![attr] = normalizeMarkupPlaceholders(currentValue);
         }
 
         const originalValue = element.originalAttributes![attr].trim();

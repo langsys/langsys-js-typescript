@@ -1,3 +1,10 @@
+## 0.5.0 - 2026-07-08
+
+### Added
+
+- **`%key%` — markup-safe placeholder spelling for DOM content.** Bare `{key}` written inside `<Translate>`/`<Phrase>` markup is consumed by framework compilers before the SDK ever sees it (Svelte compiles it to an expression; JSX evaluates it). Markup now also accepts `%key%`, which survives compilation as literal text. It's additive — plain `{key}` in vanilla HTML keeps working — and `%key%` is normalized to canonical `{key}` at every capture boundary (content-block tokenizer, `Translate` snapshots, `Phrase` encoding), so the Translation Manager, the wire payloads, and translators only ever see the `{key}` form. Keys are restricted to identifiers (`[A-Za-z_][A-Za-z0-9_]*`), so literal `%` in prose ("20% off", "50% to 60%") can never false-match. `t()` phrases are JS strings with no compiler collision and stay `{key}`-only.
+- **`normalizeMarkupPlaceholders(text)`** — the normalizer, exported for framework wrappers that render content-block tokens through their own templating.
+
 ## 0.4.0 - 2026-07-08
 
 Params interpolation for the `Translate` DOM class — content blocks can now carry runtime values the same way `t()` phrases do.

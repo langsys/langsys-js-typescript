@@ -21,6 +21,25 @@ export function isICU(template: string): boolean {
 const ICU_PATTERN = /\{[^{}]+,\s*(plural|select|selectordinal|number|date|time)\s*[,}]/;
 
 /**
+ * Normalize `%name%` markup placeholders to canonical `{name}`.
+ *
+ * Framework compilers consume bare `{name}` written in markup before the DOM
+ * walker ever sees it (Svelte compiles it to an expression; JSX evaluates it),
+ * so DOM content accepts `%name%` as a collision-free authoring escape.
+ * Normalization runs at every markup capture boundary (content-block
+ * tokenizer, `Translate` original-value snapshots, `Phrase` encoding), so the
+ * catalog, the wire, and translators only ever see the canonical `{name}`
+ * form — and plain `{name}` keeps working for vanilla-HTML authors.
+ *
+ * Keys must be identifiers (`[A-Za-z_][A-Za-z0-9_]*`), so literal `%` in
+ * prose ("20% off", "50% to 60%") can't match. `t()` phrases are JS strings
+ * with no compiler collision and stay `{name}`-only.
+ */
+export function normalizeMarkupPlaceholders(text: string): string {
+    return text.replace(/%([A-Za-z_][A-Za-z0-9_]*)%/g, '{$1}');
+}
+
+/**
  * Substitute placeholders in a translated string with values from `params`.
  *
  * Two paths:

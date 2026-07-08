@@ -29,6 +29,8 @@
 // never registered, never sent over the wire (the wire form uses {mNo}/{mNc}).
 //   open(i)  = U+E000  <i>  U+E001
 //   close(i) = U+E002  <i>  U+E003
+import { normalizeMarkupPlaceholders } from './interpolate.js';
+
 const SENT_OPEN_START = String.fromCharCode(0xe000);
 const SENT_OPEN_END = String.fromCharCode(0xe001);
 const SENT_CLOSE_START = String.fromCharCode(0xe002);
@@ -63,7 +65,11 @@ export interface EncodedRichText {
 export function encodeRichText(root: HTMLElement): EncodedRichText {
     const slots: RichSlot[] = [];
     const phrase = _encodeNodes(Array.from(root.childNodes), slots);
-    return { phrase: phrase.replace(/\s+/g, ' ').trim(), slots };
+    // `%key%` → `{key}` so the registered phrase carries the canonical
+    // placeholder form (framework compilers eat bare `{key}` in markup).
+    // The `{mNo}`/`{mNc}` markup tokens are generated brace-form and are
+    // untouched by the normalization.
+    return { phrase: normalizeMarkupPlaceholders(phrase.replace(/\s+/g, ' ').trim()), slots };
 }
 
 function _encodeNodes(nodes: ChildNode[], slots: RichSlot[]): string {
