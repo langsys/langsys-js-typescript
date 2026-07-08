@@ -1,3 +1,16 @@
+## 0.4.0 - 2026-07-08
+
+Params interpolation for the `Translate` DOM class — content blocks can now carry runtime values the same way `t()` phrases do.
+
+### Added
+
+- **`TranslateOptions.params`** (`Record<string, ParamPrimitive>`) — single-brace `{key}` placeholders, same syntax and semantics as `t()`: unknown keys fall through untouched so missing data stays visible, and Number/Date values are formatted per the active locale's CLDR rules. Interpolation applies everywhere resolved text lands in the DOM — content-block text nodes, translatable attributes, `<select>` option text, and the single-text-run path. Untranslated fallbacks interpolate too, and the base locale gets a render pass when params are present, so placeholders never leak into the UI.
+- **`Translate.setParams(params)`** — swap params after mount (e.g. a changed count) and re-render, mirroring `Phrase.setParams`. The framework bindings expose this as a reactive `params` prop on their `<Translate>` components: `langsys-js-svelte` ≥ 3.3.0, `langsys-js-react` ≥ 0.4.0.
+
+### Fixed
+
+- Content-block text replacement no longer treats `$`-patterns (`$&`, `` $` ``, `$1`…) in translations or interpolated values as `String.replace` directives — they now render literally.
+
 ## 0.3.0 - 2026-07-03
 
 Full CLDR compliance, matching the backend's CLDR migration. Everything rides on the platform's native `Intl` APIs — no new dependencies, no bundled locale data.
