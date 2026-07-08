@@ -158,6 +158,30 @@ Attributes honored on contained elements:
 - Several validation-message `data-*` attributes
 - `translate="no"` — elements marked this way (and their children) are skipped
 
+### Interpolation params
+
+`Translate` accepts the same single-brace `{key}` placeholders as `t()`. Pass `params` and every translated text node and attribute is interpolated after lookup — unknown keys stay visible as-is, and `Number`/`Date` values are formatted per the active locale's CLDR rules:
+
+```html
+<div id="stats">
+    <h2>Hello {name}</h2>
+    <p>You have {count} new messages.</p>
+</div>
+```
+
+```ts
+const stats = document.querySelector<HTMLElement>('#stats')!;
+const handle = new Translate(stats, {
+    category: 'Dashboard',
+    params: { name: 'Sarah', count: 5 },
+});
+
+// Update reactively — e.g. when the count changes:
+handle.setParams({ name: 'Sarah', count: 6 });
+```
+
+The placeholders are part of the registered phrase, so translators see `{name}` and `{count}` and keep them in the translation.
+
 ## Server-Side Rendering
 
 Pre-fetch translations on the server and seed them through `initialTranslations` to skip the duplicate client fetch on hydration:
