@@ -105,8 +105,9 @@ Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC
 
 **Flow:**
 
-1. Commit + push your changes to `main`.
+1. Commit your changes to `main` — but do **not** push: the script amends the last unpushed commit with the version bump and force-pushes itself, and it errors out if there's nothing unpushed. (Pushed too early? `git commit --amend --no-edit` re-stamps the commit as unpushed.)
 2. Run `npm run release` (which calls `_dev_/publish.sh`):
+   - Non-interactive: `npm run release -- <version> --yes` skips every prompt and auto-rolls-back on error — use this form when Claude runs the release.
    - Prompts for the new version (suggests next patch).
    - Bumps `package.json`, runs `npm install` + `npm run build` locally as a final sanity check.
    - Amends the last commit with the version bump, force-pushes `main`.

@@ -32,6 +32,19 @@ CHANGES_PUSHED=false
 TAG_CREATED=false
 TAG_PUSHED=false
 
+# Non-interactive mode: `publish.sh <version> --yes` (or -y) skips every
+# prompt — version prompt, publish confirmation — and auto-rolls-back on
+# error. With no args the script stays fully interactive.
+VERSION_ARG=""
+ASSUME_YES=false
+for arg in "$@"; do
+    case "$arg" in
+        -y|--yes) ASSUME_YES=true ;;
+        -*) log_error "Unknown option: $arg"; exit 1 ;;
+        *) VERSION_ARG="$arg" ;;
+    esac
+done
+
 # Function to rollback changes
 rollback() {
     log_warning "Rolling back changes..."
@@ -72,10 +85,15 @@ handle_error() {
     log_error "Publishing failed: $1"
 
     if [ -n "$ORIGINAL_VERSION" ] && [ -n "$NEW_VERSION" ]; then
-        read -p "Do you want to rollback changes? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if [ "$ASSUME_YES" = true ]; then
+            log_warning "Non-interactive mode: rolling back automatically"
             rollback
+        else
+            read -p "Do you want to rollback changes? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                rollback
+            fi
         fi
     fi
 
@@ -98,6 +116,9 @@ log_success "GitHub CLI is installed"
 
 # Check if gh CLI is authenticated
 if ! gh auth status &> /dev/null; then
+    if [ "$ASSUME_YES" = true ]; then
+        handle_error "GitHub CLI is not authenticated (run 'gh auth login' first — can't prompt in non-interactive mode)"
+    fi
     log_warning "GitHub CLI is not authenticated"
     echo "The GitHub CLI needs to be authenticated to create releases."
     echo "This is a one-time setup that will be saved for future use."
@@ -147,10 +168,15 @@ log_info "Current version: $ORIGINAL_VERSION"
 # Calculate suggested version (increment patch version)
 SUGGESTED_VERSION=$(echo "$ORIGINAL_VERSION" | awk -F. '{$NF = $NF + 1;} 1' | sed 's/ /./g')
 
-# Prompt for new version
-read -p "Enter new version (suggested: $SUGGESTED_VERSION): " NEW_VERSION
-if [ -z "$NEW_VERSION" ]; then
-    NEW_VERSION=$SUGGESTED_VERSION
+# Version from CLI arg, or prompt for it
+if [ -n "$VERSION_ARG" ]; then
+    NEW_VERSION=$VERSION_ARG
+    log_info "Using version from argument: $NEW_VERSION"
+else
+    read -p "Enter new version (suggested: $SUGGESTED_VERSION): " NEW_VERSION
+    if [ -z "$NEW_VERSION" ]; then
+        NEW_VERSION=$SUGGESTED_VERSION
+    fi
 fi
 
 # Validate version format
@@ -164,12 +190,16 @@ if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
 fi
 
 # Confirm before proceeding
-echo
-read -p "Ready to publish version $NEW_VERSION? (y/N): " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    log_warning "Publishing cancelled"
-    exit 0
+if [ "$ASSUME_YES" = true ]; then
+    log_info "Non-interactive mode: publishing version $NEW_VERSION"
+else
+    echo
+    read -p "Ready to publish version $NEW_VERSION? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_warning "Publishing cancelled"
+        exit 0
+    fi
 fi
 
 echo
