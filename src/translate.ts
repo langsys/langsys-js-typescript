@@ -7,10 +7,12 @@ import {
     VALUE_TRANSLATABLE_ELEMENTS,
     VALUE_TRANSLATABLE_INPUT_TYPES,
 } from './content-block.js';
+import { interpolate } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { currentlyLoadedLocale, config as configStore } from './stores.js';
 import type { Unsubscriber } from './signal.js';
 import type { iContentBlock } from './types/content-block.js';
+import type { ParamPrimitive } from './types/translation-fn.js';
 import { isEmpty } from './utils.js';
 
 /** Options for the `Translate` class. Matches the Svelte component's props. */
@@ -21,6 +23,8 @@ export interface TranslateOptions {
     custom_id?: string;
     /** Optional human-readable label shown in the Translation Manager. */
     label?: string;
+    /** Interpolation params — `{name}`, `{count}`, etc. Same single-brace syntax as `t()`. */
+    params?: Record<string, ParamPrimitive>;
 }
 
 type iNode = Node & { originalNodeValue?: string | null };
@@ -63,6 +67,15 @@ export class Translate {
         });
     }
 
+    /** Update interpolation params (e.g. a changed count) and re-render. Mirrors `Phrase.setParams`. */
+    public setParams(params: Record<string, ParamPrimitive> | undefined): void {
+        this.options.params = params;
+        if (!this.parseComplete) return;
+        this.lastTranslatedLocale = '';
+        const locale = currentlyLoadedLocale.get();
+        if (locale) this.translateUpdate(locale);
+    }
+
     /** Stop reacting to locale changes. Safe to call multiple times. */
     public destroy() {
         if (this.unsubscribeLocale) {
@@ -78,7 +91,7 @@ export class Translate {
         const { category = '' } = this.options;
 
         if (this.tokens.length === 1) {
-            this.element.innerText = LangsysApp.Translations.t(this.tokens[0], category);
+            this.element.innerText = this.applyParams(LangsysApp.Translations.t(this.tokens[0], category));
         } else {
             this.translate(Array.from(this.element.childNodes));
             this.lastTranslatedLocale = currentLocale;
@@ -105,7 +118,7 @@ export class Translate {
         const { category = '' } = this.options;
 
         if (this.tokens.length === 1) {
-            this.element.innerText = LangsysApp.Translations.t(this.tokens[0], category);
+            this.element.innerText = this.applyParams(LangsysApp.Translations.t(this.tokens[0], category));
         } else {
             const contentBlock: iContentBlock = {
                 custom_id: '',
@@ -157,9 +170,12 @@ export class Translate {
 
     private translate(nodes: iNode[]) {
         const currentLocale = currentlyLoadedLocale.get();
+        // With params, the base locale still needs a pass — placeholders must
+        // be interpolated even when no translation lookup will hit.
         if (
             currentLocale === configStore.baseLocale &&
-            (this.lastTranslatedLocale === '' || this.lastTranslatedLocale === configStore.baseLocale)
+            (this.lastTranslatedLocale === '' || this.lastTranslatedLocale === configStore.baseLocale) &&
+            isEmpty(this.options.params)
         ) {
             return;
         }
@@ -191,9 +207,11 @@ export class Translate {
             const translation = this.getTranslation(contentToken);
 
             if (translation && contentToken && node.originalNodeValue) {
-                node.nodeValue = node.originalNodeValue.replace(contentToken, translation);
+                // Replacer fn so `$`-patterns in translations/params stay literal.
+                const resolved = this.applyParams(translation);
+                node.nodeValue = node.originalNodeValue.replace(contentToken, () => resolved);
             } else if (node.originalNodeValue) {
-                node.nodeValue = node.originalNodeValue;
+                node.nodeValue = this.applyParams(node.originalNodeValue);
             }
         });
     }
@@ -202,6 +220,17 @@ export class Translate {
         if (!token) return null;
         const { category = '' } = this.options;
         return LangsysApp.Translations.lookupContent(category, this.custom_id, token);
+    }
+
+    /**
+     * Interpolate `{name}`-style params into a resolved text, matching `t()`:
+     * unknown keys fall through untouched, and the untranslated fallback is
+     * interpolated too. No-op when no params were supplied.
+     */
+    private applyParams(text: string): string {
+        const { params } = this.options;
+        if (isEmpty(params)) return text;
+        return interpolate(text, params!, currentlyLoadedLocale.get());
     }
 
     private translateAttributes(element: iElement) {
@@ -234,7 +263,7 @@ export class Translate {
                 const originalText = optionEl.originalAttributes['textContent'].trim();
                 if (originalText) {
                     const translation = this.getTranslation(originalText);
-                    option.textContent = translation || optionEl.originalAttributes['textContent'];
+                    option.textContent = this.applyParams(translation || optionEl.originalAttributes['textContent']);
                 }
             });
         }
@@ -252,8 +281,8 @@ export class Translate {
         if (!originalValue) return;
 
         const translation = this.getTranslation(originalValue);
-        if (translation) element.setAttribute(attr, translation);
-        else element.setAttribute(attr, element.originalAttributes![attr]);
+        if (translation) element.setAttribute(attr, this.applyParams(translation));
+        else element.setAttribute(attr, this.applyParams(element.originalAttributes![attr]));
     }
 
 }
