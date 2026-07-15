@@ -97,11 +97,25 @@ export class Translate {
         const { category = '' } = this.options;
 
         if (this.tokens.length === 1) {
-            this.element.innerText = this.applyParams(LangsysApp.Translations.t(this.tokens[0], category));
+            this.renderSingleToken(category);
         } else {
             this.translate(Array.from(this.element.childNodes));
             this.lastTranslatedLocale = currentLocale;
         }
+    }
+
+    /**
+     * Render a single-token block. The token may live in the catalog as a
+     * content block — registered under an explicit `custom_id`, by an earlier
+     * SDK version, or seeded server-side — and flat `t()` can't see inside
+     * content-block entries, so prefer that entry. Fall back to the flat
+     * phrase catalog (`t()`, which also queues the miss for write-key
+     * registration).
+     */
+    private renderSingleToken(category: string): void {
+        const token = this.tokens[0];
+        const blockTranslation = LangsysApp.Translations.lookupContent(category, this.custom_id, token);
+        this.element.innerText = this.applyParams(blockTranslation ?? LangsysApp.Translations.t(token, category));
     }
 
     private async tokenizeContent(): Promise<boolean> {
@@ -125,7 +139,10 @@ export class Translate {
         const { category = '' } = this.options;
 
         if (this.tokens.length === 1) {
-            this.element.innerText = this.applyParams(LangsysApp.Translations.t(this.tokens[0], category));
+            if (isEmpty(this.custom_id)) {
+                this.custom_id = generateCustomId(category, this.tokens);
+            }
+            this.renderSingleToken(category);
         } else {
             const contentBlock: iContentBlock = {
                 custom_id: '',
