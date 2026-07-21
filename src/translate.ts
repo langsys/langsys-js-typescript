@@ -9,7 +9,7 @@ import {
 } from './content-block.js';
 import { interpolate, normalizeMarkupPlaceholders, warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
-import { currentlyLoadedLocale, config as configStore } from './stores.js';
+import { currentlyLoadedLocale, sTranslations, config as configStore } from './stores.js';
 import type { Unsubscriber } from './signal.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -51,7 +51,7 @@ export class Translate {
     private isTokenizing = false;
     private lastTranslatedLocale = '';
     private custom_id: string;
-    private unsubscribeLocale: Unsubscriber | null = null;
+    private unsubscribers: Unsubscriber[] = [];
     /** Sorted params key-set already checked, so value-only updates don't re-warn. */
     private checkedParamKeys: string | null = null;
 
@@ -64,9 +64,25 @@ export class Translate {
         void this.tokenizeContent();
 
         // React to locale changes.
-        this.unsubscribeLocale = currentlyLoadedLocale.subscribe((locale) => {
-            if (locale && this.parseComplete) this.translateUpdate(locale);
-        });
+        this.unsubscribers.push(
+            currentlyLoadedLocale.subscribe((locale) => {
+                if (locale && this.parseComplete) this.translateUpdate(locale);
+            }),
+        );
+
+        // React to catalog changes too (same pattern as Phrase). A same-locale
+        // refetch — refresh(), a token-flush writeback — replaces sTranslations
+        // without changing currentlyLoadedLocale's value, so that signal alone
+        // never re-renders it.
+        this.unsubscribers.push(
+            sTranslations.subscribe(() => {
+                if (!this.parseComplete) return;
+                const locale = currentlyLoadedLocale.get();
+                if (!locale) return;
+                this.lastTranslatedLocale = ''; // catalog changed — force a re-walk
+                this.translateUpdate(locale);
+            }),
+        );
     }
 
     /** Update interpolation params (e.g. a changed count) and re-render. Mirrors `Phrase.setParams`. */
@@ -82,12 +98,10 @@ export class Translate {
         if (locale) this.translateUpdate(locale);
     }
 
-    /** Stop reacting to locale changes. Safe to call multiple times. */
+    /** Stop reacting to locale/translation changes. Safe to call multiple times. */
     public destroy() {
-        if (this.unsubscribeLocale) {
-            this.unsubscribeLocale();
-            this.unsubscribeLocale = null;
-        }
+        this.unsubscribers.forEach((unsub) => unsub());
+        this.unsubscribers = [];
     }
 
     private translateUpdate(currentLocale: string) {
@@ -115,7 +129,36 @@ export class Translate {
     private renderSingleToken(category: string): void {
         const token = this.tokens[0];
         const blockTranslation = LangsysApp.Translations.lookupContent(category, this.custom_id, token);
-        this.element.innerText = this.applyParams(blockTranslation ?? LangsysApp.Translations.t(token, category));
+        const resolved = this.applyParams(blockTranslation ?? LangsysApp.Translations.t(token, category));
+        // A single-token block may still wrap its text in markup —
+        // <translate><p>text</p></translate> is the framework-component shape —
+        // so write into the text node instead of flattening the subtree
+        // (innerText assignment would destroy the <p> and its styling).
+        const textNode = this.findSingleTextNode(this.element);
+        if (textNode) textNode.nodeValue = resolved;
+        else this.element.innerText = resolved;
+    }
+
+    /**
+     * The unique non-whitespace text node under `root`, or null when there are
+     * zero or several — callers fall back to a flat text render in that case.
+     */
+    private findSingleTextNode(root: Node): Node | null {
+        let found: Node | null = null;
+        const walk = (parent: Node): boolean => {
+            for (const child of Array.from(parent.childNodes)) {
+                if (child.nodeType === Node.TEXT_NODE) {
+                    if ((child.nodeValue ?? '').trim()) {
+                        if (found) return false;
+                        found = child;
+                    }
+                } else if (!walk(child)) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        return walk(root) ? found : null;
     }
 
     private async tokenizeContent(): Promise<boolean> {

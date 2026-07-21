@@ -79,6 +79,44 @@ describe('Translate — single-token blocks', () => {
         expect(el.innerText).toBe(TRANSLATION);
     });
 
+    it('preserves inner markup when rendering a single-token block', async () => {
+        // The framework-component shape: <translate><p>text</p></translate>.
+        // Rendering must write into the text node — flattening via innerText
+        // would destroy the <p> and any scoped styling on it.
+        const customId = generateCustomId('Tour', [PHRASE]);
+        sTranslations.set({
+            Tour: { __category__: 'Tour', __symbol__: 'Tour', [customId]: { [PHRASE]: TRANSLATION } },
+            __uncategorized__: { __category__: '__uncategorized__', __symbol__: '__uncategorized__' },
+        });
+
+        const el = hostWith(`<p class="lede">${PHRASE}</p>`);
+        new Translate(el, { category: 'Tour' });
+        await tick();
+
+        const p = el.querySelector('p.lede');
+        expect(p).not.toBeNull();
+        expect(p!.textContent).toBe(TRANSLATION);
+    });
+
+    it('re-renders when the catalog is replaced without a locale change', async () => {
+        // refresh() and token-flush writebacks replace sTranslations while
+        // currentlyLoadedLocale keeps its value (the signal dedupes) — the
+        // catalog subscription must re-render on its own.
+        const el = hostWith(`<p>${PHRASE}</p>`);
+        new Translate(el, { category: 'Tour' });
+        await tick();
+        expect(el.innerText).toBe(PHRASE);
+
+        const customId = generateCustomId('Tour', [PHRASE]);
+        sTranslations.set({
+            Tour: { __category__: 'Tour', __symbol__: 'Tour', [customId]: { [PHRASE]: TRANSLATION } },
+            __uncategorized__: { __category__: '__uncategorized__', __symbol__: '__uncategorized__' },
+        });
+        await tick();
+
+        expect(el.innerText).toBe(TRANSLATION);
+    });
+
     it('re-renders from the content-block entry when the catalog arrives after parse', async () => {
         // Cold-cache order: the block parses against an empty catalog (source
         // text), then the fetch settles and currentlyLoadedLocale emits.
