@@ -72,6 +72,17 @@ export class Translations {
         return this.readyPromise;
     }
 
+    /**
+     * Resolve `ready()` without a catalog. Called when no fetch is coming —
+     * init refused the config or project authorization failed — so DOM
+     * consumers (`Phrase`, `Translate`) render their source-text fallback
+     * instead of awaiting forever. Safe to call repeatedly; a successful
+     * load later still updates the stores and re-renders subscribers.
+     */
+    public settle(): void {
+        this.readyResolve();
+    }
+
     /** Current translation function. Reads fresh state on every call. */
     public get t(): TFunction {
         return this.tSignal.get();
