@@ -74,18 +74,23 @@ class LangsysAppClass {
             });
         }
 
+        // Rejected configs settle the ready() gate: no catalog is coming, so
+        // Phrase/Translate must render their source-text fallback, not hang.
         if (!projectid) {
             this.debug.error('LangsysApp.init missing projectid in configuration object!');
+            this.Translations.settle();
             return { status: false, errors: ['Missing projectid'] };
         }
         if (!key) {
             this.debug.error('LangsysApp.init missing API key in configuration object!');
+            this.Translations.settle();
             return { status: false, errors: ['Missing API key'] };
         }
         if (!UserLocaleStore?.subscribe || typeof UserLocaleStore.get !== 'function') {
             this.debug.error(
                 "LangsysApp.init missing UserLocaleStore — pass any object satisfying LocaleSource (get + subscribe). createSignal('en-US') works if you have nothing of your own."
             );
+            this.Translations.settle();
             return { status: false, errors: ['Missing UserLocaleStore'] };
         }
 
@@ -117,6 +122,11 @@ class LangsysAppClass {
                 configStore.key_type = authData.key_type;
                 this.debug.log('API Key Type:', this.config.key_type);
             }
+        } else {
+            // Authorization failed (bad key, unreachable server): the locale
+            // subscription below short-circuits on !validateResponse.status,
+            // so no catalog will ever load — settle the ready() gate.
+            this.Translations.settle();
         }
 
         // Seed the translations store if initial data is provided (SSR handoff).
