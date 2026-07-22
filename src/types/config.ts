@@ -42,6 +42,15 @@ export interface iLangsysInitConfig {
     baseLocale?: string;
 
     /**
+     * Base URL of the Langsys API server, for pointing the SDK at a local or
+     * self-hosted instance (e.g. `http://localhost:8000/api`). A trailing
+     * slash is stripped. Equivalent to calling `LangsysAppAPI.setBaseUrl()`
+     * before `init()`.
+     * @default 'https://api.langsys.dev/api'
+     */
+    apiUrl?: string;
+
+    /**
      * Enable debug console messages.
      * @default false
      */
