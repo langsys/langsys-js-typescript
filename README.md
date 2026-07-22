@@ -38,6 +38,7 @@ const response = await LangsysApp.init({
     UserLocaleStore: userLocale,
     baseLocale: 'en-US',
     debug: false,
+    // apiUrl: 'http://localhost:8000/api', // point at a local/self-hosted Langsys server
 });
 
 if (!response.status) console.error('Langsys init failed', response.errors);
@@ -243,7 +244,7 @@ const locale = LangsysApp.detectPreferredLocale(
 );
 ```
 
-The matcher tries an exact match first (`en-US`), then falls back to same-language-and-script matching using CLDR likely-subtags data (`es-MX` matches `es-ES`; `zh-TW` matches `zh-Hant` but never `zh-Hans` — cross-script fallbacks are deliberately refused). All results come back in BCP 47 canonical form (`en-US`, `zh-Hant-TW`). When you pass `supported` and none match, it falls back to the user's top preference (canonicalized); it returns `false` only when no preference can be determined at all.
+The matcher tries an exact match first (`en-US`), then falls back to same-language-and-script matching using CLDR likely-subtags data (`es-MX` matches `es-ES`; `zh-TW` matches `zh-Hant` but never `zh-Hans` — cross-script fallbacks are deliberately refused). All results come back in BCP 47 canonical form (`en-US`, `zh-Hant-TW`). When you pass `supported` and none of the user's preferences match, it returns `false` — so `detectPreferredLocale(header, supported) || 'en-US'` reliably lands on your default. Without a `supported` list it returns the user's top preference (canonicalized), or `false` when no preference can be determined at all.
 
 ## Localized country / currency / locale lists
 
@@ -254,6 +255,8 @@ const currencies   = await LangsysApp.getCurrencies();   // [{ code, name, symbo
 const locales      = await LangsysApp.getLocales();      // { LanguageName: [{ code, name }] }
 const localeName   = await LangsysApp.getLocaleNameWithLookup('es-ES', true, 'fr-FR'); // 'espagnol'
 ```
+
+`getLocaleName()` is the synchronous variant of `getLocaleNameWithLookup()`: it reads an in-memory cache that is only populated once `await LangsysApp.getLocalesData(inLocale)` (or a `getLocaleNameWithLookup` call) has settled for that display locale. Called before that, it warns and returns `''` — either await the data load first or use `getLocaleNameWithLookup`.
 
 ## The `Signal<T>` primitive
 
@@ -299,7 +302,7 @@ import type {
 } from 'langsys-js-typescript';
 ```
 
-- `LangsysApp.init(config)` — initialize, returns an `iLangsysResponse`.
+- `LangsysApp.init(config)` — initialize, returns an `iLangsysResponse`. `config.apiUrl` points the SDK at a non-default API server (local instance, staging); `LangsysAppAPI.setBaseUrl(url)` is the pre-`init` equivalent.
 - `LangsysApp.refresh()` — force-refetch translations for the current locale.
 - `LangsysApp.t` — current `TFunction` (getter; reads fresh state on every call).
 - `LangsysApp.translationsLoadingPromise` — resolves when the current locale's translations are ready.
