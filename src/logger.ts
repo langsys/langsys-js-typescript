@@ -10,7 +10,11 @@ const STYLES = {
     error: 'display:inline-block;background:#e0005a;color:#fff;font-weight:bold;padding:3px 7px;border-radius:3px',
 };
 
-const supportsStyle = typeof window !== 'undefined';
+// React Native defines `window` but its console doesn't render %c — detect it
+// via navigator.product so RN gets the plain-text branch instead of literal
+// "%cLangsys Debug" noise.
+const supportsStyle =
+    typeof window !== 'undefined' && !(typeof navigator !== 'undefined' && navigator.product === 'ReactNative');
 
 function emit(level: 'log' | 'warn' | 'error', label: string, args: unknown[]) {
     // Browsers render %c style. Node just gets the plain string.
