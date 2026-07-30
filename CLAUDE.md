@@ -59,7 +59,8 @@ tSignal                                 // Signal<TFunction> — subscribe for r
 // Reactive primitive
 createSignal<T>(initial): Signal<T>
 getValue<T>(signal): T
-persist<T>(key, initial): Signal<T>     // localStorage-backed Signal
+persist<T>(key, initial, legacyKey?): Signal<T>  // storage-backed Signal (namespaced key + read-only legacy migration)
+setPersistStorage(adapter | null)       // inject a synchronous storage backend (React Native: MMKV or an AsyncStorage mirror); hydrates existing persist signals
 
 // Reactive stores (also exported for direct subscription)
 sTranslations                           // Signal<iCategories>
