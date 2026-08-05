@@ -2,6 +2,17 @@ import { IntlMessageFormat } from 'intl-messageformat';
 import { logger } from './logger.js';
 
 /**
+ * The subset of an `intl-messageformat` AST node we walk. Declared locally
+ * rather than imported: the parser package is only a transitive dependency,
+ * and these three fields are all `withSelectDefaults` needs.
+ */
+type IcuNode = {
+    value?: unknown;
+    pluralType?: string;
+    options?: Record<string, { value?: IcuNode[] }>;
+};
+
+/**
  * Detects ICU MessageFormat syntax in a translation string.
  *
  *   - Matches `{var, plural, …}`, `{var, select, …}`, `{var, selectordinal, …}`,
@@ -98,13 +109,61 @@ export function warnUnmatchedParams(
 }
 
 /**
+ * Collect the argument names of every `select` in an ICU AST, including
+ * selects nested inside other plural/select branches.
+ *
+ * Select nodes and plural nodes both carry `options`; only plural (and
+ * `selectordinal`) nodes carry `pluralType`, so that field is what tells them
+ * apart. Structural rather than a numeric type check so we don't depend on
+ * `@formatjs`'s TYPE enum, which we don't declare as a dependency.
+ */
+function collectSelectArgs(nodes: readonly IcuNode[], into: Set<string>): Set<string> {
+    for (const node of nodes) {
+        if (!node.options) continue;
+        if (node.pluralType === undefined && typeof node.value === 'string') into.add(node.value);
+        for (const branch of Object.values(node.options)) collectSelectArgs(branch.value ?? [], into);
+    }
+    return into;
+}
+
+/**
+ * Fill in `'other'` for every `select` argument the caller didn't provide.
+ *
+ * The ICU promoter in langsys-ai introduces a select argument the source
+ * phrase never had — `{name}` in the source becomes a `{name_gender, select,
+ * …}` branch in the gendered target locales — so an app that doesn't know its
+ * user's gender has no way to supply it. Without this, that case degrades
+ * badly and *only in the gendered locales*: `intl-messageformat` throws
+ * `MissingValueError` and we fall through to simple interpolation, which
+ * renders the raw ICU markup to the user. Defaulting to `other` yields the
+ * neutral branch, which is the correct sentence for an app with no gender
+ * data. (The PHP ports have the same guard for the same reason, except
+ * ext-intl fails by echoing `{argName}` rather than throwing.)
+ *
+ * Explicitly-passed values are never touched, and an unrecognized value
+ * already lands on `other` under ICU's own select semantics.
+ */
+function withSelectDefaults(ast: readonly IcuNode[], params: Record<string, unknown>): Record<string, unknown> {
+    const selectArgs = collectSelectArgs(ast, new Set<string>());
+    if (selectArgs.size === 0) return params;
+    let filled: Record<string, unknown> | null = null;
+    for (const arg of selectArgs) {
+        if (params[arg] !== undefined && params[arg] !== null) continue;
+        filled ??= { ...params };
+        filled[arg] = 'other';
+    }
+    return filled ?? params;
+}
+
+/**
  * Substitute placeholders in a translated string with values from `params`.
  *
  * Two paths:
  *   - ICU MessageFormat (target string contains `{var, plural|select|…, …}`):
  *     parsed and formatted via `intl-messageformat`, which knows every
  *     target locale's plural rules (Arabic's 6 categories, Russian's 4,
- *     etc.) and gender-select branches.
+ *     etc.) and gender-select branches. Missing select arguments fall back to
+ *     the `other` branch — see `withSelectDefaults`.
  *   - Simple `{name}` interpolation: cheap regex replacement. Unknown
  *     placeholders are left untouched so missing data is visible to the
  *     developer rather than silently rendering empty strings. Number and
@@ -128,7 +187,8 @@ export function interpolate(
 ): string {
     if (isICU(template)) {
         try {
-            return new IntlMessageFormat(template, locale || 'en').format(params) as string;
+            const message = new IntlMessageFormat(template, locale || 'en');
+            return message.format(withSelectDefaults(message.getAst() as IcuNode[], params)) as string;
         } catch {
             return simpleInterpolate(template, params, locale);
         }

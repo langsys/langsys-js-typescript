@@ -165,3 +165,66 @@ describe('interpolate — malformed ICU fallback', () => {
         expect(out).toBe(malformed);
     });
 });
+
+describe('interpolate — missing select arguments fall back to `other`', () => {
+    // The ICU promoter in langsys-ai introduces a select argument the source
+    // phrase never carried (`{name}` → `{name_gender, select, …}` in the
+    // gendered target locales), so apps that don't know their user's gender
+    // can't supply it. Those apps must get the neutral branch, not raw ICU.
+    const welcome =
+        '{name_gender, select, male {Bienvenido, {name}!} female {Bienvenida, {name}!} other {Te damos la bienvenida, {name}!}}';
+
+    it('uses the supplied branch when the argument is present', () => {
+        expect(interpolate(welcome, { name: 'Laura', name_gender: 'female' }, 'es')).toBe('Bienvenida, Laura!');
+        expect(interpolate(welcome, { name: 'Diego', name_gender: 'male' }, 'es')).toBe('Bienvenido, Diego!');
+    });
+
+    it('falls back to `other` when the argument is absent', () => {
+        expect(interpolate(welcome, { name: 'Laura' }, 'es')).toBe('Te damos la bienvenida, Laura!');
+    });
+
+    it('treats null and undefined as absent', () => {
+        expect(interpolate(welcome, { name: 'Laura', name_gender: null }, 'es')).toBe('Te damos la bienvenida, Laura!');
+        expect(interpolate(welcome, { name: 'Laura', name_gender: undefined }, 'es')).toBe(
+            'Te damos la bienvenida, Laura!',
+        );
+    });
+
+    it('routes an unrecognized value to `other` (ICU select semantics)', () => {
+        expect(interpolate(welcome, { name: 'Laura', name_gender: 'nonbinary' }, 'es')).toBe(
+            'Te damos la bienvenida, Laura!',
+        );
+    });
+
+    it('fills only the missing argument when several selects are present', () => {
+        const tpl =
+            '{a_gender, select, female {Ella} other {Elle}} y {b_gender, select, female {ella} other {elle}}';
+        expect(interpolate(tpl, { a_gender: 'female' }, 'es')).toBe('Ella y elle');
+    });
+
+    it('fills selects nested inside a plural branch', () => {
+        const tpl =
+            '{n, plural, one {{g, select, female {Una invitada} other {Un invitado}}} other {# invitados}}';
+        expect(interpolate(tpl, { n: 1 }, 'es')).toBe('Un invitado');
+        expect(interpolate(tpl, { n: 1, g: 'female' }, 'es')).toBe('Una invitada');
+    });
+
+    it('fills plurals nested inside a select branch', () => {
+        const tpl =
+            '{g, select, female {Ella tiene {n, plural, one {# mensaje} other {# mensajes}}} other {Tiene {n, plural, one {# mensaje} other {# mensajes}}}}';
+        expect(interpolate(tpl, { n: 3 }, 'es')).toBe('Tiene 3 mensajes');
+        expect(interpolate(tpl, { n: 3, g: 'female' }, 'es')).toBe('Ella tiene 3 mensajes');
+    });
+
+    it('leaves plural-only templates untouched (no select args to fill)', () => {
+        const tpl = '{n, plural, one {# mensaje} other {# mensajes}}';
+        expect(interpolate(tpl, { n: 1 }, 'es')).toBe('1 mensaje');
+    });
+
+    it('still throws-and-falls-back when a plural argument is missing', () => {
+        // Only selects get a default. A missing count has no sane neutral
+        // branch, so the existing malformed-ICU fallback still applies.
+        const tpl = '{n, plural, one {# mensaje} other {# mensajes}}';
+        expect(() => interpolate(tpl, {}, 'es')).not.toThrow();
+    });
+});
