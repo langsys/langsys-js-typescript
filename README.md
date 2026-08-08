@@ -72,6 +72,15 @@ Allowed value types: `string | number | Date | boolean`. Numbers and Dates forma
 
 > Translations containing ICU MessageFormat syntax — `{count, plural, one {# item} other {# items}}`, `{gender, select, …}`, `{n, number}`, `{d, date}` — are rendered with full CLDR plural rules for the active locale (Arabic's six categories, Russian's four, etc.). Plain `{name}` slots keep working unchanged.
 
+> **⚠️ Always pass values through `params` — never build the phrase yourself.**
+>
+> ```ts
+> t(`Hello, ${name}!`, 'Greetings');              // ❌ never do this
+> t('Hello, {name}!', 'Greetings', { name });     // ✓
+> ```
+>
+> The template literal resolves *before* `t()` runs, so with a write key the SDK registers `"Hello, Sarah!"` as a brand-new phrase — and every distinct runtime value mints another one ("Hello, Priya!", "Hello, Ahmed!"). Your Translation Manager fills with untranslatable one-offs, and since projects share one catalog across SDKs, it pollutes what every other binding reads too. The SDK cannot detect this: an interpolated string is indistinguishable from an authored one. The `params` form registers the phrase once, with the placeholder intact for translators.
+
 #### Categorization disambiguates context
 
 ```ts
