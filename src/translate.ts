@@ -7,7 +7,7 @@ import {
     VALUE_TRANSLATABLE_ELEMENTS,
     VALUE_TRANSLATABLE_INPUT_TYPES,
 } from './content-block.js';
-import { interpolate, normalizeMarkupPlaceholders } from './interpolate.js';
+import { interpolate, normalizeMarkupPlaceholders, warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { currentlyLoadedLocale, config as configStore } from './stores.js';
 import type { Unsubscriber } from './signal.js';
@@ -52,6 +52,8 @@ export class Translate {
     private lastTranslatedLocale = '';
     private custom_id: string;
     private unsubscribeLocale: Unsubscriber | null = null;
+    /** Sorted params key-set already checked, so value-only updates don't re-warn. */
+    private checkedParamKeys: string | null = null;
 
     constructor(element: HTMLElement, options: TranslateOptions = {}) {
         this.element = element;
@@ -70,6 +72,10 @@ export class Translate {
     /** Update interpolation params (e.g. a changed count) and re-render. Mirrors `Phrase.setParams`. */
     public setParams(params: Record<string, ParamPrimitive> | undefined): void {
         this.options.params = params;
+        // Checked independently of `parseComplete` — tokens are known before
+        // content-block registration settles, and params can change during
+        // that window.
+        this.checkParams();
         if (!this.parseComplete) return;
         this.lastTranslatedLocale = '';
         const locale = currentlyLoadedLocale.get();
@@ -114,6 +120,7 @@ export class Translate {
         // detection (`this.tokens` drives the single-vs-multi branch below).
         const { tokens, content } = tokenizeElement(this.element);
         this.tokens = tokens;
+        this.checkParams();
 
         const { category = '' } = this.options;
 
@@ -222,6 +229,25 @@ export class Translate {
         if (!token) return null;
         const { category = '' } = this.options;
         return LangsysApp.Translations.lookupContent(category, this.custom_id, token);
+    }
+
+    /**
+     * Debug-time check that every supplied param has a placeholder to land in.
+     * Re-runs only when the key SET changes — a changing `count` value must not
+     * re-warn on every render.
+     */
+    private checkParams(): void {
+        // Before tokenization there's nothing to match against — every key
+        // would look unused. Skip without recording, so the check still runs
+        // once tokens exist.
+        if (!this.tokens.length) return;
+
+        const { params, category = '' } = this.options;
+        const signature = params ? Object.keys(params).sort().join(',') : '';
+        if (signature === this.checkedParamKeys) return;
+        this.checkedParamKeys = signature;
+
+        warnUnmatchedParams('<Translate>', this.tokens, params, category || undefined);
     }
 
     /**

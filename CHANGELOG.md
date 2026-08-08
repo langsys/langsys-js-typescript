@@ -1,3 +1,10 @@
+## 0.4.2 - 2026-07-08
+
+### Added
+
+- **Debug-mode diagnostic for the `{key}`-in-markup mistake.** Writing `{name}` instead of `%name%` inside `<Translate>`/`<Phrase>` content fails silently — the framework compiler substitutes it before the SDK sees the text, so the base locale still renders correctly and only translated locales break. The SDK can't observe the original braces, but the fingerprint is unmistakable: `params` supplied with no matching placeholder in the captured content. When `debug` is on, that now emits a warning naming the offending key and the exact fix. The check re-runs only when the params key-SET changes, so a ticking counter doesn't spam the console, and it's silent in production.
+- **`findUnusedParamKeys(texts, params)`** — the underlying detector, exported for wrappers that want the same check around their own rendering. Treats both `{key}` and ICU `{key, plural, …}` as used.
+
 ## 0.4.1 - 2026-07-08
 
 ### Added

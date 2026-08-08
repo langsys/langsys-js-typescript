@@ -195,6 +195,16 @@ In compiled frameworks, bare `{key}` written in markup never reaches the SDK —
 
 Both spellings are equivalent: `%key%` is normalized to canonical `{key}` at tokenization, so the Translation Manager, the wire, and translators only ever see `{key}`, and existing `{key}` content in vanilla HTML keeps working unchanged. Keys must be identifiers (`[A-Za-z_][A-Za-z0-9_]*`), so literal `%` signs in prose ("20% off") are never touched. `t()` phrases are plain JS strings with no compiler in the way — they stay `{key}`-only.
 
+Writing `{key}` in markup fails *silently* — the base locale still looks right, so the mistake surfaces only once someone switches language. With `debug: true`, the SDK catches it for you: if you pass `params` whose keys have no matching placeholder in the captured content, it warns and names the fix.
+
+```
+Langsys Warning  <Translate> received params with no matching placeholder in its
+content: %count%. If you wrote {count} in markup, the framework compiler
+(Svelte/JSX) substituted it before Langsys saw the text — write %count% instead.
+```
+
+The check runs whenever the params key-set changes, so a ticking `count` won't spam the console, and it's silent in production.
+
 ## Server-Side Rendering
 
 Pre-fetch translations on the server and seed them through `initialTranslations` to skip the duplicate client fetch on hydration:

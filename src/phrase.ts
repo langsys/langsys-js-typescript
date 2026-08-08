@@ -1,4 +1,4 @@
-import { interpolate } from './interpolate.js';
+import { interpolate, warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { encodeRichText, markupTokenValues, reconstitute, type RichSlot } from './richtext.js';
 import type { Unsubscriber } from './signal.js';
@@ -34,6 +34,8 @@ export class Phrase {
     private slots: RichSlot[] = [];
     private unsubscribers: Unsubscriber[] = [];
     private ready = false;
+    /** Sorted params key-set already checked, so value-only updates don't re-warn. */
+    private checkedParamKeys: string | null = null;
 
     constructor(host: HTMLElement, options: PhraseOptions = {}) {
         this.host = host;
@@ -56,7 +58,11 @@ export class Phrase {
     /** Update interpolation params (e.g. a changed count) and re-render. */
     public setParams(params: Record<string, unknown>): void {
         this.params = params ?? {};
-        if (this.ready) this._render();
+        // Checked independently of `ready` — the phrase is encoded before
+        // registration settles, and params can change during that window.
+        this._checkParams();
+        if (!this.ready) return;
+        this._render();
     }
 
     /** Stop reacting to locale/translation changes. Safe to call multiple times. */
@@ -74,6 +80,7 @@ export class Phrase {
         const { phrase, slots } = encodeRichText(this.host);
         this.phrase = phrase;
         this.slots = slots;
+        this._checkParams();
 
         // Register the phrase (triggers the missing-token POST on a cache miss).
         // We ignore t()'s interpolated return — Phrase renders itself so it can
@@ -83,6 +90,23 @@ export class Phrase {
 
         this.ready = true;
         this._render();
+    }
+
+    /**
+     * Debug-time check that every supplied param has a placeholder to land in.
+     * Re-runs only when the key SET changes — a changing `n` value must not
+     * re-warn on every render.
+     */
+    private _checkParams(): void {
+        // Before encoding there's nothing to match against — skip without
+        // recording, so the check still runs once the phrase exists.
+        if (!this.phrase) return;
+
+        const signature = Object.keys(this.params).sort().join(',');
+        if (signature === this.checkedParamKeys) return;
+        this.checkedParamKeys = signature;
+
+        warnUnmatchedParams('<Phrase>', [this.phrase], this.params, this.category || undefined);
     }
 
     private _render(): void {

@@ -44,7 +44,7 @@ export { Logger, logger } from './logger.js';
 
 // Utility exports
 export { md5, isEmpty } from './utils.js';
-export { interpolate, isICU, normalizeMarkupPlaceholders } from './interpolate.js';
+export { findUnusedParamKeys, interpolate, isICU, normalizeMarkupPlaceholders } from './interpolate.js';
 export { canonicalizeLocale } from './locale.js';
 
 // Type re-exports
