@@ -199,8 +199,9 @@ Writing `{key}` in markup fails *silently* — the base locale still looks right
 
 ```
 Langsys Warning  <Translate> received params with no matching placeholder in its
-content: %count%. If you wrote {count} in markup, the framework compiler
-(Svelte/JSX) substituted it before Langsys saw the text — write %count% instead.
+content: %count%. If you wrote {count} or {{ count }} in markup, your framework's
+template compiler substituted it before Langsys saw the text — write %count%
+instead.
 ```
 
 The check runs whenever the params key-set changes, so a ticking `count` won't spam the console, and it's silent in production.

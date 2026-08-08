@@ -1,3 +1,9 @@
+## 0.4.3 - 2026-07-08
+
+### Fixed
+
+- **The params diagnostic no longer names the wrong framework.** 0.4.2's warning hardcoded "the framework compiler (Svelte/JSX)" and the `{key}` spelling, which misdiagnoses Vue users — Vue consumes `{{ key }}`, not single braces, so a Vue developer hitting the warning was pointed at a syntax their framework never touches. The message is now framework-neutral and names both brace spellings.
+
 ## 0.4.2 - 2026-07-08
 
 ### Added
