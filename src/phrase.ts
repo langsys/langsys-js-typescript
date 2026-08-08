@@ -10,7 +10,14 @@ export const PHRASE_MARKER_ATTR = 'data-ls-phrase';
 export interface PhraseOptions {
     /** Category the phrase registers under (disambiguation for translators). */
     category?: string;
-    /** Interpolation params — `{n}` for pluralization, `{name}`, etc. */
+    /**
+     * Interpolation params — `{n}` for pluralization, `{name}`, etc.
+     *
+     * Those are the canonical spellings, and what you write in plain DOM. In a
+     * framework component's markup write `%n%` / `%name%` instead: Svelte and
+     * JSX consume `{n}` at compile time (Vue consumes `{{ n }}`), and `%n%` is
+     * normalized back to `{n}` at capture.
+     */
     params?: Record<string, unknown>;
 }
 

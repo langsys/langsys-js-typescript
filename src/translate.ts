@@ -23,7 +23,13 @@ export interface TranslateOptions {
     custom_id?: string;
     /** Optional human-readable label shown in the Translation Manager. */
     label?: string;
-    /** Interpolation params — `{name}`, `{count}`, etc. Same single-brace syntax as `t()`. */
+    /**
+     * Interpolation params — `{name}`, `{count}`, etc. Same single-brace syntax
+     * as `t()`, and what you write in plain DOM. In a framework component's
+     * markup write `%name%` / `%count%` instead: Svelte and JSX consume
+     * `{name}` at compile time (Vue consumes `{{ name }}`), and `%name%` is
+     * normalized back to `{name}` at capture.
+     */
     params?: Record<string, ParamPrimitive>;
 }
 
