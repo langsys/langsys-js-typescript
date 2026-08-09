@@ -167,6 +167,14 @@ Attributes honored on contained elements:
 - Several validation-message `data-*` attributes
 - `translate="no"` — elements marked this way (and their children) are skipped
 
+> **`Translate` tokenizes per text node — so inline markup splits a sentence.**
+>
+> ```html
+> <p>My content <strong>is the best</strong> when internationalized.</p>
+> ```
+>
+> registers **three** phrases: `"My content"`, `"is the best"`, `"when internationalized."` That's correct for a block of independent runs, and it's what `Translate` is for. But a translator sees three fragments with no context, and neither reordering nor grammatical agreement can cross a fragment boundary — fatal for a sentence whose word order or noun forms change with the language. When inline markup sits *inside a sentence*, reach for [`Phrase`](#the-phrase-class) instead.
+
 ### Interpolation params
 
 `Translate` accepts the same single-brace `{key}` placeholders as `t()`. Pass `params` and every translated text node and attribute is interpolated after lookup — unknown keys stay visible as-is, and `Number`/`Date` values are formatted per the active locale's CLDR rules:
@@ -214,6 +222,31 @@ instead.
 ```
 
 The check runs whenever the params key-set changes, so a ticking `count` won't spam the console, and it's silent in production.
+
+## The `Phrase` class
+
+`Phrase` wraps an element whose contents are **one** translatable sentence *even though it contains inline markup*. Where `Translate` splits at tag boundaries, `Phrase` keeps the run whole.
+
+```ts
+import { Phrase } from 'langsys-js-typescript';
+
+const el = document.querySelector<HTMLElement>('#reviews')!;
+new Phrase(el, { category: 'ProductCard', params: { n: reviewCount } });
+```
+
+```html
+<span id="reviews">Based on %n% <strong>reviews</strong></span>
+```
+
+That registers as a single phrase — `Based on {n} {m0o}reviews{m0c}` — rather than `"Based on {n}"` and `"reviews"`. Three things depend on it:
+
+1. **Grammatical agreement.** The count and the noun it inflects must live in one phrase, or no ICU plural rule can select the right noun form. Russian has four plural categories, Arabic six, Polish four — split them apart and the output is confidently wrong, not merely awkward.
+2. **Reordering.** The markup tokens are ordinary ICU placeholders, so a translator or model *places* them around the translated word: `{m0o}White{m0c} House` → `Casa {m0o}Blanca{m0c}`. Impossible once split at the tag boundary.
+3. **Phrase-key stability.** Your real elements never reach the translator — they're replaced by neutral tokens and reconstituted at render. Framework scoped-CSS classes (`svelte-a1b2c3`) change every build; if they rode along in the phrase, the key would drift and silently re-translate everything.
+
+Use it standalone, or nested inside a `Translate` block to protect specific runs — the block tokenizer skips any subtree carrying `data-ls-phrase` (exported as `PHRASE_MARKER_ATTR`), letting the `Phrase` own it. `setParams()` re-renders on a changed count, same as `Translate`.
+
+If a translation drops or unbalances a markup token, rendering degrades to plain text with the markers stripped — the meaning survives even when the markup doesn't.
 
 ## Server-Side Rendering
 
