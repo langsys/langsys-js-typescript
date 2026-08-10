@@ -1,3 +1,17 @@
+## 0.5.0 - 2026-08-10
+
+### Changed (breaking, types only)
+
+- **`PhraseOptions.params` is now `Record<string, ParamPrimitive>`**, matching `TranslateOptions.params` and `t()`. It was `Record<string, unknown>`, which allowed values — objects, arrays, functions — that interpolation can only render as `[object Object]`. No runtime behavior changes; this is a compile-time narrowing that surfaces those calls as errors instead of silently rendering garbage. `Phrase.setParams()` now also accepts `undefined`, matching `Translate.setParams()`.
+
+  **Impact:** code typing its params as `Record<string, unknown>` and passing it straight through no longer compiles — including all three framework bindings as of this release. The fix is one line at each call site: declare the params as `Record<string, ParamPrimitive>` (exported from the package root). Runtime is unaffected, so a wrapper that skips the type change still *works*; it just fails `tsc`.
+
+### Added
+
+- **`Phrase` is documented in the README for the first time.** It's been exported since 0.1.0 but had no section, so the only documented tool for markup-bearing content was `Translate` — which splits at tag boundaries and is the wrong choice for a sentence. The new section covers the three reasons it exists (grammatical agreement, reordering, phrase-key stability), and the `Translate` section now shows the literal per-text-node split so the trade-off is visible at the point of decision.
+- Warning against building phrases with template literals (`` t(`Hello, ${name}!`) ``), which registers every runtime value as its own catalog phrase and pollutes the catalog shared across every Langsys SDK.
+- Params doc comments now name the `%name%` markup spelling alongside the canonical `{name}`, including Vue's `{{ name }}` case.
+
 ## 0.4.3 - 2026-07-08
 
 ### Fixed

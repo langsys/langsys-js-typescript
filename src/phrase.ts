@@ -3,6 +3,7 @@ import { LangsysApp } from './langsys-app.js';
 import { encodeRichText, markupTokenValues, reconstitute, type RichSlot } from './richtext.js';
 import type { Unsubscriber } from './signal.js';
 import { currentlyLoadedLocale, sTranslations } from './stores.js';
+import type { ParamPrimitive } from './types/translation-fn.js';
 
 /** Attribute marker the `Translate` tokenizer uses to skip a `<Phrase>` subtree. */
 export const PHRASE_MARKER_ATTR = 'data-ls-phrase';
@@ -18,7 +19,7 @@ export interface PhraseOptions {
      * JSX consume `{n}` at compile time (Vue consumes `{{ n }}`), and `%n%` is
      * normalized back to `{n}` at capture.
      */
-    params?: Record<string, unknown>;
+    params?: Record<string, ParamPrimitive>;
 }
 
 /**
@@ -36,7 +37,7 @@ export interface PhraseOptions {
 export class Phrase {
     private host: HTMLElement;
     private category: string;
-    private params: Record<string, unknown>;
+    private params: Record<string, ParamPrimitive>;
     private phrase = '';
     private slots: RichSlot[] = [];
     private unsubscribers: Unsubscriber[] = [];
@@ -63,7 +64,7 @@ export class Phrase {
     }
 
     /** Update interpolation params (e.g. a changed count) and re-render. */
-    public setParams(params: Record<string, unknown>): void {
+    public setParams(params: Record<string, ParamPrimitive> | undefined): void {
         this.params = params ?? {};
         // Checked independently of `ready` — the phrase is encoded before
         // registration settles, and params can change during that window.
