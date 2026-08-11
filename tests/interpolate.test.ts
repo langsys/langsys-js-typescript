@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { interpolate, isICU } from '../src/interpolate.js';
+import { logger } from '../src/logger.js';
 
 describe('isICU', () => {
     it('detects plural', () => {
@@ -226,5 +227,80 @@ describe('interpolate — missing select arguments fall back to `other`', () => 
         // branch, so the existing malformed-ICU fallback still applies.
         const tpl = '{n, plural, one {# mensaje} other {# mensajes}}';
         expect(() => interpolate(tpl, {}, 'es')).not.toThrow();
+    });
+});
+
+describe('interpolate — debug notice for defaulted select arguments', () => {
+    // The fallback above is silent by design in production, which is also what
+    // makes the argument undiscoverable: it never appears in the source phrase.
+    // Debug mode is where a developer gets told it exists.
+    //
+    // Each test uses its own template because the warning is deduped per
+    // template+locale for the process lifetime.
+    const template = (branch: string) =>
+        `{u_gender, select, male {Invitado ${branch}} female {Invitada ${branch}} other {Invitado/a ${branch}}}`;
+
+    function captureWarnings(run: () => void): string[] {
+        const seen: string[] = [];
+        const spy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+            seen.push(args.map(String).join(' '));
+        });
+        try {
+            run();
+        } finally {
+            spy.mockRestore();
+        }
+        return seen;
+    }
+
+    afterEach(() => {
+        logger.debugEnabled = false;
+    });
+
+    it('names the missing argument when debug is on', () => {
+        logger.debugEnabled = true;
+        const tpl = template('a');
+
+        const warnings = captureWarnings(() => interpolate(tpl, {}, 'es'));
+
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toContain('u_gender');
+        expect(warnings[0]).toContain('es');
+    });
+
+    it('says nothing in production', () => {
+        const tpl = template('b');
+
+        expect(captureWarnings(() => interpolate(tpl, {}, 'es'))).toHaveLength(0);
+    });
+
+    it('says nothing when the argument was supplied', () => {
+        logger.debugEnabled = true;
+        const tpl = template('c');
+
+        expect(captureWarnings(() => interpolate(tpl, { u_gender: 'female' }, 'es'))).toHaveLength(0);
+    });
+
+    it('warns once per template, not once per render', () => {
+        logger.debugEnabled = true;
+        const tpl = template('d');
+
+        const warnings = captureWarnings(() => {
+            for (let i = 0; i < 5; i++) interpolate(tpl, {}, 'es');
+        });
+
+        expect(warnings).toHaveLength(1);
+    });
+
+    it('warns separately for each locale', () => {
+        logger.debugEnabled = true;
+        const tpl = template('e');
+
+        const warnings = captureWarnings(() => {
+            interpolate(tpl, {}, 'es');
+            interpolate(tpl, {}, 'fr');
+        });
+
+        expect(warnings).toHaveLength(2);
     });
 });

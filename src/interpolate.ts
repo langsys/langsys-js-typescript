@@ -143,16 +143,58 @@ function collectSelectArgs(nodes: readonly IcuNode[], into: Set<string>): Set<st
  * Explicitly-passed values are never touched, and an unrecognized value
  * already lands on `other` under ICU's own select semantics.
  */
-function withSelectDefaults(ast: readonly IcuNode[], params: Record<string, unknown>): Record<string, unknown> {
+function withSelectDefaults(
+    ast: readonly IcuNode[],
+    params: Record<string, unknown>,
+    template: string,
+    locale: string,
+): Record<string, unknown> {
     const selectArgs = collectSelectArgs(ast, new Set<string>());
     if (selectArgs.size === 0) return params;
     let filled: Record<string, unknown> | null = null;
+    const defaulted: string[] = [];
     for (const arg of selectArgs) {
         if (params[arg] !== undefined && params[arg] !== null) continue;
         filled ??= { ...params };
         filled[arg] = 'other';
+        defaulted.push(arg);
     }
+    if (defaulted.length) warnDefaultedSelectArgs(defaulted, template, locale);
     return filled ?? params;
+}
+
+/** Templates already warned about, so a re-render doesn't re-log. */
+const warnedSelectTemplates = new Set<string>();
+
+/**
+ * Debug-time notice that we filled in a `select` argument the caller didn't
+ * pass — the discovery mechanism for a parameter no one wrote down.
+ *
+ * `withSelectDefaults` is deliberately silent about it in production: the
+ * neutral branch is a correct sentence, so there is nothing for an end user to
+ * see. But that same silence means a developer can never learn the argument
+ * exists — it isn't in the source phrase (the promoter adds it only to the
+ * locales whose grammar needs agreement), so nothing in the codebase hints at
+ * it. Without this warning, the fallback makes the gendered case invisible
+ * rather than merely graceful.
+ *
+ * Deduped per template+locale: `interpolate` runs on every render, and a list
+ * of fifty rows re-rendering on a locale switch would otherwise emit fifty
+ * identical lines.
+ */
+function warnDefaultedSelectArgs(args: string[], template: string, locale: string): void {
+    if (!logger.debugEnabled) return;
+
+    const key = `${locale}\n${template}`;
+    if (warnedSelectTemplates.has(key)) return;
+    warnedSelectTemplates.add(key);
+
+    logger.warn(
+        `The ${locale} translation branches on ${args.join(', ')}, which the source phrase does not have —` +
+            ` this locale inflects for gender. Langsys used the "other" branch, which reads correctly for anyone.` +
+            ` Pass ${args[0]} ("male" | "female" | "other") to get the inflected sentence instead.` +
+            ` [${template}]`,
+    );
 }
 
 /**
@@ -187,8 +229,11 @@ export function interpolate(
 ): string {
     if (isICU(template)) {
         try {
-            const message = new IntlMessageFormat(template, locale || 'en');
-            return message.format(withSelectDefaults(message.getAst() as IcuNode[], params)) as string;
+            const resolved = locale || 'en';
+            const message = new IntlMessageFormat(template, resolved);
+            return message.format(
+                withSelectDefaults(message.getAst() as IcuNode[], params, template, resolved),
+            ) as string;
         } catch {
             return simpleInterpolate(template, params, locale);
         }
