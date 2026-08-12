@@ -72,6 +72,17 @@ export class Translations {
         return this.readyPromise;
     }
 
+    /**
+     * Resolve `ready()` without a catalog. Called when no fetch is coming —
+     * init refused the config or project authorization failed — so DOM
+     * consumers (`Phrase`, `Translate`) render their source-text fallback
+     * instead of awaiting forever. Safe to call repeatedly; a successful
+     * load later still updates the stores and re-renders subscribers.
+     */
+    public settle(): void {
+        this.readyResolve();
+    }
+
     /** Current translation function. Reads fresh state on every call. */
     public get t(): TFunction {
         return this.tSignal.get();
@@ -212,7 +223,8 @@ export class Translations {
                     break;
             }
         } else {
-            // Client — flush immediately on first discovery, then let the 3s timer take over.
+            // Client — flush immediately on first discovery, then let the 3s
+            // retry timer take over until the queue drains.
             if (!this.flushScheduled && !this.timer) {
                 this.flushScheduled = true;
                 queueMicrotask(() => {
@@ -221,7 +233,37 @@ export class Translations {
                     });
                 });
             }
+            this.ensureTimer();
         }
+    }
+
+    /**
+     * Start the 3s flush-retry timer if it isn't running. The tick stops the
+     * timer once the queue is drained (or the key can't write, so it never
+     * will drain) — the next discovered token re-arms it via
+     * `scheduleTokenFlush`. Demand-driven on purpose: a permanent interval is
+     * a background-wakeup / battery problem on mobile (React Native treats
+     * `window` as defined, so it takes this client path).
+     */
+    private ensureTimer() {
+        if (this.timer) return;
+        this.timer = setInterval(() => {
+            void this.updateTokens().finally(() => {
+                if (!this.missingTokens.length || this.config.key_type !== 'write') this.stopTimer();
+            });
+        }, 3000);
+        this.debug.log('UPDATE TOKEN INTERVAL', this.timer);
+    }
+
+    private stopTimer() {
+        if (!this.timer) return;
+        clearInterval(this.timer);
+        this.timer = null;
+    }
+
+    /** Stop background work (the flush-retry timer). Queued tokens stay queued and re-arm it if discovery continues. */
+    public destroy() {
+        this.stopTimer();
     }
 
     public setup(config: iLangsysConfig) {
@@ -243,9 +285,10 @@ export class Translations {
                 }
             }
 
-            if (this.timer) clearInterval(this.timer);
-            this.timer = setInterval(() => this.updateTokens(), 3000);
-            this.debug.log('UPDATE TOKEN INTERVAL', this.timer);
+            // Demand-driven: the timer only runs while tokens are queued (see
+            // ensureTimer). A fresh setup restarts it iff there's a backlog.
+            this.stopTimer();
+            if (this.missingTokens.length) this.ensureTimer();
         } else {
             const strategy = this.config.ssrTokenStrategy || 'client';
             this.debug.log(`SSR environment detected - using '${strategy}' token strategy`);

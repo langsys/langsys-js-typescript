@@ -1,3 +1,16 @@
+## 0.5.0 - 2026-07-21
+
+QA-driven fixes around locale detection, API host configuration, and locale-name lookup.
+
+### Changed
+
+- **`detectPreferredLocale(header, supportedLocales)` now returns `false` when none of the user's preferences match the supported list** (previously it fell through to the user's first preference, even though the project didn't support it). This makes the documented `detectPreferredLocale(...) || 'en-US'` fallback pattern actually work — apps no longer end up requesting a catalog that doesn't exist. Behavior without a `supportedLocales` list is unchanged: the user's first preference (canonicalized), or `false` when none is detectable.
+- **`getLocaleName` warning corrected and clarified.** It previously blamed `getLocaleNameWithLookup`; it now names itself, and when called before the locales cache is populated it says exactly what to do (`await getLocalesData(inLocale)` first, or use `getLocaleNameWithLookup`). The `''` return in that case is now documented on the method and in the README.
+
+### Added
+
+- **`apiUrl` init option** — point the SDK at a local or self-hosted Langsys server (`LangsysApp.init({ ..., apiUrl: 'http://localhost:8000/api' })`). Equivalent to the previously undocumented `LangsysAppAPI.setBaseUrl()`, which no longer needs to be discovered by reading the source.
+
 ## 0.4.3 - 2026-07-08
 
 ### Fixed

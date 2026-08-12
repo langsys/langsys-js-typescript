@@ -10,7 +10,9 @@ const initialTranslations: iCategories = {
     },
 };
 
-export const sTranslations = persist<iCategories>('translations', initialTranslations);
+// Namespaced key ('translations' alone risked colliding with host-app storage);
+// the legacyKey migrates existing caches on first load.
+export const sTranslations = persist<iCategories>('langsys:translations', initialTranslations, 'translations');
 
 export const currentlyLoadedLocale = createSignal<string>('');
 

@@ -76,16 +76,23 @@ describe('LangsysApp.detectPreferredLocale — CLDR matching', () => {
     });
 
     it('never serves a Simplified catalog to a Traditional reader', () => {
-        // No script-compatible candidate → falls through to the user's own
-        // (canonicalized) first preference rather than mismatching scripts.
-        expect(LangsysApp.detectPreferredLocale('zh-Hant-TW', ['zh-Hans', 'zh'])).toBe('zh-Hant-TW');
+        // No script-compatible candidate → no match. Returning false (rather
+        // than mismatching scripts) lets the app fall back to its own default.
+        expect(LangsysApp.detectPreferredLocale('zh-Hant-TW', ['zh-Hans', 'zh'])).toBe(false);
     });
 
     it('respects Accept-Language q-value ordering', () => {
         expect(LangsysApp.detectPreferredLocale('fr;q=0.8, en-US;q=0.9', ['fr-FR', 'en-US'])).toBe('en-US');
     });
 
-    it('returns the canonical first preference when nothing is supported', () => {
-        expect(LangsysApp.detectPreferredLocale('pt-br', ['ja-JP'])).toBe('pt-BR');
+    it('returns false when nothing in supportedLocales matches', () => {
+        // `detectPreferredLocale(...) || 'en-US'` must land on the default,
+        // not on a locale the project doesn't support.
+        expect(LangsysApp.detectPreferredLocale('pt-br', ['ja-JP'])).toBe(false);
+    });
+
+    it('returns the canonical first preference when no supported list is given', () => {
+        expect(LangsysApp.detectPreferredLocale('pt-br')).toBe('pt-BR');
+        expect(LangsysApp.detectPreferredLocale('pt-br', [])).toBe('pt-BR');
     });
 });

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LangsysAppAPI } from '../src/api.js';
+import { LangsysApp } from '../src/langsys-app.js';
 import { createSignal } from '../src/signal.js';
 
 function mockFetchOnce() {
@@ -69,5 +70,29 @@ describe('LangsysAppAPI capability negotiation', () => {
         const body = JSON.parse(init.body as string);
         expect(body.project_id).toBe('proj-123');
         expect(body.translatable_items[0]).toMatchObject({ type: 'phrase', phrase: 'Home', category: 'UI' });
+    });
+});
+
+describe('LangsysApp.init apiUrl option', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        // Restore the default host so later suites aren't affected.
+        LangsysAppAPI.setBaseUrl('https://api.langsys.dev/api');
+    });
+
+    it('routes all requests to the configured host, trailing slash stripped', async () => {
+        const fetchMock = mockFetchOnce();
+
+        await LangsysApp.init({
+            projectid: 'proj-123',
+            key: 'secret-key',
+            UserLocaleStore: createSignal('en'),
+            apiUrl: 'http://localhost:8000/api/',
+        });
+
+        const [url] = fetchMock.mock.calls[0] as [string];
+        expect(url.startsWith('http://localhost:8000/api/')).toBe(true);
+        expect(url).not.toContain('api//');
+        expect(url).not.toContain('api.langsys.dev');
     });
 });
