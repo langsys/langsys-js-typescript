@@ -4,7 +4,7 @@
 
 - **`PhraseOptions.params` is now `Record<string, ParamPrimitive>`**, matching `TranslateOptions.params` and `t()`. It was `Record<string, unknown>`, which allowed values — objects, arrays, functions — that interpolation can only render as `[object Object]`. No runtime behavior changes; this is a compile-time narrowing that surfaces those calls as errors instead of silently rendering garbage. `Phrase.setParams()` now also accepts `undefined`, matching `Translate.setParams()`.
 
-  **Impact:** code typing its params as `Record<string, unknown>` and passing it straight through no longer compiles — including all three framework bindings as of this release. The fix is one line at each call site: declare the params as `Record<string, ParamPrimitive>` (exported from the package root). Runtime is unaffected, so a wrapper that skips the type change still *works*; it just fails `tsc`.
+  **Impact — two distinct cases.** First, and most visible to application code: **passing an object or array as a param value no longer compiles** (`params={{ user: someObject }}`). That code was already broken at runtime — interpolation could only render it as `[object Object]` — so this converts a silent bug into a build error, but it does bite at build time. Second: code typing its params as `Record<string, unknown>` and forwarding it no longer compiles, which covered all three framework bindings; the fix there is one line per call site, declaring `Record<string, ParamPrimitive>` (exported from the package root). Usefully, that narrowed declaration compiles against 0.4.x *and* 0.5.0, so wrappers can land it independently of the version bump. Runtime is unaffected throughout — code that skips the type change still *works*, it just fails `tsc`.
 
 ### Added
 
