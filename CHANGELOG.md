@@ -1,3 +1,25 @@
+## 0.6.0 - 2026-08-14
+
+### Fixed
+
+- **`md5` now agrees with a standard UTF-8 MD5 for all input.** It packed UTF-16 code units straight into byte lanes, so it matched a real MD5 only for ASCII. Two consequences, both confirmed against the published 0.5.0 build:
+  - *Cross-SDK divergence (certain, universal).* Every non-ASCII content block received a different `custom_id` in the JS SDK than in `langsys-php`, which hashes UTF-8 bytes. Any project rendering the same block through both SDKs got two catalog entries for one block.
+  - *Self-collision (real, rare).* A character's high byte was OR-ed into the neighbouring byte lane, vanishing whenever that lane already carried those bits — so `"éa"` and `"ǩa"` hashed identically, as did `"Café"`/`"Cafǩ"` and `"Don’t"`/`"Don<0x19>t"`. Distinct content blocks could share one `custom_id`, letting one block's translations serve another's content. A 20,000-phrase scan of realistic copy found no collisions, so reaching one needs a specific pairing — but the failure mode is silent and wrong when it happens.
+
+  The message bit-length was also a code-unit count rather than a byte count, so astral characters (`😀`) mis-lengthed the message independently of the packing bug.
+
+  **Migration is automatic and lossless.** `Translate` now resolves a content block against the corrected id first and falls back to the legacy id when that misses, so blocks registered by an older SDK keep serving their existing translations instead of orphaning. The fallback is **lookup-only** — registration always uses the corrected id, so the legacy-keyed population can only shrink. **Pure-ASCII ids are byte-identical to before**, so only non-ASCII blocks are affected at all.
+
+  Found by the `langsys-skill` and `langsys-php` agents; the collision mechanism and the JSON-offset dependency below were established jointly with them.
+
+### Added
+
+- **`md5Legacy(input)`** and **`generateLegacyCustomId(category, tokens)`** — the pre-0.6.0 hash, exported for migration tooling and cross-SDK reconciliation. Lookup-only; never register new content under these. Deprecated on arrival, to be removed once catalogs have been rebased.
+
+### Notes
+
+- Collisions are a property of the **final hashed string**, not the phrase: `JSON.stringify` shifts every character's offset, so a pair that collides standalone may not collide once wrapped, and changing `category` moves every character into different lanes. Reason at the `generateCustomId` level, never at bare `md5()`.
+
 ## 0.5.0 - 2026-08-10
 
 ### Changed (breaking, types only)

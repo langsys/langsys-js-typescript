@@ -27,6 +27,7 @@ export { LangsysAppAPI } from './api.js';
 // + dedup primitives, not the Svelte/vanilla in-place DOM mutator).
 export {
     generateCustomId,
+    generateLegacyCustomId,
     isContentBlockKnown,
     registerContentBlock,
     tokenizeElement,
@@ -43,7 +44,7 @@ export { sTranslations, currentlyLoadedLocale } from './stores.js';
 export { Logger, logger } from './logger.js';
 
 // Utility exports
-export { md5, isEmpty } from './utils.js';
+export { md5, md5Legacy, isEmpty } from './utils.js';
 export { findUnusedParamKeys, interpolate, isICU, normalizeMarkupPlaceholders } from './interpolate.js';
 export { canonicalizeLocale } from './locale.js';
 

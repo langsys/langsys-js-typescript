@@ -2,6 +2,7 @@ import {
     generateCustomId,
     isContentBlockKnown,
     registerContentBlock,
+    generateLegacyCustomId,
     tokenizeElement,
     TRANSLATABLE_ATTRIBUTES,
     VALUE_TRANSLATABLE_ELEMENTS,
@@ -149,7 +150,8 @@ export class Translate {
     }
 
     private async handleContentBlock(contentBlock: iContentBlock) {
-        if (isEmpty(this.custom_id)) {
+        const derivedId = isEmpty(this.custom_id);
+        if (derivedId) {
             this.custom_id = generateCustomId(contentBlock.category, contentBlock.tokens);
         }
         contentBlock.custom_id = this.custom_id;
@@ -166,6 +168,24 @@ export class Translate {
                 this.lastTranslatedLocale = currentlyLoadedLocale.get();
             }
             return;
+        }
+
+        // Migration fallback: blocks registered before the 0.6.0 MD5 fix are
+        // keyed by the legacy id. Resolve against it so their translations keep
+        // working instead of orphaning. LOOKUP ONLY — registration below always
+        // uses the corrected id, so the legacy-keyed population never grows.
+        // Skipped for a caller-supplied custom_id (nothing was derived) and when
+        // the two ids agree (pure-ASCII content, the common case).
+        if (derivedId) {
+            const legacyId = generateLegacyCustomId(contentBlock.category, contentBlock.tokens);
+            if (legacyId !== this.custom_id && isContentBlockKnown(contentBlock.category, legacyId)) {
+                this.custom_id = legacyId;
+                if (this.tokens.length > 1 && this.element) {
+                    this.translate(Array.from(this.element.childNodes));
+                    this.lastTranslatedLocale = currentlyLoadedLocale.get();
+                }
+                return;
+            }
         }
 
         // Fire-and-forget: registerContentBlock handles its own errors via

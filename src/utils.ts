@@ -25,9 +25,53 @@ export function structuredCloneShim<T>(obj: T): T {
     return clone(obj);
 }
 
-// prettier-ignore
+/**
+ * Encode a string to a "byte string" — one character per UTF-8 byte, each
+ * ≤ 0xFF. The MD5 core packs `charCodeAt` values into byte lanes and takes
+ * `length * 8` as the message bit-length, both of which are only correct when
+ * every character IS a single byte. Running this first is what makes `md5`
+ * agree with a standard UTF-8 MD5 for non-ASCII input.
+ */
+function toUtf8ByteString(input: string): string {
+    const bytes = new TextEncoder().encode(input);
+    let out = '';
+    // Chunked to avoid blowing the argument limit on very large content blocks.
+    for (let i = 0; i < bytes.length; i += 8192) {
+        out += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    }
+    return out;
+}
+
+/**
+ * MD5 of a string, matching a standard UTF-8 MD5 for all input.
+ *
+ * Content-block `custom_id`s are derived from this, so it's a wire identity —
+ * see `generateCustomId`. Before 0.6.0 this packed UTF-16 code units directly
+ * into byte lanes, which agreed with a real MD5 only for ASCII: non-ASCII
+ * input both diverged from every other Langsys SDK and could collide (a
+ * character's high byte was OR-ed into the neighbouring lane, vanishing
+ * whenever that lane already carried those bits — so `éa` and `ǩa` hashed
+ * alike). `md5Legacy` preserves the old behavior for migration lookups only.
+ */
 export function md5(inputString: string) {
     if (typeof inputString !== 'string') inputString = JSON.stringify(inputString);
+    return md5Core(toUtf8ByteString(inputString));
+}
+
+/**
+ * The pre-0.6.0 MD5, retained ONLY so existing content blocks stay resolvable:
+ * ids minted by an older SDK are keyed by this. Lookup-only — never register
+ * new content under it, or the colliding-id population keeps growing.
+ *
+ * @deprecated Migration aid; will be removed once catalogs have been rebased.
+ */
+export function md5Legacy(inputString: string) {
+    if (typeof inputString !== 'string') inputString = JSON.stringify(inputString);
+    return md5Core(inputString);
+}
+
+// prettier-ignore
+function md5Core(inputString: string) {
     const hc = '0123456789abcdef';
     function rh(n: number) { let j, s = ''; for (j = 0; j <= 3; j++) s += hc.charAt((n >> (j * 8 + 4)) & 0x0F) + hc.charAt((n >> (j * 8)) & 0x0F); return s; }
     function ad(x: number, y: number) { const l = (x & 0xFFFF) + (y & 0xFFFF); const m = (x >> 16) + (y >> 16) + (l >> 16); return (m << 16) | (l & 0xFFFF); }

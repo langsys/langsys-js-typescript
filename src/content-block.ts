@@ -31,7 +31,7 @@ import { logger } from './logger.js';
 import { config as configStore, sTranslations } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
-import { md5 } from './utils.js';
+import { md5, md5Legacy } from './utils.js';
 
 /** HTML attributes whose values should be harvested for translation. */
 export const TRANSLATABLE_ATTRIBUTES = [
@@ -83,6 +83,26 @@ export const SEMANTIC_STYLE_PROPERTIES = [
  */
 export function generateCustomId(category: string, tokens: string[]): string {
     return md5(JSON.stringify([category, tokens]));
+}
+
+/**
+ * The id this block would have had before the 0.6.0 MD5 fix.
+ *
+ * **Lookup only — never register under this.** Blocks registered by an older
+ * SDK are keyed by it, so `Translate` falls back to it when the corrected id
+ * misses, which keeps existing translations resolving instead of orphaning
+ * them. Registering under it would keep minting ids from a hash that both
+ * diverges across SDKs and can collide.
+ *
+ * Note the collision is a property of the FINAL hashed string, not the phrase:
+ * `JSON.stringify` shifts every character's offset, so the same phrase pair can
+ * collide standalone and not collide here — and changing `category` moves every
+ * character into different lanes. Always reason at this level, not at `md5()`.
+ *
+ * @deprecated Migration aid; will be removed once catalogs have been rebased.
+ */
+export function generateLegacyCustomId(category: string, tokens: string[]): string {
+    return md5Legacy(JSON.stringify([category, tokens]));
 }
 
 /**
