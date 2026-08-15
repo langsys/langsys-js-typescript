@@ -117,7 +117,7 @@ Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC
 3. **Changelog dates are stamped by the release script, then verified.** Write new sections as `## x.y.z - unreleased`; `publish.sh` fills the date in at release time, seconds before publish, so the shipped tarball carries a real date instead of the word "unreleased". After the Action completes, verify with `npm view langsys-js-typescript time --json` and correct if they disagree.
 
    Never date a heading when you *write* it. Six entries were wrong before this rule, two by a month, because a heading typed days before release records when it was typed, not when it shipped. Release-time and publish-time agree to the second; authoring-time doesn't. The registry is the check, not the source — a check nobody runs is how all six survived.
-3. The `Publish to npm` workflow (`.github/workflows/publish.yml`) fires on the release event:
+4. The `Publish to npm` workflow (`.github/workflows/publish.yml`) fires on the release event:
    - Job is gated on the `npm-publish` GitHub Environment, which is configured to only allow refs matching `v*`.
    - Runs `npm ci`, `npm run typecheck`, `npm run build`, then `npm publish --provenance`.
    - OIDC short-lived credentials are minted automatically; provenance metadata is attached.
