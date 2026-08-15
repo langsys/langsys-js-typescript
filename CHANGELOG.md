@@ -86,6 +86,22 @@ Full CLDR compliance, matching the backend's CLDR migration. Everything rides on
 
 - `canonicalizeLocale(locale)` — exported BCP 47 canonicalizer, useful when seeding your own `UserLocaleStore`.
 
+## 0.2.3 - 2026-07-01
+
+> Reconstructed retroactively (2026-08-15) from git history — this release shipped without a changelog entry.
+
+### Fixed
+
+- **`ready()` never settled on an SSR-seeded locale, hanging every content-block consumer.** The SSR handoff calls `markLoaded()` to prime the fetch cache so `change()` short-circuits, but `readyResolve()` lived only in `getTranslations()`. With no fetch ever firing, `Translate` and `Phrase` awaited `ready()` forever on the seeded locale and never rendered. Now resolved in `markLoaded()` — a seeded catalog counts as ready — and in the legacy `skipFetch` branch of `change()`, which had the same hole.
+
+## 0.2.2 - 2026-06-30
+
+> Reconstructed retroactively (2026-08-15) from git history — this release shipped without a changelog entry.
+
+### Fixed
+
+- **Switching back to the initial/SSR locale left the previous language on screen.** The init-time locale subscription recomputed `skipFetch` on every settle as `initialTranslationsLocale === locale && !!initialTranslations`. Since `initialTranslations` stays truthy for the whole session, every *return* to the initial locale skipped `change()`'s store updates, so the previous locale's catalog stayed active and the `t` signal never rebuilt. Replaced the persistent skip flag with `Translations.markLoaded()`, which primes the same `lastLoaded` cache `change()` consults: the first settle after the SSR handoff is still a cache hit with no redundant fetch, but switching back later flows through `change()` normally.
+
 ## 0.2.1 - 2026-06-11
 
 ### Changed
