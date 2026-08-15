@@ -52,7 +52,7 @@ new Translate(element, options)         // DOM wrapper for HTML content blocks
 new Translations(config)                // Rarely instantiated directly — LangsysApp owns one
 
 // The translation API
-t(category, phrase, params?)            // Top-level convenience function
+t(phrase, category?, params?)           // Top-level convenience function
 LangsysApp.t                            // Same thing, on the singleton
 tSignal                                 // Signal<TFunction> — subscribe for reactivity
 
@@ -152,7 +152,7 @@ Things to preserve when making changes:
 
 6. **SSR strategies are config-driven.** Don't bake assumptions about server vs. client into the lifecycle code beyond the `typeof window === 'undefined'` checks and `ssrTokenStrategy` switches.
 
-7. **Template-literal types stay opt-in via generics.** `<P extends string>(category, phrase: P, ...args: TArgs<P>)`. Don't widen the signature to `string` in a way that defeats compile-time placeholder checking.
+7. **Template-literal types stay opt-in via generics.** `<P extends string>(phrase: P, category?: string, ...args: TArgs<P>)` — phrase FIRST, category optional and second. Don't widen the signature to `string` in a way that defeats compile-time placeholder checking, and don't reverse the argument order: with a placeholder-free phrase, `t(category, phrase)` type-checks cleanly and silently registers the category as the phrase.
 
 ## Build / output
 

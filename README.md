@@ -246,6 +246,8 @@ That registers as a single phrase — `Based on {n} {m0o}reviews{m0c}` — rathe
 
 Use it standalone, or nested inside a `Translate` block to protect specific runs — the block tokenizer skips any subtree carrying `data-ls-phrase` (exported as `PHRASE_MARKER_ATTR`), letting the `Phrase` own it. `setParams()` re-renders on a changed count, same as `Translate`.
 
+> **Who sets `data-ls-phrase`.** In the framework bindings it's internal — `<Phrase>` puts it on its own host element and you never write it yourself. In **vanilla usage it is yours to set**: the `Phrase` class does not add it, so a `Phrase` nested inside a `Translate` block needs the attribute present in your HTML *before* the wrapping `Translate` tokenizes, or the block will tokenize straight through the phrase and both will fight over the same nodes. Standalone `Phrase` doesn't need it at all. (Not to be confused with `langsys-php`'s `data-langsys-*` attributes, which are author-facing by design.)
+
 If a translation drops or unbalances a markup token, rendering degrades to plain text with the markers stripped — the meaning survives even when the markup doesn't.
 
 ## Server-Side Rendering
