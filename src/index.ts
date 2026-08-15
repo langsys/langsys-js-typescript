@@ -29,6 +29,8 @@ export {
     generateCustomId,
     generateLegacyCustomId,
     isContentBlockKnown,
+    isPhraseMarked,
+    PHRASE_MARKER_ATTRS,
     registerContentBlock,
     tokenizeElement,
 } from './content-block.js';

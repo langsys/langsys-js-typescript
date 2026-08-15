@@ -1,6 +1,7 @@
 import {
     generateCustomId,
     isContentBlockKnown,
+    isPhraseMarked,
     registerContentBlock,
     generateLegacyCustomId,
     tokenizeElement,
@@ -218,7 +219,7 @@ export class Translate {
                 const element = node as HTMLElement;
                 if (element.getAttribute('translate') === 'no') return;
                 // A <Phrase> subtree manages its own rendering — don't recurse.
-                if (element.hasAttribute('data-ls-phrase')) return;
+                if (isPhraseMarked(element)) return;
                 this.translateAttributes(node as iElement);
             }
 

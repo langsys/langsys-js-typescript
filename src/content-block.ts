@@ -48,6 +48,28 @@ export const TRANSLATABLE_ATTRIBUTES = [
     'data-pattern-message',
 ];
 
+/**
+ * Attributes that mark a subtree as a self-managed "keep-together" phrase,
+ * which the block tokenizer must skip rather than split at tag boundaries.
+ *
+ * Two spellings, because two SDKs mark the same thing:
+ *  - `data-ls-phrase` — set by this SDK's framework `<Phrase>` components.
+ *  - `data-langsys-phrase` — `langsys-php`'s author-facing marker, which
+ *    survives into `translatePage()` output.
+ *
+ * The distinction is invisible in normal use, but on SSR handoff there is only
+ * ONE DOM: a page rendered by PHP and then hydrated by a JS SDK is walked by
+ * both implementations, so this tokenizer has to recognise PHP's marker or it
+ * re-tokenizes a subtree PHP deliberately kept whole. Recognising both is
+ * additive — `data-langsys-phrase` never appears in DOM our components emit.
+ */
+export const PHRASE_MARKER_ATTRS = ['data-ls-phrase', 'data-langsys-phrase'] as const;
+
+/** True when an element is marked as a self-managed phrase by either SDK. */
+export function isPhraseMarked(element: Element): boolean {
+    return PHRASE_MARKER_ATTRS.some((attr) => element.hasAttribute(attr));
+}
+
 export const VALUE_TRANSLATABLE_ELEMENTS = ['button'];
 export const VALUE_TRANSLATABLE_INPUT_TYPES = ['submit', 'button'];
 
@@ -221,7 +243,7 @@ function _walkForTokens(
             if (el.getAttribute('translate') === 'no') return;
             // A <Phrase> subtree is its own self-managed rich phrase — skip it
             // here so the content block doesn't tokenize its inner text.
-            if (el.hasAttribute('data-ls-phrase')) return;
+            if (isPhraseMarked(el)) return;
         }
 
         if (node.hasChildNodes()) {
