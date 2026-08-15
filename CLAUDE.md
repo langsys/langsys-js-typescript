@@ -114,6 +114,7 @@ Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC
    - Creates and pushes a `v$NEW_VERSION` tag.
    - Creates a GitHub release with auto-generated notes.
    - **Stops there.** Hands off to the Action.
+3. **After the Action publishes, stamp the real release date into `CHANGELOG.md`.** Write new sections as `## x.y.z - unreleased` and fill the date from `npm view langsys-js-typescript time --json` once it's live — never from today's date. Six entries were wrong before this rule existed, two by a month, because they were dated from whatever the author believed "today" was rather than from the publish record. A clock is an artifact like any other, and a weaker one than the registry: date a release from the record of the release.
 3. The `Publish to npm` workflow (`.github/workflows/publish.yml`) fires on the release event:
    - Job is gated on the `npm-publish` GitHub Environment, which is configured to only allow refs matching `v*`.
    - Runs `npm ci`, `npm run typecheck`, `npm run build`, then `npm publish --provenance`.
