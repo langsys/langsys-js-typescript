@@ -1,3 +1,14 @@
+## 0.6.2 - unreleased
+
+### Added
+
+- **`data-notrans` is now honored as an alias for `translate="no"`.** `langsys-php` accepts it as an author-facing opt-out, for hosts whose templating strips unknown bare attributes or where `translate` collides with another tool — and it survives into `translatePage()` output. On SSR handoff there is one DOM, so content an author marked "do not translate" was being extracted and registered by whichever SDK walked it. Presence is intent; an explicit `"false"`/`"0"` opts out of the opt-out, compared after trimming. `translate="no"` is now matched case-insensitively too, also mirroring PHP.
+- **`isTranslationExcluded(element)`** — exported alongside `isPhraseMarked`, for wrappers that tokenize through their own templating rather than delegating to the DOM class.
+
+### Notes
+
+- Asking `langsys-php` whether to mirror `data-notrans` rather than implementing against their code surfaced a bug on their side: their truthiness test was inverted at both ends — bare `data-notrans` did nothing, while `data-notrans="false"` excluded. Had this been implemented from their source as it stood, it would have faithfully reproduced that. Their fix landed first; this mirrors the corrected semantics.
+
 ## 0.6.1 - 2026-08-15
 
 ### Fixed

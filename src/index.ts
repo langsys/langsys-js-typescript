@@ -30,6 +30,7 @@ export {
     generateLegacyCustomId,
     isContentBlockKnown,
     isPhraseMarked,
+    isTranslationExcluded,
     PHRASE_MARKER_ATTRS,
     registerContentBlock,
     tokenizeElement,

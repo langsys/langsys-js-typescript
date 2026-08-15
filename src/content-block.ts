@@ -66,6 +66,33 @@ export const TRANSLATABLE_ATTRIBUTES = [
 export const PHRASE_MARKER_ATTRS = ['data-ls-phrase', 'data-langsys-phrase'] as const;
 
 /**
+ * True when an element opts out of translation entirely — it and its subtree
+ * are skipped by the tokenizer.
+ *
+ * Mirrors `langsys-php`'s `HtmlParser::isTranslationExcluded()` exactly:
+ *  - `translate="no"` — the HTML standard attribute, matched case-insensitively.
+ *  - `data-notrans` — PHP's author-facing alias, for hosts whose templating
+ *    strips unknown bare attributes or where `translate` collides with another
+ *    tool. Presence is intent; an explicit `"false"`/`"0"` opts out of the
+ *    opt-out, compared after trimming.
+ *
+ * Honoring PHP's alias matters for the same reason as the phrase marker: on SSR
+ * handoff there is ONE DOM, and content an author marked "do not translate"
+ * must not be extracted and registered by whichever SDK happens to walk it.
+ *
+ * Note the deliberate asymmetry with `isPhraseMarked` below, which does NOT
+ * trim: that mirrors PHP, whose `hasPhraseAttribute()` omits the trim its
+ * `isTranslationExcluded()` applies. Matching their behavior exactly beats
+ * tidying it — divergence is the bug class here, not inelegance.
+ */
+export function isTranslationExcluded(element: Element): boolean {
+    if ((element.getAttribute('translate') ?? '').toLowerCase() === 'no') return true;
+    if (!element.hasAttribute('data-notrans')) return false;
+    const value = (element.getAttribute('data-notrans') ?? '').trim().toLowerCase();
+    return value !== 'false' && value !== '0';
+}
+
+/**
  * True when an element is marked as a self-managed phrase by either SDK.
  *
  * Presence alone means intent, like any boolean HTML attribute — but an
@@ -252,7 +279,7 @@ function _walkForTokens(
     cloneNodes.forEach((node, index) => {
         if (node.nodeType === Node.ELEMENT_NODE) {
             const el = node as HTMLElement;
-            if (el.getAttribute('translate') === 'no') return;
+            if (isTranslationExcluded(el)) return;
             // A <Phrase> subtree is its own self-managed rich phrase — skip it
             // here so the content block doesn't tokenize its inner text.
             if (isPhraseMarked(el)) return;

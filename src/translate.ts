@@ -2,6 +2,7 @@ import {
     generateCustomId,
     isContentBlockKnown,
     isPhraseMarked,
+    isTranslationExcluded,
     registerContentBlock,
     generateLegacyCustomId,
     tokenizeElement,
@@ -217,7 +218,7 @@ export class Translate {
         nodes.forEach((node) => {
             if (node?.nodeType === Node.ELEMENT_NODE) {
                 const element = node as HTMLElement;
-                if (element.getAttribute('translate') === 'no') return;
+                if (isTranslationExcluded(element)) return;
                 // A <Phrase> subtree manages its own rendering — don't recurse.
                 if (isPhraseMarked(element)) return;
                 this.translateAttributes(node as iElement);
