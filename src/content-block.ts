@@ -65,9 +65,21 @@ export const TRANSLATABLE_ATTRIBUTES = [
  */
 export const PHRASE_MARKER_ATTRS = ['data-ls-phrase', 'data-langsys-phrase'] as const;
 
-/** True when an element is marked as a self-managed phrase by either SDK. */
+/**
+ * True when an element is marked as a self-managed phrase by either SDK.
+ *
+ * Presence alone means intent, like any boolean HTML attribute — but an
+ * explicit `="false"` or `="0"` opts OUT, matching `langsys-php`'s
+ * `hasPhraseAttribute()` exactly. Without the opt-out we would skip a subtree
+ * the author had deliberately un-marked, and it would then be translated by
+ * neither SDK.
+ */
 export function isPhraseMarked(element: Element): boolean {
-    return PHRASE_MARKER_ATTRS.some((attr) => element.hasAttribute(attr));
+    return PHRASE_MARKER_ATTRS.some((attr) => {
+        if (!element.hasAttribute(attr)) return false;
+        const value = (element.getAttribute(attr) ?? '').toLowerCase();
+        return value !== 'false' && value !== '0';
+    });
 }
 
 export const VALUE_TRANSLATABLE_ELEMENTS = ['button'];
