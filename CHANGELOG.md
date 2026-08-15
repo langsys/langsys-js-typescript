@@ -1,3 +1,11 @@
+## 0.6.1 - 2026-08-15
+
+### Fixed
+
+- **`data-langsys-phrase="false"` / `="0"` are now honored as opt-outs.** 0.6.0 taught the tokenizer to skip subtrees carrying `langsys-php`'s keep-together marker, but matched on attribute presence alone. PHP's `hasPhraseAttribute()` treats presence as intent *while letting an explicit off value opt out* — so we skipped subtrees the author had deliberately un-marked, leaving that content translated by neither SDK. Matching is now value-aware and case-insensitive, mirroring PHP exactly.
+
+  Found by reading `HtmlParser.php` rather than trusting a summary of it — the same second-hand-documentation error this class of bug keeps producing.
+
 ## 0.6.0 - 2026-08-15
 
 ### Fixed

@@ -31,6 +31,7 @@ CHANGES_COMMITTED=false
 CHANGES_PUSHED=false
 TAG_CREATED=false
 TAG_PUSHED=false
+RELEASE_DATE=""
 
 # Non-interactive mode: `publish.sh <version> --yes` (or -y) skips every
 # prompt — version prompt, publish confirmation — and auto-rolls-back on
@@ -54,6 +55,18 @@ rollback() {
         if [ -f "package.json" ]; then
             sed -i.bak "s/\"version\": \"$NEW_VERSION\"/\"version\": \"$ORIGINAL_VERSION\"/" package.json
             rm -f package.json.bak
+        fi
+
+        # Un-stamp the CHANGELOG date. An aborted release must not leave a dated
+        # heading for a version that never shipped — that is a fresh instance of
+        # the defect release-time stamping exists to prevent. No-op if the git
+        # reset below already restored the file.
+        if [ -n "$RELEASE_DATE" ] && [ -f "CHANGELOG.md" ]; then
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                sed -i '' "s/^## $NEW_VERSION - $RELEASE_DATE$/## $NEW_VERSION - unreleased/" CHANGELOG.md
+            else
+                sed -i "s/^## $NEW_VERSION - $RELEASE_DATE$/## $NEW_VERSION - unreleased/" CHANGELOG.md
+            fi
         fi
 
         # Reset git if changes were committed (restore original commit before amend)
@@ -233,7 +246,7 @@ log_info "Amending last commit with version bump..."
 # was TYPED, not when it shipped. Release time is within seconds of the npm
 # publish record, so the two agree. Verify after publishing regardless:
 #   npm view <pkg> time --json
-RELEASE_DATE=$(date +%Y-%m-%d)
+RELEASE_DATE="$(date +%Y-%m-%d)"
 if grep -q "^## $NEW_VERSION - unreleased$" CHANGELOG.md 2>/dev/null; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
         sed -i '' "s/^## $NEW_VERSION - unreleased$/## $NEW_VERSION - $RELEASE_DATE/" CHANGELOG.md
