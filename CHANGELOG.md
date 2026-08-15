@@ -20,7 +20,7 @@
 
 - Collisions are a property of the **final hashed string**, not the phrase: `JSON.stringify` shifts every character's offset, so a pair that collides standalone may not collide once wrapped, and changing `category` moves every character into different lanes. Reason at the `generateCustomId` level, never at bare `md5()`.
 
-## 0.5.0 - 2026-08-10
+## 0.5.0 - 2026-08-14
 
 ### Changed (breaking, types only)
 
@@ -34,13 +34,13 @@
 - Warning against building phrases with template literals (`` t(`Hello, ${name}!`) ``), which registers every runtime value as its own catalog phrase and pollutes the catalog shared across every Langsys SDK.
 - Params doc comments now name the `%name%` markup spelling alongside the canonical `{name}`, including Vue's `{{ name }}` case.
 
-## 0.4.3 - 2026-07-08
+## 0.4.3 - 2026-08-08
 
 ### Fixed
 
 - **The params diagnostic no longer names the wrong framework.** 0.4.2's warning hardcoded "the framework compiler (Svelte/JSX)" and the `{key}` spelling, which misdiagnoses Vue users — Vue consumes `{{ key }}`, not single braces, so a Vue developer hitting the warning was pointed at a syntax their framework never touches. The message is now framework-neutral and names both brace spellings.
 
-## 0.4.2 - 2026-07-08
+## 0.4.2 - 2026-08-08
 
 ### Added
 
@@ -94,7 +94,7 @@ Full CLDR compliance, matching the backend's CLDR migration. Everything rides on
 
 - **`ready()` never settled on an SSR-seeded locale, hanging every content-block consumer.** The SSR handoff calls `markLoaded()` to prime the fetch cache so `change()` short-circuits, but `readyResolve()` lived only in `getTranslations()`. With no fetch ever firing, `Translate` and `Phrase` awaited `ready()` forever on the seeded locale and never rendered. Now resolved in `markLoaded()` — a seeded catalog counts as ready — and in the legacy `skipFetch` branch of `change()`, which had the same hole.
 
-## 0.2.2 - 2026-06-30
+## 0.2.2 - 2026-06-24
 
 > Reconstructed retroactively (2026-08-15) from git history — this release shipped without a changelog entry.
 
@@ -102,7 +102,7 @@ Full CLDR compliance, matching the backend's CLDR migration. Everything rides on
 
 - **Switching back to the initial/SSR locale left the previous language on screen.** The init-time locale subscription recomputed `skipFetch` on every settle as `initialTranslationsLocale === locale && !!initialTranslations`. Since `initialTranslations` stays truthy for the whole session, every *return* to the initial locale skipped `change()`'s store updates, so the previous locale's catalog stayed active and the `t` signal never rebuilt. Replaced the persistent skip flag with `Translations.markLoaded()`, which primes the same `lastLoaded` cache `change()` consults: the first settle after the SSR handoff is still a cache hit with no redundant fetch, but switching back later flows through `change()` normally.
 
-## 0.2.1 - 2026-06-11
+## 0.2.1 - 2026-06-12
 
 ### Changed
 
@@ -112,7 +112,7 @@ Full CLDR compliance, matching the backend's CLDR migration. Everything rides on
 - Missing-phrase registration now chunks into batches of 200 to respect the `/translatable-items` per-request cap.
 - Added `LangsysAppAPI.createTranslatableItems()` as the single write entry point for both phrases and content blocks.
 
-## 0.2.0 - 2026-06-05
+## 0.2.0 - 2026-06-10
 
 > Reconstructed retroactively (2026-08-15). This release shipped without a changelog entry, which is how the reversed `t()` signature survived in `CLAUDE.md` for four months — there was no release note to prompt the update. Details recovered from git history (`v0.1.0..v0.2.0`).
 
