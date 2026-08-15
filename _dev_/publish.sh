@@ -223,6 +223,29 @@ npm run build
 
 # Amend the last commit with version bump
 log_info "Amending last commit with version bump..."
+# Stamp the release date into CHANGELOG.md at RELEASE time, not authoring time.
+# Entries are written as `## X.Y.Z - unreleased`; the date is filled in here,
+# seconds before publish, so the tarball itself carries a correct date rather
+# than shipping the word "unreleased" to npm readers.
+#
+# Authoring-time dates are what produced six wrong entries across three repos
+# (two off by a month): a heading written days before release records when it
+# was TYPED, not when it shipped. Release time is within seconds of the npm
+# publish record, so the two agree. Verify after publishing regardless:
+#   npm view <pkg> time --json
+RELEASE_DATE=$(date +%Y-%m-%d)
+if grep -q "^## $NEW_VERSION - unreleased$" CHANGELOG.md 2>/dev/null; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/^## $NEW_VERSION - unreleased$/## $NEW_VERSION - $RELEASE_DATE/" CHANGELOG.md
+    else
+        sed -i "s/^## $NEW_VERSION - unreleased$/## $NEW_VERSION - $RELEASE_DATE/" CHANGELOG.md
+    fi
+    log_success "Stamped CHANGELOG date for $NEW_VERSION as $RELEASE_DATE"
+    git add CHANGELOG.md
+elif ! grep -q "^## $NEW_VERSION - " CHANGELOG.md 2>/dev/null; then
+    log_warning "No CHANGELOG section for $NEW_VERSION — add one before or after release"
+fi
+
 git add package.json package-lock.json
 
 LAST_COMMIT_MESSAGE=$(git log -1 --pretty=%B)
