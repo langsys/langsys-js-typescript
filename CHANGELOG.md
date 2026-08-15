@@ -96,6 +96,25 @@ Full CLDR compliance, matching the backend's CLDR migration. Everything rides on
 - Missing-phrase registration now chunks into batches of 200 to respect the `/translatable-items` per-request cap.
 - Added `LangsysAppAPI.createTranslatableItems()` as the single write entry point for both phrases and content blocks.
 
+## 0.2.0 - 2026-06-05
+
+> Reconstructed retroactively (2026-08-15). This release shipped without a changelog entry, which is how the reversed `t()` signature survived in `CLAUDE.md` for four months — there was no release note to prompt the update. Details recovered from git history (`v0.1.0..v0.2.0`).
+
+### Changed (breaking)
+
+- **`t()` argument order flipped to `t(phrase, category?, params?)`.** 0.1.0 shipped `t(category, phrase, params?)`; the phrase now comes first and the category is optional. Implemented via overloads that discriminate on the type at position 2 (string ⇒ category, object ⇒ params). This is the single most consequential API change in the package's history and the one most likely to be miswritten from memory: with a placeholder-free phrase, the old order still type-checks, silently registering the category as the phrase. Nothing catches it until someone reads the catalog.
+- Narrowed `LocaleSource`; extracted the framework-agnostic content-block helpers (`generateCustomId`, `isContentBlockKnown`, `registerContentBlock`, `tokenizeElement`) so non-DOM wrappers can reuse registration without the DOM mutator.
+- Missing phrases are sent with a null category on the wire rather than the `__uncategorized__` sentinel, which is server-internal and must not be sent by clients.
+
+### Added
+
+- **`<Phrase>` and `<DontTranslate>`** — markup-sentinel rich-text handling, so a markup-bearing sentence stays one translatable phrase.
+- **ICU MessageFormat** wired through `interpolate()`, with the SDK declaring ICU capability so the server sends raw ICU rather than pre-rendered text.
+
+### Fixed
+
+- Content-block dedup unified, and a `custom_id` hash collision fixed. (Note: the deeper `md5` encoding defect behind that class of collision was not found until 0.6.0.)
+
 ## 0.1.0 - 2026-05-19
 
 Initial public release. Framework-agnostic TypeScript SDK for the Langsys Translation Manager — the foundation that `langsys-js-svelte` (and future framework-specific bindings) build on.
