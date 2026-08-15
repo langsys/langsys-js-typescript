@@ -1,6 +1,6 @@
 {
     "name": "langsys-js-typescript",
-    "version": "0.6.1",
+    "version": "0.6.2",
     "description": "Framework-agnostic TypeScript SDK for Langsys translation management — realtime continuous translations with automatic token discovery.",
     "author": "Langsys",
     "license": "MIT",

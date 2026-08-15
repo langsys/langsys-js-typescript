@@ -80,10 +80,11 @@ export const PHRASE_MARKER_ATTRS = ['data-ls-phrase', 'data-langsys-phrase'] as 
  * handoff there is ONE DOM, and content an author marked "do not translate"
  * must not be extracted and registered by whichever SDK happens to walk it.
  *
- * Note the deliberate asymmetry with `isPhraseMarked` below, which does NOT
- * trim: that mirrors PHP, whose `hasPhraseAttribute()` omits the trim its
- * `isTranslationExcluded()` applies. Matching their behavior exactly beats
- * tidying it — divergence is the bug class here, not inelegance.
+ * Both this and `isPhraseMarked` trim before comparing. They briefly differed
+ * — PHP's phrase check predated the trim its exclusion check gained — and the
+ * gap was resolved by asking rather than tidying: mirror exactly, flag the
+ * wart, let the owner decide. Divergence-by-tidying is the same failure class
+ * as divergence-by-oversight, just better intentioned.
  */
 export function isTranslationExcluded(element: Element): boolean {
     if ((element.getAttribute('translate') ?? '').toLowerCase() === 'no') return true;
@@ -96,15 +97,16 @@ export function isTranslationExcluded(element: Element): boolean {
  * True when an element is marked as a self-managed phrase by either SDK.
  *
  * Presence alone means intent, like any boolean HTML attribute — but an
- * explicit `="false"` or `="0"` opts OUT, matching `langsys-php`'s
- * `hasPhraseAttribute()` exactly. Without the opt-out we would skip a subtree
- * the author had deliberately un-marked, and it would then be translated by
- * neither SDK.
+ * explicit `="false"` or `="0"` opts OUT, compared after trimming. Mirrors
+ * `langsys-php`'s `isPhraseMarked()` exactly (same method name in both SDKs,
+ * so the correspondence is checkable at a glance). Without the opt-out we
+ * would skip a subtree the author had deliberately un-marked, and it would
+ * then be translated by neither SDK.
  */
 export function isPhraseMarked(element: Element): boolean {
     return PHRASE_MARKER_ATTRS.some((attr) => {
         if (!element.hasAttribute(attr)) return false;
-        const value = (element.getAttribute(attr) ?? '').toLowerCase();
+        const value = (element.getAttribute(attr) ?? '').trim().toLowerCase();
         return value !== 'false' && value !== '0';
     });
 }
