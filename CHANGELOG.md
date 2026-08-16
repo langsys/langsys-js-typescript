@@ -1,4 +1,4 @@
-## 0.6.4 - unreleased
+## 0.6.4 - 2026-08-16
 
 ### Fixed
 
@@ -16,7 +16,9 @@
 
   The asymmetry is deliberate: `select` is genuinely recoverable, `plural` is only made less bad. Arguments that ARE supplied are untouched and recursed into, so a missing argument nested inside a satisfied branch still recovers. `plural`/`select` without an `other` branch is malformed ICU and is left alone, falling through to the simple path as before.
 
-  Found by `langsys-php` from a report against their SDK; both implementations had it, by different mechanisms. Verified against their agreed outputs.
+  **A `null` argument counts as missing**, matching `langsys-php`. It doesn't throw — `intl-messageformat` coerces null to `0` — so `{count, plural, …}` rendered `0 items`. That is worse than it looks: a genuine `0` also renders `0 items`, so a bug and valid data became indistinguishable, in the output, in a screenshot, and in a bug report. A real `0` still renders `0 items`; only null and absent produce `{count} items`.
+
+  Found by `langsys-php` from a report against their SDK; both implementations had it, by different mechanisms. Verified against their shipped v1.3.1 behavior, including a nested case where an *unsatisfied* branch's missing argument correctly costs nothing (`{g, select, f {Ella} other {{n, plural …}}}` with `g='f'` renders `Ella`).
 
 ## 0.6.3 - 2026-08-16
 
