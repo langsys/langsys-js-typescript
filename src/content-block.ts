@@ -33,13 +33,28 @@ import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
 import { md5, md5Legacy } from './utils.js';
 
-/** HTML attributes whose values should be harvested for translation. */
+/**
+ * HTML attributes whose values should be harvested for translation.
+ *
+ * `langsys-php` harvests a superset of this list. The overlap is deliberate,
+ * the difference is not accidental: standard attributes carrying user-visible
+ * text belong in both SDKs, because on SSR handoff an attribute only one side
+ * harvests is translated by that side and left untranslated by the other — a
+ * coverage hole rather than a conflict. Framework-convention attributes
+ * (Bootstrap `data-bs-*`, Rails `data-confirm`, and similar) are deliberately
+ * NOT mirrored: they're written by server-rendered templates, and a JS app
+ * renders those strings through its own components instead.
+ */
 export const TRANSLATABLE_ATTRIBUTES = [
     'placeholder',
     'alt',
     'title',
+    'label', // <option>, <optgroup>, <track> — the text a user reads in the picker
     'aria-label',
     'aria-placeholder',
+    'aria-description',
+    'aria-valuetext', // the spoken value of a slider/meter
+    'aria-roledescription',
     'data-error',
     'data-error-message',
     'data-validation-message',

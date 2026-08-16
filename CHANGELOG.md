@@ -1,3 +1,13 @@
+## 0.6.3 - unreleased
+
+### Added
+
+- **Four standard attributes are now harvested: `label`, `aria-description`, `aria-valuetext`, `aria-roledescription`.** `langsys-php` harvests a superset of our list; diffing the two showed nothing JS-only and 16 PHP-only, of which these four carry real user-visible text. `label` is what a user reads in a `<select>` picker (`<option>`, `<optgroup>`, `<track>`) and is invisible to sighted testing that only inspects option text; the three ARIA attributes are read aloud by screen readers, so leaving them untranslated degrades accessibility specifically for the users least able to work around it.
+
+  The remaining twelve PHP-only attributes are framework conventions (Bootstrap `data-bs-*`, Rails-style `data-confirm`, loading/notification text) and are deliberately **not** mirrored — they're written by server-rendered templates, and a JS app renders those strings through its own components.
+
+  **Note:** a content block containing one of these attributes now yields a different token list, and therefore a different `custom_id`. Such blocks re-register and their existing translations orphan. The 0.6.0 legacy-id fallback cannot help here — it re-hashes the *same* tokens, and this changes the tokens themselves. Affected population is only blocks that use these four attributes.
+
 ## 0.6.2 - 2026-08-16
 
 ### Added
