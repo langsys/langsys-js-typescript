@@ -1,3 +1,23 @@
+## 0.6.4 - unreleased
+
+### Fixed
+
+- **A missing ICU argument no longer dumps the message source to the page.** `intl-messageformat` throws when an argument is absent, and the fallback ran the simple interpolator — whose pattern deliberately cannot match an ICU slot, so the entire construct passed through untouched. A phrase promoted to `{name_gender, select, …}` rendered as literal ICU source in front of users.
+
+  This is reachable with no caller mistake: langsys-ai's ICU promoter *introduces* a select argument the source phrase never had — a plain `{name}` becomes `{name_gender, select, …}` in gendered target locales. The application cannot supply `name_gender`; it doesn't exist in the phrase the developer wrote, and nothing tells them the target grew one. Every app translating into a gendered locale hits it.
+
+  Recovery, agreed with `langsys-php` so a shared catalog cannot render two different sentences for one input:
+
+  | slot | missing-argument behavior | outcome |
+  |---|---|---|
+  | `select` | take the `other` branch | a correct sentence — `other` is what an unknown gender should render |
+  | `plural` | take `other`, render `#` as `{argName}` | sentence survives with a visible gap; nothing can be inferred for a count |
+  | `{name}`, `{n, number}`, dates | render as `{argName}` | matches the simple path's rule that unknown keys stay visible |
+
+  The asymmetry is deliberate: `select` is genuinely recoverable, `plural` is only made less bad. Arguments that ARE supplied are untouched and recursed into, so a missing argument nested inside a satisfied branch still recovers. `plural`/`select` without an `other` branch is malformed ICU and is left alone, falling through to the simple path as before.
+
+  Found by `langsys-php` from a report against their SDK; both implementations had it, by different mechanisms. Verified against their agreed outputs.
+
 ## 0.6.3 - 2026-08-16
 
 ### Fixed
