@@ -3,6 +3,7 @@ import {
     isContentBlockKnown,
     isPhraseMarked,
     isTranslationExcluded,
+    legacyTokenizeElement,
     registerContentBlock,
     generateLegacyCustomId,
     tokenizeElement,
@@ -172,16 +173,28 @@ export class Translate {
             return;
         }
 
-        // Migration fallback: blocks registered before the 0.6.0 MD5 fix are
-        // keyed by the legacy id. Resolve against it so their translations keep
-        // working instead of orphaning. LOOKUP ONLY — registration below always
-        // uses the corrected id, so the legacy-keyed population never grows.
-        // Skipped for a caller-supplied custom_id (nothing was derived) and when
-        // the two ids agree (pure-ASCII content, the common case).
+        // Migration fallback: resolve blocks registered by older SDKs so their
+        // translations keep working instead of orphaning. Two things have moved
+        // the id, so there are three historical shapes to try:
+        //
+        //   corrected md5 + corrected tokens  → current (tried above)
+        //   corrected md5 + legacy tokens     → registered by 0.6.0–0.6.2
+        //   legacy md5    + legacy tokens     → registered before 0.6.0
+        //
+        // (legacy md5 + corrected tokens never existed — the token fix came
+        // after the hash fix.) LOOKUP ONLY: registration below always uses the
+        // corrected id, so the legacy-keyed population can only shrink.
+        // Skipped for a caller-supplied custom_id, since nothing was derived.
         if (derivedId) {
-            const legacyId = generateLegacyCustomId(contentBlock.category, contentBlock.tokens);
-            if (legacyId !== this.custom_id && isContentBlockKnown(contentBlock.category, legacyId)) {
-                this.custom_id = legacyId;
+            const legacyTokens = legacyTokenizeElement(this.element);
+            const candidates = [
+                generateCustomId(contentBlock.category, legacyTokens),
+                generateLegacyCustomId(contentBlock.category, legacyTokens),
+            ];
+            for (const candidate of candidates) {
+                if (candidate === this.custom_id) continue;
+                if (!isContentBlockKnown(contentBlock.category, candidate)) continue;
+                this.custom_id = candidate;
                 if (this.tokens.length > 1 && this.element) {
                     this.translate(Array.from(this.element.childNodes));
                     this.lastTranslatedLocale = currentlyLoadedLocale.get();

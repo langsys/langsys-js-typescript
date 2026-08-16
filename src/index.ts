@@ -31,6 +31,7 @@ export {
     isContentBlockKnown,
     isPhraseMarked,
     isTranslationExcluded,
+    legacyTokenizeElement,
     PHRASE_MARKER_ATTRS,
     registerContentBlock,
     tokenizeElement,

@@ -265,8 +265,31 @@ export async function registerContentBlock(
 export function tokenizeElement(element: HTMLElement): { tokens: string[]; content: string } {
     const tokens: string[] = [];
     const clone = element.cloneNode(true) as HTMLElement;
-    _walkForTokens(element, Array.from(clone.childNodes), tokens, []);
+    _walkForTokens(element, Array.from(clone.childNodes), tokens, [], false, true);
     return { tokens, content: normalizeMarkupPlaceholders(clone.outerHTML) };
+}
+
+/**
+ * The token list this element would have produced before 0.6.3, when every
+ * `<option>`'s text was harvested twice — once by a `<select>` special case and
+ * again by the ordinary text-node walk.
+ *
+ * **Lookup only.** Content blocks registered by an older SDK are keyed by an id
+ * derived from this list, so `Translate` falls back to it when the corrected id
+ * misses; without that, every block containing a `<select>` would silently
+ * re-key and lose its translations on upgrade. Registration always uses the
+ * corrected list, so the legacy-keyed population can only shrink.
+ *
+ * Skips the computed-style capture that `tokenizeElement` performs — this is a
+ * cache-key computation, not a snapshot for translators.
+ *
+ * @deprecated Migration aid; will be removed once catalogs have been rebased.
+ */
+export function legacyTokenizeElement(element: HTMLElement): string[] {
+    const tokens: string[] = [];
+    const clone = element.cloneNode(true) as HTMLElement;
+    _walkForTokens(element, Array.from(clone.childNodes), tokens, [], true, false);
+    return tokens;
 }
 
 // ---------------------------------------------------------------------
@@ -292,6 +315,8 @@ function _walkForTokens(
     cloneNodes: ChildNode[],
     tokens: string[],
     indices: number[],
+    duplicateSelectOptions: boolean,
+    applyStyles: boolean,
 ): void {
     cloneNodes.forEach((node, index) => {
         if (node.nodeType === Node.ELEMENT_NODE) {
@@ -302,12 +327,12 @@ function _walkForTokens(
             if (isPhraseMarked(el)) return;
         }
 
-        if (node.hasChildNodes()) {
+        if (applyStyles && node.hasChildNodes()) {
             _applyStylesToClone(liveRoot, node as HTMLElement, [...indices, index]);
         }
 
         if (node.nodeType === Node.ELEMENT_NODE) {
-            _tokenizeAttributes(node as HTMLElement, tokens);
+            _tokenizeAttributes(node as HTMLElement, tokens, duplicateSelectOptions);
         }
 
         const contentToken = node.nodeValue?.replace(/\s+/g, ' ').trim();
@@ -317,11 +342,11 @@ function _walkForTokens(
         }
 
         if (!node.hasChildNodes()) return;
-        _walkForTokens(liveRoot, Array.from(node.childNodes), tokens, [...indices, index]);
+        _walkForTokens(liveRoot, Array.from(node.childNodes), tokens, [...indices, index], duplicateSelectOptions, applyStyles);
     });
 }
 
-function _tokenizeAttributes(element: HTMLElement, tokens: string[]): void {
+function _tokenizeAttributes(element: HTMLElement, tokens: string[], duplicateSelectOptions: boolean): void {
     const tagName = element.tagName.toLowerCase();
 
     if (tagName === 'img') {
@@ -347,7 +372,17 @@ function _tokenizeAttributes(element: HTMLElement, tokens: string[]): void {
         }
     }
 
-    if (tagName === 'select') {
+    // <option> text is NOT harvested here in the current path: it arrives via
+    // the ordinary text-node walk, since `<option>` cannot contain elements.
+    // Doing both pushed every option's text TWICE, changing the token list and
+    // therefore the block's `custom_id`. langsys-php reached the same
+    // conclusion earlier — their `extractSelectOptions()` is an empty stub
+    // with a comment saying so — and their token lists are the reference.
+    //
+    // The duplicate is reproduced ONLY for `legacyTokenizeElement`, so blocks
+    // registered before 0.6.3 stay resolvable. `<optgroup label>` reaches us
+    // through TRANSLATABLE_ATTRIBUTES either way.
+    if (duplicateSelectOptions && tagName === 'select') {
         const options = element.querySelectorAll('option');
         options.forEach((option) => {
             const optionText = option.textContent?.trim();

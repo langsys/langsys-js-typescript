@@ -1,4 +1,20 @@
-## 0.6.3 - unreleased
+## 0.6.3 - 2026-08-16
+
+### Fixed
+
+- **`<select>` option text was harvested twice, diverging `custom_id` from every other Langsys SDK.** A `<select>` special case pushed each `<option>`'s text, and the ordinary text-node walk then pushed it again — `<option>` cannot contain elements, so the walker already covered it. Any content block containing a `<select>` therefore produced `["S","S"]` where `langsys-php` produced `["S"]`, and had a different `custom_id` in the two SDKs since before either was audited. The fixture suite could not see it: those fixtures are synthetic token lists that never touch a DOM.
+
+  **Migration is automatic and lookup-only**, extending the mechanism 0.6.0 introduced. Three historical id shapes are now tried before registering:
+
+  | tokens | hash | registered by |
+  |---|---|---|
+  | corrected | corrected | 0.6.3+ (current) |
+  | legacy (duplicated) | corrected | 0.6.0 – 0.6.2 |
+  | legacy (duplicated) | legacy | before 0.6.0 |
+
+  Registration always uses the corrected id, so the legacy-keyed population can only shrink. Content without a `<select>` is unaffected — its token list is identical either way, so nothing needlessly rebases. Without this fallback the upgrade would have been silent in the worst direction: a dropdown quietly reverting to source text, with nothing erroring to explain it.
+
+- **`legacyTokenizeElement(element)`** — the pre-0.6.3 token list, exported for migration tooling. Lookup-only; never register under an id derived from it. Deprecated on arrival.
 
 ### Added
 
