@@ -1,3 +1,4 @@
+import { logger } from './logger.js';
 /**
  * Locale-identifier handling, CLDR/BCP 47 flavored. Everything here rides on
  * the platform's native `Intl` — no bundled locale data.
@@ -26,7 +27,17 @@ export function canonicalizeLocale(locale: string): string {
         const [canonical] = Intl.getCanonicalLocales(cleaned);
         return canonical ?? cleaned;
     } catch {
-        // Not a valid BCP 47 tag — apply canonical casing per subtag shape.
+        // Not a valid BCP 47 tag. The return value cannot signal this — a
+        // best-effort cased string is indistinguishable from a successfully
+        // canonicalized one, so a typo'd config locale degrades to a silent
+        // failed catalog lookup: the app renders base language, which is
+        // exactly what a legitimately-untranslated locale looks like. Say so
+        // when debug is on, since nothing downstream can.
+        if (logger.debugEnabled) logger.warn(
+            `"${locale}" is not a valid BCP 47 locale tag. Falling back to best-effort casing,` +
+                ` which will very likely miss the catalog and render base language with no other symptom.`,
+        );
+        // Apply canonical casing per subtag shape.
         return cleaned
             .split('-')
             .map((part, i) => {

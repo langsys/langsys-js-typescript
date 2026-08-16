@@ -1,3 +1,11 @@
+## 0.6.5 - unreleased
+
+### Added
+
+- **Debug warning when a locale tag is not valid BCP 47.** `canonicalizeLocale` falls back to best-effort casing rather than throwing, which is the right behavior — but the return value cannot signal that it happened: a best-effort string is indistinguishable from a successfully canonicalized one. So a typo'd config locale degrades to a silent failed catalog lookup, and the app renders base language, which is exactly what a legitimately-untranslated locale looks like. Nothing downstream can tell the difference, so the warning is emitted where the information still exists. Behavior and return values are unchanged; silent in production.
+
+  Found by applying a predictive form of a pattern this release series kept hitting, contributed by the Svelte binding: **look for any fallback whose output is drawn from the same value space as its success output.** That makes the class searchable by inspection rather than discoverable by tripping over it — null-as-zero, empty-string-as-absent, best-effort-locale-as-canonical.
+
 ## 0.6.4 - 2026-08-16
 
 ### Fixed
