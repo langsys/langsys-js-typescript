@@ -1,10 +1,17 @@
 # Langsys SDK — TypeScript
 
+[![npm](https://img.shields.io/npm/v/langsys-js-typescript.svg?style=flat)](https://www.npmjs.com/package/langsys-js-typescript)
+[![build](https://img.shields.io/github/actions/workflow/status/langsys/langsys-js-typescript/ci.yml?style=flat)](https://github.com/langsys/langsys-js-typescript/actions)
+[![last commit](https://img.shields.io/github/last-commit/langsys/langsys-js-typescript.svg?style=flat)](https://github.com/langsys/langsys-js-typescript/commits)
+[![commit activity](https://img.shields.io/github/commit-activity/m/langsys/langsys-js-typescript.svg?style=flat)](https://github.com/langsys/langsys-js-typescript/pulse)
+[![bundle size](https://img.shields.io/bundlejs/size/langsys-js-typescript?style=flat)](https://bundlejs.com/?q=langsys-js-typescript)
+[![types](https://img.shields.io/npm/types/langsys-js-typescript.svg?style=flat)](https://www.npmjs.com/package/langsys-js-typescript)
+[![downloads](https://img.shields.io/npm/dm/langsys-js-typescript.svg?style=flat)](https://www.npmjs.com/package/langsys-js-typescript)
+[![license](https://img.shields.io/npm/l/langsys-js-typescript.svg?style=flat)](./LICENSE)
+
 Framework-agnostic TypeScript SDK for the [Langsys](https://Langsys.dev/) Translation Manager. Realtime, continuous translations with automatic token discovery — no framework required.
 
-This is the base SDK. Framework-specific bindings (`langsys-js-svelte`, and similar packages for React / Vue / Solid that can be built on top of this) are thin wrappers that add idiomatic framework reactivity around the same core.
-
-[![NPM License](https://img.shields.io/npm/l/all-contributors.svg?style=flat)](./LICENSE)
+This is the base SDK. Framework-specific bindings (`langsys-js-svelte`, `langsys-js-react`, `langsys-js-vue`) are thin wrappers that add idiomatic framework reactivity around the same core.
 
 ## What's inside
 
@@ -14,7 +21,7 @@ This is the base SDK. Framework-specific bindings (`langsys-js-svelte`, and simi
 - `Translate` class — wraps a DOM element, walks text + translatable attributes, registers a content block with the Translation Manager, re-translates on locale change.
 - `Signal<T>` — tiny subscribe/set/update/get primitive. Compatible with Svelte's store contract by design, so the Svelte binding is nearly trivial.
 - `LangsysAppAPI` — direct HTTP access if you want to bypass everything else.
-- Zero runtime dependencies. Works in browsers, Node, any bundler.
+- One runtime dependency (`intl-messageformat`, for ICU plurals and gender selects). ~20 kB gzipped. Works in browsers, Node, any bundler.
 
 ## Install
 
@@ -161,11 +168,22 @@ handle.destroy();
 
 Attributes honored on contained elements:
 
-- `placeholder`, `alt`, `title`, `aria-label`, `aria-placeholder`
-- `value` on `<button>`, `<input type="submit">`, `<input type="button">`
+**Visible text**
+
+- `placeholder`, `alt`, `title`, `label`
+- `value` on `<button>`, `<input type="submit">`, `<input type="button">` — and *only* those; a text input's value is never rewritten
 - `<option>` text inside `<select>`
-- Several validation-message `data-*` attributes
-- `translate="no"` — elements marked this way (and their children) are skipped
+
+**Screen-reader text** — `aria-label`, `aria-placeholder`, `aria-description`, `aria-valuetext`, `aria-roledescription`
+
+> Leaving these untranslated has **no visible symptom**. Nothing on the page changes, so reviewing the rendered output cannot catch it — the failure is audible only to the users least able to work around it.
+
+**Validation messages** — `data-error`, `data-error-message`, `data-validation-message`, `data-invalid-message`, `data-required-message`, `data-pattern-message`
+
+**Opting out**
+
+- `translate="no"` (case-insensitive), or `data-notrans` — `langsys-php`'s author-facing alias, honored here so an SSR-rendered page opts out consistently in both SDKs. Presence means intent; an explicit `="false"` or `="0"` opts back in.
+- Elements marked this way, and their children, are skipped entirely.
 
 > **`Translate` tokenizes per text node — so inline markup splits a sentence.**
 >
