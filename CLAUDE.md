@@ -105,7 +105,7 @@ Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC
 
 **Flow:**
 
-1. Commit your changes to `main` — but do **not** push: the script amends the last unpushed commit with the version bump and force-pushes itself, and it errors out if there's nothing unpushed. (Pushed too early? `git commit --amend --no-edit` re-stamps the commit as unpushed.)
+1. Commit your changes to `main` — but do **not** push: the script amends the last unpushed commit with the version bump and force-pushes itself, and it errors out if there's nothing unpushed. (Pushed too early? Add a new commit — `git commit --allow-empty -m "chore: prepare release"` — and let the script amend *that*. **Do not** `git commit --amend --no-edit` to re-stamp the pushed commit: since 0.6.5 the script's divergence guard correctly refuses that state, and rebasing as it instructs simply undoes the amend. That advice only ever worked by exploiting the force-push hole the guard now closes — it rewrites already-published history and orphans any tag pointing at it.)
 2. Run `npm run release` (which calls `_dev_/publish.sh`):
    - Non-interactive: `npm run release -- <version> --yes` skips every prompt and auto-rolls-back on error — use this form when Claude runs the release.
    - Prompts for the new version (suggests next patch).
@@ -169,4 +169,8 @@ Target: ES2021. Module resolution: bundler. Strict TypeScript with `verbatimModu
 
 ## Testing approach
 
-No formal test suite yet. Adding unit tests for `interpolate`, `Signal`, `persist`, and `Translations.t` lookup behavior is a good next step. Integration testing currently happens by hand via `example/index.html` or by exercising the file:..-linked Svelte SDK.
+`npm test` runs vitest over `tests/` — 5 files, 67 tests (`api`, `interpolate`, `locale`, `richtext`, `translations`). `npm run test:watch` for watch mode.
+
+**Cross-SDK behaviour is verified against langsys-php's fixtures, not re-derived here.** `langsys-php/tests/fixtures/` holds the shared contract — `custom-id-reference.json` (12 cases), `tokenizer-reference.json` (17), `interpolation-reference.json` (19). Execute the *published tarball* against them after a release; re-deriving expected values in TypeScript proves nothing, since both sides would share the same mistake. Adding cases is safe; changing an existing expectation is a breaking change to content-block identity in every SDK and goes to the PHP agent first.
+
+Integration testing still happens by hand via `example/index.html` or by exercising the file:..-linked Svelte SDK.

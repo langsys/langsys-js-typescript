@@ -22,11 +22,12 @@ npm run release
 
 ## What the script does
 
-1. **Verify prerequisites**
+1. **Verify prerequisites** — in this order; the ordering is load-bearing, see the comments in `publish.sh`
     - `gh` installed and authenticated
     - Current branch is `main`
-    - At least one unpushed commit exists
-    - Fetches latest from origin
+    - **Fetches from origin first**, so every check below reads current remote state rather than a stale remote-tracking ref
+    - Aborts if `origin/main` carries commits you do not have — publishing would force-push over them
+    - Aborts unless at least one unpushed commit exists. Already pushed? Add a new commit (`git commit --allow-empty -m "chore: prepare release"`) and let the script amend that. Do **not** `git commit --amend --no-edit` to re-stamp the pushed commit: that rewrites already-published history, and since 0.6.5 the divergence guard correctly refuses it
 2. **Version management**
     - Reads current version from `package.json`
     - Suggests the next patch version
