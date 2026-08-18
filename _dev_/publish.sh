@@ -162,15 +162,46 @@ if [ "$CURRENT_BRANCH" != "main" ]; then
     handle_error "You must be on the main branch to publish. Current branch: $CURRENT_BRANCH"
 fi
 
+# Fetch FIRST. This position is load-bearing, not tidiness: both checks below
+# are correct only against a fresh remote-tracking ref, and a stale one breaks
+# them in opposite directions.
+#
+# The ahead-check in particular fails dangerously when stale. If HEAD was
+# already pushed from another machine, a stale ref still reports ahead=1, the
+# divergence guard legitimately passes (nobody else committed, nothing has
+# diverged), and the script goes on to amend an ALREADY-PUBLISHED commit and
+# force-push the rewrite -- orphaning that release's tag and its provenance
+# attestation on a SHA that no longer exists, with no second party involved.
+# Reading it after the fetch instead aborts with "No unpushed commits found",
+# which is the correct outcome: this script amends HEAD to embed the version
+# bump, so when HEAD is already published, amending it IS the rewrite.
+# Reproduced in a sandbox 2026-08-18.
+git fetch > /dev/null 2>&1
+
+# Refuse to publish when origin/main carries commits we do not have.
+#
+# LOAD-BEARING. Do NOT delete this as redundant with the --force-with-lease
+# push later in this script -- that reasoning is exactly what reintroduces the
+# bug. The lease compares origin/main against our REMOTE-TRACKING ref, and the
+# fetch above refreshes precisely that ref, so a commit someone else pushed is
+# already "expected" by the time the lease is evaluated. The lease then
+# authorises the destruction it exists to prevent: the push reports a forced
+# update, exits 0, and warns about nothing. Reproduced in a sandbox 2026-08-18.
+#
+# This guard must stay ABOVE the ORIGINAL_VERSION assignment: handle_error only
+# offers the rollback path once the version vars are set, so firing here aborts
+# cleanly with nothing to undo.
+BEHIND_COMMITS=$(git rev-list HEAD..origin/main --count)
+if [ "$BEHIND_COMMITS" != "0" ]; then
+    handle_error "origin/main has $BEHIND_COMMITS commit(s) you do not have. Publishing would force-push over them, destroying published history. Rebase first: git pull --rebase origin main"
+fi
+
 # Check for unpushed commits
 UNPUSHED_COMMITS=$(git rev-list origin/main..HEAD --count)
 if [ "$UNPUSHED_COMMITS" = "0" ]; then
     handle_error "No unpushed commits found. Commit your changes before publishing."
 fi
 log_success "Found $UNPUSHED_COMMITS unpushed commit(s)"
-
-# Fetch latest from remote
-git fetch > /dev/null 2>&1
 
 log_success "All prerequisites met"
 
