@@ -24,7 +24,7 @@ src/
     persist.ts              # persist<T>(key, initial) — Signal backed by localStorage with SSR-safe fallback
     stores.ts               # Module-scoped state: sTranslations (persist), currentlyLoadedLocale, contentBlocks, shared config
     interpolate.ts          # {name}-style + ICU MessageFormat placeholder substitution (CLDR number/date formatting in both paths)
-    locale.ts               # canonicalizeLocale (BCP 47 canonical form) + maximizedLangScript (CLDR likely-subtags matching)
+    locale.ts               # canonicalizeLocale (lowercase xx-yy form) + maximizedLangScript (CLDR likely-subtags matching)
     logger.ts               # Logger + logger singleton — debug-gated, styled grouping in browser / plain in Node
     utils.ts                # md5, isEmpty, structuredCloneShim
     types/
@@ -143,7 +143,9 @@ Things to preserve when making changes:
 
 1. **One runtime dependency: `intl-messageformat`.** The whole point of being framework-agnostic is to drop in anywhere without dragging in baggage — any additional dep needs a strong justification. Locale plumbing (canonicalization, likely-subtags matching, number/date formatting) rides on the platform's native `Intl` APIs, never bundled CLDR data.
 
-1a. **Locale identifiers are BCP 47 canonical everywhere.** `canonicalizeLocale` runs at every input boundary (init config, user-locale store emissions, `detectPreferredLocale`, API params); cache keys, equality checks, and wire values all use the canonical form (`en-US`, `zh-Hant-TW`). Don't add locale-string comparisons that bypass it.
+1a. **Locale identifiers are lowercase `xx-yy` everywhere.** `canonicalizeLocale` runs at every input boundary (init config, user-locale store emissions, `detectPreferredLocale`, API params); cache keys, equality checks, and wire values all use the lowercase form (`en-us`, `zh-hant-tw`). Don't add locale-string comparisons that bypass it.
+
+    This was BCP 47 canonical casing until spec v8, and it deliberately supersedes that. Lowercase is what every locale in the backend's database already is — script subtags included, stored `az-cyrl`/`bs-latn` — and what its request middleware produces, so it is the only form guaranteed to behave identically on a route that doesn't mount that middleware; the routes most likely to miss it are the legacy ones carrying the oldest clients. CLDR handling is unaffected: `Intl` canonicalises its own input, so `new Intl.Locale('zh-tw').maximize()` still yields `zh-Hant-TW`.
 
 2. **`Signal<T>` stays Svelte-store-compatible.** `subscribe(run)` must fire immediately with the current value; `set/update/get` keep their current shapes. The Svelte binding relies on this structural compatibility.
 

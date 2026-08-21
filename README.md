@@ -29,6 +29,79 @@ This is the base SDK. Framework-specific bindings (`langsys-js-svelte`, `langsys
 npm install langsys-js-typescript
 ```
 
+### No build step? Use the browser build
+
+For a plain HTML page with no bundler, import the self-contained browser build —
+it inlines its one dependency so there is nothing for the browser to resolve:
+
+```html
+<script type="module">
+    import { LangsysApp, createSignal } from './node_modules/langsys-js-typescript/dist/langsys.browser.mjs';
+</script>
+```
+
+Or, without modules at all — exposes a `Langsys` global:
+
+```html
+<script src="./node_modules/langsys-js-typescript/dist/langsys.browser.global.js"></script>
+<script>
+    Langsys.LangsysApp.init({ /* ... */ });
+</script>
+```
+
+Package consumers (Vite, webpack, Next, SvelteKit, Node) should keep importing
+`langsys-js-typescript` normally — the main entry leaves `intl-messageformat`
+external so your bundler dedupes it against its own copy. **Do not load
+`dist/index.mjs` directly in a browser:** it imports the bare specifier
+`intl-messageformat`, which a browser cannot resolve without an import map, and
+the failure is silent — the file returns 200 and the module body simply never
+executes.
+
+### Pointing at a different API host
+
+The SDK talks to `https://api.langsys.dev/api` by default. To run it against a
+local instance, a staging host, or a test double, call `setBaseUrl` **before**
+`init` — it's on the exported API client, not an `init` option:
+
+```ts
+import { LangsysApp, LangsysAppAPI, createSignal } from 'langsys-js-typescript';
+
+LangsysAppAPI.setBaseUrl('http://langsys2.test/api');   // no trailing slash needed
+
+await LangsysApp.init({ /* ... */ });
+```
+
+Same from the browser build, via the global:
+
+```html
+<script src=".../dist/langsys.browser.global.js"></script>
+<script>
+    Langsys.LangsysAppAPI.setBaseUrl('http://langsys2.test/api');
+    Langsys.LangsysApp.init({ /* ... */ });
+</script>
+```
+
+This is what integration tests should use to point the SDK at a stateful test
+double rather than the live API. Patching the built artifact is never necessary.
+
+> **Call it before `init()`, and check what `init()` returns.**
+> Calling `setBaseUrl` *after* `init()` does not just miss the first request —
+> it leaves the SDK permanently inert. `init()` will already have authorized
+> against the default host, and with a key for a different environment that
+> authorization fails; the locale subscription is installed closed over that
+> failed result, so **it no-ops for the life of the app**. Later locale changes
+> won't recover it and neither will fixing the URL afterwards — only calling
+> `init()` again will.
+>
+> Nothing throws, so the symptom is simply that no translations ever arrive.
+> `init()` resolves to `{ status: false, errors: [...] }` in this case, which is
+> the one place it's visible:
+>
+> ```ts
+> const res = await LangsysApp.init({ /* ... */ });
+> if (!res.status) console.error('Langsys init failed', res.errors);
+> ```
+
 ## Quick start
 
 ```ts
@@ -155,6 +228,90 @@ The same pattern: subscribe to `tSignal` for invalidation, call the current `TFu
 ## The `Translate` class
 
 For larger blocks of HTML — articles, help text, multi-sentence markup — use `Translate` to wrap an existing DOM element. It tokenizes text nodes and translatable attributes, registers the block with the Translation Manager (so translators see your styled markup), and re-translates on locale change.
+
+> **Single-token content is flattened — don't put test hooks inside it.**
+> When the wrapped element's content resolves to a *single* text run, `Translate`
+> replaces the element's entire contents with one text node. Any descendant
+> markup is destroyed in the process, so a `data-testid`, `id`, or ref you placed
+> on a child element inside `<Translate>` stops existing after mount:
+>
+> ```html
+> <div>                                  <!-- before -->
+>   <p data-testid="greeting">Welcome back.</p>
+> </div>
+> <div>Welcome back.</div>               <!-- after: the <p> is gone -->
+> ```
+>
+> Multi-token content keeps its structure — it's translated node by node — and
+> `Phrase` preserves markup in all cases. The symptom of getting this wrong is a
+> selector that reads as flaky rather than an element that was replaced, so put
+> test hooks on the wrapper you pass to `Translate`, not inside it.
+
+```ts
+import { Translate } from 'langsys-js-typescript';
+
+const article = document.querySelector<HTMLElement>('#article')!;
+const handle = new Translate(article, { category: 'Blog', label: 'Welcome post' });
+
+// Locale changes are picked up automatically. Call .destroy() to stop.
+handle.destroy();
+```
+
+Attributes honored on contained elements:
+
+- `placeholder`, `alt`, `title`, `aria-label`, `aria-placeholder`
+- `value` on `<button>`, `<input type="submit">`, `<input type="button">`
+- `<option>` text inside `<select>`
+- Several validation-message `data-*` attributes
+- `translate="no"` — elements marked this way (and their children) are skipped
+
+### Interpolation params
+
+`Translate` accepts the same single-brace `{key}` placeholders as `t()`. Pass `params` and every translated text node and attribute is interpolated after lookup — unknown keys stay visible as-is, and `Number`/`Date` values are formatted per the active locale's CLDR rules:
+
+```html
+<div id="stats">
+    <h2>Hello {name}</h2>
+    <p>You have {count} new messages.</p>
+</div>
+```
+
+```ts
+const stats = document.querySelector<HTMLElement>('#stats')!;
+const handle = new Translate(stats, {
+    category: 'Dashboard',
+    params: { name: 'Sarah', count: 5 },
+});
+
+// Update reactively — e.g. when the count changes:
+handle.setParams({ name: 'Sarah', count: 6 });
+```
+
+The placeholders are part of the registered phrase, so translators see `{name}` and `{count}` and keep them in the translation.
+
+#### `%key%` — the markup-safe spelling
+
+In compiled frameworks, bare `{key}` written in markup never reaches the SDK — Svelte compiles it to an expression and JSX evaluates it. Content passed through `<Translate>`/`<Phrase>` therefore also accepts `%key%`, which survives compilation as literal text:
+
+```svelte
+<Translate category="Dashboard" params={{ name, count }}>
+    <h2>Hello %name%</h2>
+    <p>You have %count% new messages.</p>
+</Translate>
+```
+
+Both spellings are equivalent: `%key%` is normalized to canonical `{key}` at tokenization, so the Translation Manager, the wire, and translators only ever see `{key}`, and existing `{key}` content in vanilla HTML keeps working unchanged. Keys must be identifiers (`[A-Za-z_][A-Za-z0-9_]*`), so literal `%` signs in prose ("20% off") are never touched. `t()` phrases are plain JS strings with no compiler in the way — they stay `{key}`-only.
+
+Writing `{key}` in markup fails *silently* — the base locale still looks right, so the mistake surfaces only once someone switches language. With `debug: true`, the SDK catches it for you: if you pass `params` whose keys have no matching placeholder in the captured content, it warns and names the fix.
+
+```
+Langsys Warning  <Translate> received params with no matching placeholder in its
+content: %count%. If you wrote {count} or {{ count }} in markup, your framework's
+template compiler substituted it before Langsys saw the text — write %count%
+instead.
+```
+
+The check runs whenever the params key-set changes, so a ticking `count` won't spam the console, and it's silent in production.
 
 ```ts
 import { Translate } from 'langsys-js-typescript';

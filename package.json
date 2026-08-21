@@ -23,6 +23,10 @@
             "types": "./dist/index.d.ts",
             "import": "./dist/index.mjs",
             "require": "./dist/index.js"
+        },
+        "./browser": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/langsys.browser.mjs"
         }
     },
     "files": [

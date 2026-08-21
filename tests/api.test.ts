@@ -50,9 +50,11 @@ describe('LangsysAppAPI capability negotiation', () => {
         // Not the deprecated project-scoped route.
         expect(url).not.toContain('projects/proj-123/translations');
         expect(url).toContain('project_id=proj-123');
-        // Locale goes on the wire in BCP 47 canonical form regardless of
-        // the caller's casing — the CLDR backend keys catalogs by it.
-        expect(url).toContain('locale=es-ES');
+        // Locale goes on the wire in the SDK's single internal form —
+        // lowercase xx-yy — regardless of the caller's casing. That is what the
+        // backend stores and what its middleware produces, so it behaves
+        // identically on routes that do not mount that middleware.
+        expect(url).toContain('locale=es-es');
     });
 
     it('registers via the modern /translatable-items endpoint with the unified body', async () => {

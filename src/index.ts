@@ -42,7 +42,19 @@ export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber
 export { persist } from './persist.js';
 
 // Stores (advanced usage — direct subscription to translations / locale)
-export { sTranslations, currentlyLoadedLocale } from './stores.js';
+// `writeEnabled` is the server-computed write capability for this session and
+// the single source of truth for every write decision — never infer it from
+// `key_type`. TRI-STATE, and the states must not be collapsed: `undefined` =
+// not yet authorized (hold), `true` = registering, `false` = read-only. It is
+// browser-authoritative — never written during SSR — so it legitimately reads
+// `undefined` on the server and resolves after hydration. Bindings using
+// `useSyncExternalStore` should pin `getServerSnapshot` to `undefined` so the
+// hydration render matches the server markup.
+//
+// `autoDiscovery` is the server-set POLICY for whether this key may report page
+// URLs — deliberately independent of `writeEnabled` and never merged with it.
+// The canonical public site is `writeEnabled: false` AND `autoDiscovery: true`.
+export { sTranslations, currentlyLoadedLocale, writeEnabled, autoDiscovery } from './stores.js';
 
 // Logger
 export { Logger, logger } from './logger.js';
@@ -54,7 +66,7 @@ export { canonicalizeLocale } from './locale.js';
 
 // Type re-exports
 export type { ResponseObject as iLangsysResponse } from './types/api.js';
-export type { iLangsysConfig, iLangsysInitConfig, LocaleSource } from './types/config.js';
+export type { iLangsysConfig, iLangsysInitConfig, LocaleSource, WriteGrant } from './types/config.js';
 export type { iContentBlock } from './types/content-block.js';
 export type { iCountry, iCountryDialCode, iCountryList } from './types/countries.js';
 export type { iCurrency, iCurrencyList } from './types/currencies.js';
@@ -75,6 +87,7 @@ export type { iCategories, iTranslations } from './types/translations.js';
 // reactive primitive frameworks bind to.
 import { LangsysApp as _LangsysApp } from './langsys-app.js';
 import type { TFunction } from './types/translation-fn.js';
+import type { WriteGrant as WriteGrantType } from './types/config.js';
 
 export const t: TFunction = ((phrase: string, ...rest: unknown[]): string => {
     // Forward all args verbatim; the underlying TFunction implementation
@@ -84,3 +97,12 @@ export const t: TFunction = ((phrase: string, ...rest: unknown[]): string => {
 }) as TFunction;
 
 export const tSignal = _LangsysApp.Translations.tSignal;
+
+/**
+ * Standalone alias for `LangsysApp.setWriteGrant` — supply the write grant
+ * after `init()`, e.g. once the user logs in. Not the refresh path: the token
+ * is resolved fresh before every request and never cached, so pass a provider
+ * function and let your auth layer decide when to mint.
+ */
+export const setWriteGrant = (grant: WriteGrantType | undefined): Promise<void> =>
+    _LangsysApp.setWriteGrant(grant);
