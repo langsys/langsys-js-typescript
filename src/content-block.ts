@@ -310,6 +310,34 @@ function _writeKnownContentBlockToCache(category: string, customId: string): voi
     });
 }
 
+/**
+ * IDENTITY CONTRACT — one token per text node. Do not coalesce.
+ *
+ * `generateCustomId` hashes `JSON.stringify([category, tokens])`, so the
+ * ARITY of the token array is load-bearing, not just its concatenated text.
+ * Three adjacent text nodes and one merged node with the same characters are
+ * DIFFERENT content blocks.
+ *
+ * That makes "merge adjacent text nodes before tokenizing" — a `normalize()`
+ * call, or a textual comment-strip that closes the gap between two runs — a
+ * breaking change to a wire value shared by every Langsys SDK, disguised as a
+ * tidy-up. It reviews well, passes any test that asserts on rendered output,
+ * and silently re-keys every catalog in existence. Frameworks routinely split
+ * one authored sentence across several text nodes: React renders
+ * `Hello {name}!` as three, separated by `<!-- -->` comments that survive
+ * hydration.
+ *
+ * The comment handling below is part of the same contract. A comment is
+ * neither `TEXT_NODE` nor `ELEMENT_NODE`, so the walk steps over it
+ * structurally while leaving the text either side as separate nodes. Skip
+ * comments by walking, never by regexing the HTML.
+ *
+ * Pinned by `tests/content-block-identity.test.ts`, which is mutation-checked:
+ * adding `clone.normalize()` to `tokenizeElement` turns three of those tests
+ * red. If you are here because one of them failed, the pinned literal is not
+ * the thing to update — see `generateLegacyCustomId` for what an id change
+ * actually costs.
+ */
 function _walkForTokens(
     liveRoot: HTMLElement,
     cloneNodes: ChildNode[],

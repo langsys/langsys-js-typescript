@@ -169,7 +169,9 @@ Target: ES2021. Module resolution: bundler. Strict TypeScript with `verbatimModu
 
 ## Testing approach
 
-`npm test` runs vitest over `tests/` — 5 files, 67 tests (`api`, `interpolate`, `locale`, `richtext`, `translations`). `npm run test:watch` for watch mode.
+`npm test` runs vitest over `tests/` — 6 files, 74 tests (`api`, `content-block-identity`, `interpolate`, `locale`, `richtext`, `translations`).
+
+`content-block-identity` pins `custom_id` **identity** rather than output: text-node arity, comment skipping, and attribute emission order. Those are wire values shared with every other SDK. It is mutation-checked — adding `clone.normalize()` to `tokenizeElement` turns three of its tests red. A failure there is a breaking change, not a stale expectation; never repin a literal to make it green. `npm run test:watch` for watch mode.
 
 **Cross-SDK behaviour is verified against langsys-php's fixtures, not re-derived here.** `langsys-php/tests/fixtures/` holds the shared contract — `custom-id-reference.json` (12 cases), `tokenizer-reference.json` (17), `interpolation-reference.json` (19). Execute the *published tarball* against them after a release; re-deriving expected values in TypeScript proves nothing, since both sides would share the same mistake. Adding cases is safe; changing an existing expectation is a breaking change to content-block identity in every SDK and goes to the PHP agent first.
 
