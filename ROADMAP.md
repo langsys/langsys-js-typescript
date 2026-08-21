@@ -315,3 +315,52 @@ string-independent, which is what makes the isolated reproduction sound, but
 the catalog behaviour under a real write key is inferred, not measured.
 Harness: `~/DATA/IDE/EWS/affsite-platform/…/scratchpad/svelte-tok/`, with a
 `writeBack` prop toggling the write; they have offered to re-run variants.
+
+### Constraints on the fix, measured by the Svelte binding
+
+Three properties measured against published `0.6.5` in jsdom, verified here
+against `src/translate.ts`. They shape the fix rather than the diagnosis.
+
+**a. The single-token branch is decided once and cannot be re-crossed.**
+`this.tokens` is assigned only at `:132`, inside `tokenizeContent()`, which is
+called only at `:74`. No MutationObserver, no re-tokenize path. So a block that
+starts multi-token and later collapses to one phrase keeps taking the
+multi-token path — `translateUpdate` re-reads `this.tokens.length`, but that
+array is the one captured at construction.
+
+This is a **property to preserve or change deliberately, not incidentally.** If
+a fix introduces re-tokenization, a block that collapses to a single token
+becomes newly eligible for whatever the single-token path does — a behaviour
+change even once the destructive write is gone.
+
+**b. `parseComplete` means two different things, and one of them is
+unrecoverable.** `tokenizeContent()` early-returns when
+`element.childNodes.length` is 0 and sets `parseComplete = true` **without
+tokenizing** (`:119-122`). Nothing re-enters, so that block never registers
+anything. Measured:
+
+```
+client-only mount, {#await} inside <Translate>   phrases looked up: []
+same component, hydrated over SSR html           phrases looked up: ["loading"]
+```
+
+Zero lookups client-only — not the placeholder, not the real content. The
+framework populates the host a tick after the effect runs, and by then the
+block is marked parsed. Worth separating *tokenized* from *gave up before
+tokenizing* independently of the write, because the second state produces no
+symptom at all.
+
+Note the downstream shape: `:78` gates on `parseComplete`, so a gave-up block
+still enters `translateUpdate` on a locale change, with `tokens === []` — which
+takes the `else` branch and calls `translate()` on a subtree that was never
+tokenized or registered.
+
+**c. Scope for the regression test.** Single-token blocks freeze on any
+subsequent framework update; the update mechanism is irrelevant (runes and
+store subscriptions behave identically, client-only and hydrated). Multi-token
+subtrees are unaffected. **`{#await}` reproduces only under hydration**, for
+the reason in (b) — so a client-only-only test would show it passing. Any
+regression test must cover the hydrated path or it certifies nothing.
+
+The Svelte binding has offered to re-run all of these against a release
+candidate before publish; their harness is already set up.
