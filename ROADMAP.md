@@ -221,3 +221,97 @@ on a catalog miss it re-derives under the un-skipped rules before treating a
 block as new, so blocks registered by this SDK still resolve there.
 Registration always uses the corrected derivation. It asserts the divergence as
 a test that fails when we converge, rather than skipping the case.
+
+## DEFECT (live, shipped): the single-token fast path destroys the subtree
+
+**Not started.** Raised 2026-08-21 by `langsys-skill`, from a SvelteKit
+reference deployment. Verified here against `src/translate.ts` and reproduced
+against the published `0.6.5` dist. **This is a live defect in client-only
+apps — no SSR involved.**
+
+`src/translate.ts:109-110` and `:137-138`, both sites identical:
+
+```ts
+if (this.tokens.length === 1) {
+    this.element.innerText = this.applyParams(LangsysApp.Translations.t(this.tokens[0], category));
+}
+```
+
+Assigning `innerText` **replaces every child of the host element.** The fast
+path assumes "one token" means "one text node". It does not.
+
+### Manifestation 1 — attribute-only tokens lose their element entirely
+
+Framework-independent; reproduces in vanilla DOM. Measured:
+
+```
+<Translate><img alt="Alt text"></Translate>
+   tokens = ["Alt text"]  -> fast path -> innerHTML becomes "TRANSLATED"
+
+<Translate><input placeholder="Your name"></Translate>
+   tokens = ["Your name"] -> fast path -> innerHTML becomes "TRANSLATED"
+```
+
+**The `<img>` / `<input>` is gone**, replaced by the translated string as
+text. A single token can come from a translatable attribute (§
+`TRANSLATABLE_ATTRIBUTES`) with no text node anywhere in the subtree.
+
+### Manifestation 2 — framework anchor nodes are destroyed
+
+Svelte 5 marks blocks with `<!--[-->` / `<!--]-->`. Measured:
+
+```
+before: childNodes=3 anchors=2 html="<!--[-->loading<!--]-->"
+after : childNodes=1 anchors=0 html="cargando"
+```
+
+Subsequent framework updates then target nodes no longer in the document. The
+reference deployment measured an `{#await}` block frozen on its pending branch
+permanently — `textContent "loading"` at 50 ms with both promises resolved —
+and the identical run without the write-back reaching resolved content, so the
+write is the cause, not hydration.
+
+`{#await}` guarantees the two preconditions at mount (single-token subtree,
+framework updates it afterwards) because `render()` is synchronous and a
+promise settles no earlier than a microtask. **`{#if}`, `{#each}` and any
+reactive single-token content are the same shape but are NOT measured** —
+flagged rather than claimed.
+
+### Two things that compound it
+
+- **Tokenization happens once, in the constructor.** The only re-entry is
+  `currentlyLoadedLocale.subscribe(...)` → `translateUpdate()`, which does not
+  re-tokenize, and there is no MutationObserver. So `this.tokens` is
+  permanently whatever the first render produced — for `{#await}`, always the
+  pending placeholder. The real content is never registered at all, and every
+  `{#await}` sharing a pending string collapses onto one id.
+- **The write repeats on every locale change.** `translateUpdate` sets
+  `this.lastTranslatedLocale = currentLocale` **only in the `else` branch**
+  (`:113`). The single-token branch never sets it, so the guard at `:105` never
+  short-circuits and the destructive write re-runs on every emission.
+
+### Direction for a fix
+
+Write text without replacing children: locate the single text node the token
+came from and set its `nodeValue`, leaving siblings — including comments the
+framework owns — untouched. **The attribute case must not write text at all**;
+it should update the attribute, which is what the multi-token path already
+does via `translate()`.
+
+The requirement to hold regardless of mechanism: **whatever replaces this must
+be safe to call on a subtree a framework owns**, because the SDK cannot know
+whether it does.
+
+Fixing it does **not** change `custom_id` or the catalog — tokens are computed
+before the branch, and the branch only decides the DOM write and
+phrase-vs-content-block registration. So unlike the other two entries in this
+file, this one carries no migration.
+
+### Not verified
+
+Nobody has run this end-to-end against a live project with a write key — that
+would POST content blocks to a real catalog. The DOM consequence is
+string-independent, which is what makes the isolated reproduction sound, but
+the catalog behaviour under a real write key is inferred, not measured.
+Harness: `~/DATA/IDE/EWS/affsite-platform/…/scratchpad/svelte-tok/`, with a
+`writeBack` prop toggling the write; they have offered to re-run variants.
