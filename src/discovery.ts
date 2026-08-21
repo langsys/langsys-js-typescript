@@ -100,12 +100,21 @@ function markHinted(url: string): void {
  * server normalizes authoritatively too — it has to, since it can't stop an
  * old SDK build from sending raw hrefs.
  *
- * This tracking list matches `HintUrl::normalize()`. The SDK additionally
- * strips credential-shaped params (below), which the server does NOT — that
- * asymmetry is deliberate and safe (normalizing an already-stripped URL is
- * stable), and it exists because the client is the only leg that can stop a
- * credential leaving the browser at all. Revisit if the three-repo contract
- * decision moves the sanitization server-side.
+ * This tracking list matches `HintUrl::normalize()`, and must keep matching it.
+ * NORMALIZATION is the half that has to be identical on every leg: its output
+ * IS the dedup key and the renderer's target, so divergence there hands the
+ * renderer a URL the page never had, or splits one page across two keys.
+ *
+ * The credential rule below is the other half, and it obeys a DIFFERENT
+ * contract. It is a boolean gate on an unmodified URL — a URL that passes is
+ * byte-identical whatever matched, so the legs cannot disagree about bytes,
+ * only about which of them declines. That makes the effective guard the UNION
+ * of every leg's predicate, and makes STRICTER SAFE: a leg that declines more
+ * loses discovery on those pages and corrupts nothing. Do not carry
+ * "never stricter" across from normalization to here. It would forbid the
+ * server from covering a case the SDK misses, which is precisely the
+ * protection that matters most — an SDK build already deployed will never
+ * update, and the server is the only leg standing in front of it.
  */
 /**
  * Every `utm_*` param, matched by prefix rather than enumerated. An enumerated
@@ -136,15 +145,20 @@ const TRACKING_PARAMS = new Set([
  * our own infrastructure, potentially consuming it before the user clicks, or
  * causing the renderer to load a page as that user.
  *
- * Matched as substrings because the risky names are endlessly re-spelled
- * (`token`, `access_token`, `csrfToken`), and false positives are cheap here —
- * losing a query param costs the renderer some page fidelity, while keeping one
- * can cost a credential.
+ * It is also persisted: the server stores the URL it was sent, so a token that
+ * survives this function lands in a database in plaintext.
  *
- * A denylist is incomplete by construction and this is defence in depth, not a
- * guarantee. The durable fix is a decision shared with the server normalizer
- * and the renderer, since the SDK stripping a param buys nothing while the
- * other two legs accept it.
+ * Matched as substrings because the risky names are endlessly re-spelled
+ * (`token`, `access_token`, `csrfToken`), against a name with `-` and `_`
+ * removed so every spelling of one word collapses onto one entry. Without that
+ * normalization `api_key` matched while `api-key` and `x-api-key` sailed
+ * through — the two commonest real spellings of the exact thing this list
+ * exists to catch.
+ *
+ * A match drops the WHOLE report rather than the param; see `normalizeHintUrl`.
+ * Because a matching param is therefore never transmitted, over-inclusion costs
+ * one page's discovery instead of leaking a credential — the cheap direction to
+ * be wrong in, on a denylist that is incomplete by construction.
  */
 const SENSITIVE_PARAM_FRAGMENTS = [
     'token',
@@ -152,27 +166,88 @@ const SENSITIVE_PARAM_FRAGMENTS = [
     'password',
     'passwd',
     'apikey',
-    'api_key',
     'authoriz',
     'session',
     'signature',
     'credential',
     'email',
+    'oauth',
+    'authcode',
+    'accesscode',
 ];
 
 /**
  * Short words that are credentials on their own but appear inside ordinary
- * routing params, so they are matched WHOLE rather than as substrings.
- * `code` is the OAuth authorization code — a genuine single-use credential —
- * while `postcode`, `country_code` and `product_code` are routes; `sig` is a
- * signature while `design` is not; `auth` is a credential while `author` is a
- * blog filter. Substring-matching these cost page fidelity for no safety.
+ * routing params, so they are matched WHOLE rather than as substrings: `sig`
+ * is a signature while `design` is not, `auth` is a credential while `author`
+ * is a blog filter.
+ *
+ * `key` and `code` are deliberately NOT here, and were removed after being
+ * here. Both are ordinary selectors on exactly the content-bearing pages
+ * discovery exists to find — `?key=pricing` picks a tab, `?code=US` a country,
+ * `?code=SAVE20` a coupon — so treating them as credentials made those pages
+ * permanently undiscoverable while every status still reported success. The
+ * OAuth authorization code stays covered by co-occurrence instead of by name;
+ * see `OAUTH_STATE_MARKERS`.
  */
-const SENSITIVE_PARAM_EXACT = new Set(['code', 'sig', 'auth', 'otp', 'nonce', 'key']);
+const SENSITIVE_PARAM_EXACT = new Set(['sig', 'auth', 'otp', 'nonce']);
 
-function isSensitiveParam(lowerKey: string): boolean {
-    if (SENSITIVE_PARAM_EXACT.has(lowerKey)) return true;
-    return SENSITIVE_PARAM_FRAGMENTS.some((f) => lowerKey.includes(f));
+/**
+ * `code` is the OAuth authorization code only when an OAuth state parameter
+ * rides along with it; alone it is a route. Requiring the pair covers the real
+ * callback without destroying `?code=US`.
+ */
+const OAUTH_STATE_MARKERS = new Set(['state', 'sessionstate']);
+
+/**
+ * Separator-insensitive param name: `api-key`, `api_key` and `apiKey` all
+ * become `apikey`. Checked against the routing names this list must leave
+ * alone — `country_code` becomes `countrycode`, matching neither an exact
+ * entry nor a fragment, and `product_code`/`postcode` likewise.
+ */
+function normalizeParamName(key: string): string {
+    return key.toLowerCase().replace(/[-_]/g, '');
+}
+
+/**
+ * Query-style parameter names carried in the FRAGMENT, which `searchParams`
+ * cannot see. Two real shapes hide credentials there:
+ *
+ *   - `#/callback?code=x&state=y` — a hash-router route with a query tail.
+ *   - `#access_token=xyz&token_type=bearer` — the OAuth implicit flow, which
+ *     has no `?` at all. A parser that only looks after a `?` misses this one
+ *     silently, so the whole fragment is treated as the pair list when no `?`
+ *     is present.
+ *
+ * A segment without `=` is not a pair and is ignored — otherwise `#/pricing`,
+ * `#section` and an anchor like `#contact-email` would be read as parameter
+ * names, and the last of those would decline a perfectly ordinary page for a
+ * value that does not exist.
+ */
+function fragmentParamNames(hash: string): string[] {
+    const body = hash.startsWith('#') ? hash.slice(1) : hash;
+    if (!body) return [];
+
+    const q = body.indexOf('?');
+    const pairs = q >= 0 ? body.slice(q + 1) : body;
+
+    const names: string[] = [];
+    for (const pair of pairs.split('&')) {
+        const eq = pair.indexOf('=');
+        if (eq <= 0) continue;
+        const raw = pair.slice(0, eq);
+        try {
+            names.push(decodeURIComponent(raw));
+        } catch {
+            names.push(raw);
+        }
+    }
+    return names;
+}
+
+function isSensitiveParam(normalized: string): boolean {
+    if (SENSITIVE_PARAM_EXACT.has(normalized)) return true;
+    return SENSITIVE_PARAM_FRAGMENTS.some((f) => normalized.includes(f));
 }
 
 export function normalizeHintUrl(href: string): string | null {
@@ -182,6 +257,58 @@ export function normalizeHintUrl(href: string): string | null {
 
         url.protocol = url.protocol.toLowerCase();
         url.hostname = url.hostname.toLowerCase();
+
+        // A credential-shaped param declines the WHOLE report rather than being
+        // stripped from it. Stripping produces a URL that is no longer the page
+        // the miss came from: the renderer visits a different page and registers
+        // what it finds there, and pages distinguished only by that param
+        // collapse onto one dedup key — both silently, with every status
+        // reporting success. Declining is the honest failure. The page goes
+        // undiscovered, and nothing wrong is registered in its name.
+        //
+        // Considered and rejected: redacting the value (a page's
+        // distinguishability by a param IS that param's value, so it cannot be
+        // hidden and preserved at once) and hashing it (identical wrong-render
+        // for route params, unbounded hint cardinality for the per-user
+        // credentials that actually match here, and a byte-exact cross-language
+        // hashing contract to maintain forever). Declining needs no agreement
+        // between the legs at all — each independently arrives at "no report".
+        //
+        // Runs BEFORE any mutation below, so no path can return a URL that was
+        // partially stripped on the way to being declined.
+        //
+        // The fragment half looks redundant on this leg and is not: the
+        // normalization below already drops `#access_token=…`, so a reader may
+        // conclude the browser cannot leak it and delete this check. On the
+        // SERVER leg the same check is the only protection there is — the raw
+        // URL reaches persistence before normalization — so deleting it here
+        // unmirrors the legs and leaves the rule resting on one implementation.
+        const queryNames = [...url.searchParams.keys()];
+        const names = [...queryNames, ...fragmentParamNames(url.hash)];
+        // Everything at or past this index came out of the fragment.
+        const firstFragmentIndex = queryNames.length;
+        const normalized = names.map((name) => normalizeParamName(name));
+        const isOAuthCallback =
+            normalized.includes('code') && normalized.some((n) => OAUTH_STATE_MARKERS.has(n));
+
+        for (const [i, n] of normalized.entries()) {
+            if (isSensitiveParam(n) || (isOAuthCallback && n === 'code')) {
+                // Local only, and the param NAME as the page actually spells it
+                // — never its value. Nothing leaves the browser. Declining in
+                // silence would be undiscoverable by construction: a developer
+                // looking at the one page that never gets translated has no way
+                // to find out why. This is the only answer they can get.
+                // Naming WHERE it was found, not just what: a developer told
+                // "query parameter access_token" while looking at a URL whose
+                // query string is empty learns to distrust the notice, and the
+                // fragment is the half they are least likely to check.
+                const where = i >= firstFragmentIndex ? 'fragment' : 'query string';
+                logger.log(
+                    `Discovery hint declined: the page URL carries a credential-shaped parameter ("${names[i] ?? n}") in its ${where}, so this page is not reported for translation. Remove the parameter from the URL if it is not a credential, or expect this page to need translating by hand.`,
+                );
+                return null;
+            }
+        }
 
         // Fragment-vs-route, not hash-vs-no-hash. `#pricing` is an anchor into
         // the current page and carries no routing information. `#/pricing` is
@@ -197,9 +324,9 @@ export function normalizeHintUrl(href: string): string | null {
         // renderer applies the same rule on its side.
         if (!/^#!?\/.+/.test(url.hash)) url.hash = '';
 
-        for (const key of [...url.searchParams.keys()]) {
+        for (const key of queryNames) {
             const k = key.toLowerCase();
-            if (k.startsWith(TRACKING_PREFIX) || TRACKING_PARAMS.has(k) || isSensitiveParam(k)) {
+            if (k.startsWith(TRACKING_PREFIX) || TRACKING_PARAMS.has(k)) {
                 url.searchParams.delete(key);
             }
         }
