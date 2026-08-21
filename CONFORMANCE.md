@@ -14,8 +14,13 @@ than rebased, and the 838 surface is ported semantically. Two things were delibe
 carried: the MD5 UTF-8 fix and its legacy export, because main already ships both (verified
 bit-identical across 15 vectors, 0 disagreements), and the NUL-byte fix, likewise already
 on main. What *was* carried from that work is the conformance coverage — main fixed the
-hash and left an ASCII-only suite, so the 18 codepoint-constructed vectors here are the
-only non-ASCII coverage the repo has.
+hash and left an ASCII-only suite, so the codepoint-constructed vectors here are the
+only non-ASCII coverage the repo has: **8 strings built with
+`String.fromCodePoint`** — Latin-1, NFC and NFD forms of the same grapheme, CJK, Cyrillic,
+Greek, Hebrew, Arabic and a non-BMP codepoint — exercised across 19 tests. Counting the
+strings rather than the assertions matters: an implementation can pass every ASCII and
+Latin-1 case while being wrong above the BMP, so it is the spread of codepoints that
+carries the coverage, not the number of expectations.
 
 **What surfaced while writing this file.** Three things, each worth more than the row it
 came from. First, grading my own evidence against CONF-2 rather than against my
