@@ -70,6 +70,9 @@ function stopAll(): void {
     live.length = 0;
 }
 
+/** Reach the private backstop handle — the point of these tests is whether it is running. */
+const timerOf = (t: Translations) => (t as unknown as { timer: ReturnType<typeof setInterval> | null }).timer;
+
 /** Reach the private queue — these tests are about bookkeeping, not the public API. */
 const queueOf = (t: Translations) => (t as unknown as { missingTokens: Array<{ token: string }> }).missingTokens;
 
@@ -96,6 +99,84 @@ afterEach(() => {
     stopAll();
     vi.restoreAllMocks();
     removeBrowserShim();
+});
+
+describe('the backstop interval is demand-driven', () => {
+    // It used to start in `setup()` and run for the life of the page whether
+    // or not anything was ever queued. On a phone that is a wakeup every three
+    // seconds forever, for a queue that is almost always empty — and React
+    // Native takes this same client path, since it defines `window`.
+    beforeEach(() => {
+        installBrowserShim();
+        writeEnabled.set(true);
+    });
+
+    it('does not start on setup with nothing queued', () => {
+        const tr = newTranslations();
+        tr.setup({ projectid: 'p', key: 'k', sUserLocale: createSignal('en-US'), baseLocale: 'en' });
+        expect(timerOf(tr)).toBeNull();
+    });
+
+    it('arms on the first miss and disarms once the queue drains', async () => {
+        const tr = newTranslations();
+        tr.setup({ projectid: 'p', key: 'k', sUserLocale: createSignal('en-US'), baseLocale: 'en' });
+
+        tr.t('Backstop phrase', 'UI');
+        expect(timerOf(tr)).not.toBeNull();
+
+        await new Promise((r) => setTimeout(r, 800));
+
+        expect(queueOf(tr)).toHaveLength(0);
+        expect(timerOf(tr)).toBeNull();
+    });
+
+    it('keeps running while a send keeps failing, which is what a backstop is for', async () => {
+        vi.mocked(LangsysAppAPI.createTranslatableItems).mockImplementation(async () => ({
+            status: false,
+            errors: ['nope'],
+        }));
+
+        const tr = newTranslations();
+        tr.setup({ projectid: 'p', key: 'k', sUserLocale: createSignal('en-US'), baseLocale: 'en' });
+
+        tr.t('Undeliverable phrase', 'UI');
+        await new Promise((r) => setTimeout(r, 800));
+
+        expect(queueOf(tr).length).toBeGreaterThan(0);
+        expect(timerOf(tr)).not.toBeNull();
+    });
+
+    it('stops when a read-only session releases the queue', async () => {
+        // The cell none of the other three cover. A miss recorded before
+        // authorization resolves is HELD (capability unknown), which arms the
+        // backstop; authorization then comes back read-only with no grant, and
+        // the release path empties the queue directly. `updateTokens` returns
+        // early on an empty queue — before the disarm — so the interval ticked
+        // every 3s doing nothing for the life of the page. That is precisely
+        // the cost this item claims to remove.
+        writeEnabled.set(undefined);
+        const tr = newTranslations();
+        tr.setup({ projectid: 'p', key: 'k', sUserLocale: createSignal('en-US'), baseLocale: 'en' });
+
+        tr.t('Held before auth', 'UI');
+        expect(queueOf(tr).length).toBeGreaterThan(0);
+        expect(timerOf(tr)).not.toBeNull();
+
+        writeEnabled.set(false);
+
+        expect(queueOf(tr)).toHaveLength(0);
+        expect(timerOf(tr)).toBeNull();
+    });
+
+    it('destroy() stops it', async () => {
+        const tr = newTranslations();
+        tr.setup({ projectid: 'p', key: 'k', sUserLocale: createSignal('en-US'), baseLocale: 'en' });
+        tr.t('Another phrase', 'UI');
+        expect(timerOf(tr)).not.toBeNull();
+
+        tr.destroy();
+        expect(timerOf(tr)).toBeNull();
+    });
 });
 
 describe('flush timing', () => {

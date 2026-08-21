@@ -119,6 +119,50 @@ describe('the ordering constraint, proven by redirecting too late', () => {
     });
 });
 
+describe('the apiUrl init option removes the ordering constraint', () => {
+    it('authorizes against apiUrl and never touches the default host', async () => {
+        // The ordering hazard above exists only because the host is configured
+        // by a separate call that can run too late. An init option cannot be
+        // ordered wrong: it is applied before `validate()`, in the same call
+        // that consumes it.
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+            requested.push(String(url));
+            if (String(url).startsWith(DEFAULT_HOST)) return jsonResponse({ status: false, errors: ['Unauthorized'] }, false);
+            return jsonResponse({ status: true, data: {} });
+        });
+
+        const res = await LangsysApp.init({
+            projectid: 'p',
+            key: 'k',
+            UserLocaleStore: createSignal('en-us'),
+            baseLocale: 'en',
+            apiUrl: DOUBLE,
+        });
+
+        expect(res.status).toBe(true);
+        expect(requested.length).toBeGreaterThan(0);
+        // Not "it eventually used the double" — it never used the default at
+        // all, which is the property the separate call cannot guarantee.
+        expect(requested.every((u) => u.startsWith(DOUBLE))).toBe(true);
+    });
+
+    it('leaves the default host in place when apiUrl is absent', async () => {
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+            requested.push(String(url));
+            return jsonResponse({ status: true, data: {} });
+        });
+
+        await LangsysApp.init({
+            projectid: 'p',
+            key: 'k',
+            UserLocaleStore: createSignal('en-us'),
+            baseLocale: 'en',
+        });
+
+        expect(requested.every((u) => u.startsWith(DEFAULT_HOST))).toBe(true);
+    });
+});
+
 describe('WIRE-1: authorization header', () => {
     it('sends the API key as x-Authorization on every request', async () => {
         const seen: Array<Record<string, string>> = [];

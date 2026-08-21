@@ -13,7 +13,7 @@ import {
 } from './content-block.js';
 import { interpolate, normalizeMarkupPlaceholders, warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
-import { currentlyLoadedLocale, config as configStore } from './stores.js';
+import { currentlyLoadedLocale, sTranslations, config as configStore } from './stores.js';
 import type { Unsubscriber } from './signal.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -61,7 +61,7 @@ export class Translate {
     private isTokenizing = false;
     private lastTranslatedLocale = '';
     private custom_id: string;
-    private unsubscribeLocale: Unsubscriber | null = null;
+    private unsubscribers: Unsubscriber[] = [];
     /** Sorted params key-set already checked, so value-only updates don't re-warn. */
     private checkedParamKeys: string | null = null;
 
@@ -74,9 +74,30 @@ export class Translate {
         void this.tokenizeContent();
 
         // React to locale changes.
-        this.unsubscribeLocale = currentlyLoadedLocale.subscribe((locale) => {
-            if (locale && this.parseComplete) this.translateUpdate(locale);
-        });
+        this.unsubscribers.push(
+            currentlyLoadedLocale.subscribe((locale) => {
+                if (locale && this.parseComplete) this.translateUpdate(locale);
+            })
+        );
+
+        // The catalog changing is a separate event from the locale changing,
+        // and only one of them was observed. A same-locale catalog arrival —
+        // the first fetch completing, a `refresh()`, a token-flush write-back —
+        // replaces `sTranslations` while `currentlyLoadedLocale` keeps its
+        // value, so a locale-only subscription sees nothing and the element
+        // keeps showing its source text with a correct catalog in the store.
+        this.unsubscribers.push(
+            sTranslations.subscribe(() => {
+                if (!this.parseComplete) return;
+                const locale = currentlyLoadedLocale.get();
+                if (!locale) return;
+                // The guard in translateUpdate short-circuits on an unchanged
+                // locale, which is precisely this case — clear it so the walk
+                // actually runs.
+                this.lastTranslatedLocale = '';
+                this.translateUpdate(locale);
+            })
+        );
     }
 
     /** Update interpolation params (e.g. a changed count) and re-render. Mirrors `Phrase.setParams`. */
@@ -92,12 +113,10 @@ export class Translate {
         if (locale) this.translateUpdate(locale);
     }
 
-    /** Stop reacting to locale changes. Safe to call multiple times. */
+    /** Stop reacting to locale and catalog changes. Safe to call multiple times. */
     public destroy() {
-        if (this.unsubscribeLocale) {
-            this.unsubscribeLocale();
-            this.unsubscribeLocale = null;
-        }
+        this.unsubscribers.forEach((unsub) => unsub());
+        this.unsubscribers = [];
     }
 
     private translateUpdate(currentLocale: string) {
@@ -107,11 +126,61 @@ export class Translate {
         const { category = '' } = this.options;
 
         if (this.tokens.length === 1) {
-            this.element.innerText = this.applyParams(LangsysApp.Translations.t(this.tokens[0], category));
+            this.renderSingleToken(category);
+            this.lastTranslatedLocale = currentLocale;
         } else {
             this.translate(Array.from(this.element.childNodes));
             this.lastTranslatedLocale = currentLocale;
         }
+    }
+
+    /**
+     * Render a single-token block.
+     *
+     * Prefers the content-block entry: the token may be stored as a block —
+     * registered under an explicit `custom_id`, by an older SDK, or seeded
+     * server-side — and flat `t()` cannot see inside block entries, so it would
+     * report a miss for content that is present. Falls back to `t()`, which
+     * also queues the miss for registration.
+     */
+    private renderSingleToken(category: string): void {
+        const token = this.tokens[0];
+        const fromBlock = LangsysApp.Translations.lookupContent(category, this.custom_id, token);
+        const resolved = this.applyParams(fromBlock ?? LangsysApp.Translations.t(token, category));
+
+        // A single-token block still commonly wraps its text in markup —
+        // `<Translate><p data-testid="x">text</p></Translate>` is the ordinary
+        // framework-component shape. Assigning `innerText` flattens the whole
+        // subtree, so the wrapper and every hook on it (a test id, an id, a
+        // ref) are destroyed on first render. Writing the one text node leaves
+        // the structure intact.
+        const textNode = this.findSingleTextNode(this.element);
+        if (textNode) textNode.nodeValue = resolved;
+        else this.element.innerText = resolved;
+    }
+
+    /**
+     * The unique non-whitespace text node under `root`, or `null` when there is
+     * none or more than one — in which case the caller falls back to a flat
+     * text render, since there is no single place to put the result.
+     */
+    private findSingleTextNode(root: Node): Node | null {
+        const TEXT_NODE = 3;
+        let found: Node | null = null;
+        const walk = (parent: Node): boolean => {
+            for (const child of Array.from(parent.childNodes)) {
+                if (child.nodeType === TEXT_NODE) {
+                    if ((child.nodeValue ?? '').trim()) {
+                        if (found) return false;
+                        found = child;
+                    }
+                } else if (!walk(child)) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        return walk(root) ? found : null;
     }
 
     private async tokenizeContent(): Promise<boolean> {
@@ -135,7 +204,14 @@ export class Translate {
         const { category = '' } = this.options;
 
         if (this.tokens.length === 1) {
-            this.element.innerText = this.applyParams(LangsysApp.Translations.t(this.tokens[0], category));
+            // Derive the id even for a single token: without one there is
+            // nothing to look the block up BY, so a single-token block stored
+            // in the catalog could never be found and would re-register on
+            // every visit.
+            if (isEmpty(this.custom_id)) {
+                this.custom_id = generateCustomId(category, this.tokens);
+            }
+            this.renderSingleToken(category);
         } else {
             const contentBlock: iContentBlock = {
                 custom_id: '',

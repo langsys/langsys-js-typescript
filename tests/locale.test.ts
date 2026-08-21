@@ -76,17 +76,26 @@ describe('LangsysApp.detectPreferredLocale — CLDR matching', () => {
     });
 
     it('never serves a Simplified catalog to a Traditional reader', () => {
-        // No script-compatible candidate → falls through to the user's own
-        // (canonicalized) first preference rather than mismatching scripts.
-        expect(LangsysApp.detectPreferredLocale('zh-Hant-TW', ['zh-Hans', 'zh'])).toBe('zh-hant-tw');
+        // The guarantee is unchanged and now stronger. It used to fall through
+        // to the user's own first preference, which is script-safe but is not
+        // in the supported list — so the caller fetched a `zh-hant-tw` catalog
+        // that does not exist. Returning false hands the decision back, and
+        // their `|| 'en-us'` default is a catalog they actually have.
+        expect(LangsysApp.detectPreferredLocale('zh-Hant-TW', ['zh-Hans', 'zh'])).toBe(false);
     });
 
     it('respects Accept-Language q-value ordering', () => {
         expect(LangsysApp.detectPreferredLocale('fr;q=0.8, en-US;q=0.9', ['fr-FR', 'en-US'])).toBe('en-us');
     });
 
-    it('returns the normalised first preference when nothing is supported', () => {
-        expect(LangsysApp.detectPreferredLocale('pt-br', ['ja-JP'])).toBe('pt-br');
+    it('returns false when nothing in the supported list matches', () => {
+        // Contract change, deliberate: this returned 'pt-br' — a locale the
+        // caller had just said it does not support. The documented
+        // `detectPreferredLocale(header, supported) || 'en-us'` idiom could
+        // therefore never reach its default.
+        expect(LangsysApp.detectPreferredLocale('pt-br', ['ja-JP'])).toBe(false);
+        // Without a supported list the first-preference behaviour is unchanged.
+        expect(LangsysApp.detectPreferredLocale('pt-br')).toBe('pt-br');
     });
 });
 

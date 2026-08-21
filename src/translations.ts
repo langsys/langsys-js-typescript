@@ -31,6 +31,9 @@ const AUTO_SSR_FLUSH_THRESHOLD = 5;
  */
 const CLIENT_FLUSH_DEBOUNCE_MS = 400;
 
+/** Backstop period. Only runs while something is queued — see `ensureBackstop`. */
+const BACKSTOP_INTERVAL_MS = 3000;
+
 /**
  * Exponential backoff for a failing registration endpoint.
  *
@@ -110,6 +113,11 @@ export class Translations {
                 // that will never drain.
                 this.debug.log(`Releasing ${this.missingTokens.length} held tokens (session is read-only)`);
                 this.missingTokens = [];
+                // Nothing will ever be queued again on this session, so the
+                // backstop has nothing left to back up. Without this it keeps
+                // ticking every 3s for the life of the page: `updateTokens`
+                // returns early on an empty queue, before reaching the disarm.
+                this.stopBackstop();
             }
         });
 
@@ -125,6 +133,23 @@ export class Translations {
      */
     public ready(): Promise<void> {
         return this.readyPromise;
+    }
+
+    /**
+     * Resolve `ready()` without a catalog, for the paths where none is coming:
+     * `init` refused the config, or authorization failed.
+     *
+     * `Phrase` and `Translate` both await this gate before rendering, so
+     * leaving it pending on those paths is not a degraded mode — it is a
+     * permanent blank render, with no error, on the commonest misconfigurations
+     * there are. Settling makes them fall back to their source text, which is
+     * what an SDK that cannot reach its backend should show.
+     *
+     * Idempotent. A later successful load still updates the stores and
+     * re-renders every subscriber.
+     */
+    public settle(): void {
+        this.readyResolve();
     }
 
     /** Current translation function. Reads fresh state on every call. */
@@ -403,7 +428,44 @@ export class Translations {
                     void this.updateTokens();
                 }, CLIENT_FLUSH_DEBOUNCE_MS);
             }
+
+            // Arm the backstop only now that something is actually queued.
+            this.ensureBackstop();
         }
+    }
+
+    /**
+     * Start the backstop interval if it isn't already running.
+     *
+     * Demand-driven deliberately. It used to start in `setup()` and run for the
+     * life of the page whether or not anything was ever queued — a wakeup every
+     * three seconds forever, for a queue that is empty almost all of the time.
+     * That is a battery and background-work cost on mobile, and React Native
+     * takes this same branch because it defines `window`.
+     *
+     * The tick disarms itself once the queue drains; the next miss re-arms it
+     * through `scheduleTokenFlush`. While sends keep failing the queue stays
+     * non-empty and the interval keeps running, which is the case a backstop
+     * exists for.
+     */
+    private ensureBackstop(): void {
+        if (this.timer) return;
+        this.timer = setInterval(() => void this.updateTokens(), BACKSTOP_INTERVAL_MS);
+        this.debug.log('UPDATE TOKEN INTERVAL', this.timer);
+    }
+
+    private stopBackstop(): void {
+        if (!this.timer) return;
+        clearInterval(this.timer);
+        this.timer = null;
+    }
+
+    /**
+     * Stop background work. Queued tokens stay queued, and further discovery
+     * re-arms the backstop — this releases the timer, it does not discard work.
+     */
+    public destroy(): void {
+        this.stopBackstop();
     }
 
     /**
@@ -475,10 +537,12 @@ export class Translations {
             this.installTeardownFlush();
 
             // Backstop only — the debounce in scheduleTokenFlush is what
-            // actually sends. This catches anything a failed send left queued.
-            if (this.timer) clearInterval(this.timer);
-            this.timer = setInterval(() => this.updateTokens(), 3000);
-            this.debug.log('UPDATE TOKEN INTERVAL', this.timer);
+            // actually sends. This catches anything a failed send left queued,
+            // and runs only while there IS something queued: a fresh setup
+            // re-arms it iff a backlog survived (an SSR handoff, or a previous
+            // setup on this instance).
+            this.stopBackstop();
+            if (this.missingTokens.length) this.ensureBackstop();
         } else {
             const strategy = this.config.ssrTokenStrategy || 'client';
             this.debug.log(`SSR environment detected - using '${strategy}' token strategy`);
@@ -575,7 +639,14 @@ export class Translations {
         const isTeardown = keepalive;
 
         if (!isTeardown && this.updateInFlight) return false;
-        if (!this.missingTokens.length) return false;
+        if (!this.missingTokens.length) {
+            // Disarm here as well as at the sites that empty the queue. Those
+            // are the immediate path; this is the structural one, so a future
+            // path that empties the queue without knowing about the backstop
+            // cannot leave it spinning.
+            this.stopBackstop();
+            return false;
+        }
         if (!isTeardown && this.retryNotBefore && Date.now() < this.retryNotBefore) return false;
         if (!this.config.projectid || !this.config.key) return false;
         if (!this.canWrite()) {
@@ -703,6 +774,11 @@ export class Translations {
             // Guarded on an actual successful drain, so a persistently failing
             // send retries on the normal cadence rather than spinning here.
             if (drained && this.missingTokens.length) this.scheduleTokenFlush();
+
+            // Nothing left to back off for. Placed here rather than on the tick
+            // so the debounced send disarms it too — otherwise the interval
+            // outlives its queue by up to one full period, every time.
+            if (!this.missingTokens.length) this.stopBackstop();
         }
     }
 

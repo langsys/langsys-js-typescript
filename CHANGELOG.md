@@ -8,9 +8,41 @@
 
   CLDR handling is unaffected. `Intl` canonicalizes its own input, so `new Intl.Locale('zh-tw').maximize()` still yields `zh-Hant-TW` — a `zh-Hant` reader still never receives a `zh-Hans` catalog.
 
+- **`detectPreferredLocale` returns `false` when nothing in `supportedLocales` matches.** It previously returned the user's own first preference — a locale the caller had just said it does not support — so the documented `detectPreferredLocale(header, supported) || 'en-us'` idiom could never reach its default, and the app fetched a catalog that does not exist. Callers already using the `||` idiom get the behaviour it always described. Callers relying on the old return value need an explicit fallback.
+
+- **The persisted catalog moved from the `translations` storage key to `langsys:translations`.** A bare `translations` key in a host app's `localStorage` is a collision waiting to happen, and a collision corrupts a catalog rather than failing. The old key is read once on first load so existing caches migrate rather than being discarded, and is never written back — a downgrade still finds its cache where it left it.
+
 ### Added
 
+- **`apiUrl` init option.** Points the SDK at a different API host from inside `init()`, applied before authorization. `LangsysAppAPI.setBaseUrl()` still works but has to run *before* `init()`, and running it after leaves the SDK permanently inert with no error — the option removes the ordering rather than documenting it.
+
+- **`setPersistStorage(storage)` and the `PersistStorage` type.** Injects a synchronous storage backend for environments without a usable `localStorage` — React Native, workers. Signals created before the injection are re-hydrated from it, which is the point: the catalog store is built at module load, long before an app can hand us MMKV.
+
+- **Debug notice when an interpolation argument is defaulted.** A gendered target locale can introduce an argument the source phrase never had (`{name}` → `{name_gender, select, …}`), which the SDK already recovered from silently. Silence is also what made it undiscoverable — the argument appears nowhere in the source. Names the argument and the locale, once per template+locale, debug only.
+
 - **Server-gated writes and automatic content discovery** (ticket 838). Write capability is decided per session by the server via `write_enabled` rather than inferred from the key type, since a public key shipped in browser JS is extractable. Sessions that cannot write report the page URL instead, so the discovery renderer can visit it from an allow-listed address and register what it finds. Adds `writeEnabled` and `autoDiscovery` signals, `writeGrant` / `setWriteGrant` for login-walled apps, and a `./browser` build for pages with no bundler.
+
+### Fixed
+
+- **`Phrase` and `Translate` no longer hang forever when no catalog can arrive.** Both await an internal ready gate before rendering, and nothing resolved it when `init()` refused the config (missing `projectid`, `key`, or `UserLocaleStore`) or when authorization failed. The result was a permanent blank render with no error, on the commonest misconfigurations there are. They now fall back to source text.
+
+- **`Translate` re-renders when the catalog changes, not only when the locale does.** A same-locale catalog arrival — the first fetch completing, a `refresh()`, a token-flush write-back — replaces the store without changing the locale, so the element kept showing source text with a correct catalog sitting in memory.
+
+- **`Translate` no longer destroys the markup inside single-token content.** It replaced the element's entire contents with one text node, so a `data-testid`, `id`, or ref on a child element stopped existing after mount. It now writes the one text node and leaves the structure alone. Single-token blocks are also resolved against the content-block catalog, which flat `t()` cannot see into.
+
+- **The token-flush backstop interval only runs while something is queued.** It previously started at setup and ran for the life of the page whether or not anything was ever queued — a wakeup every three seconds forever, and React Native takes the same branch because it defines `window`.
+
+- **`getLocaleName` says which of its two failures happened.** Calling it before the locale data is loaded and asking for a locale that isn't there both return `''`, and both reported a failed match — sending developers to check a locale code that was fine.
+
+- **Debug logging is readable in React Native.** RN defines `window` but cannot render `%c`, so every line came out as a literal `%cLangsys Debug` followed by an unrendered CSS string.
+
+- **`persist` works in React Native.** RN defines `window` but not `window.localStorage`, so the catalog silently ran in memory and was re-fetched on every cold start. Detection is now by probe rather than by `typeof window`.
+
+- **Discovery hints no longer strip credential-shaped query parameters — they decline the whole report.** Stripping produced a URL that was no longer the page the miss came from, so the renderer registered content from a different page, and pages distinguished only by that parameter collapsed onto one key. `key` and `code` are also no longer treated as credentials: `?key=pricing` and `?code=US` are ordinary selectors on exactly the pages discovery exists to find. Parameter matching is now separator-insensitive, so `api-key` and `x-api-key` are caught alongside `api_key`.
+
+- **`src/interpolate.ts` is a text file again.** It carried one literal NUL byte, which made git classify the whole file as binary — no diff, no blame, no three-way merge — so every change to it was invisible to review while still shipping. No behaviour change: the separator is the same character, written as an escape.
+
+Several of the fixes above were found by Gianluca Capra (PRs #2 and #3, and `e1e9e83` for the NUL byte — the first fix, and the one carried here); the implementations here are re-derived against the current base.
 
 ## 0.6.5 - 2026-08-16
 
