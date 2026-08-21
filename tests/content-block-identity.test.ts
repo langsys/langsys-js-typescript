@@ -123,10 +123,28 @@ describe('custom_id identity: attribute emission order', () => {
         expect(tokens).toEqual(['Alt text', 'Title text', 'child']);
     });
 
+    // POSITIVE CONTROL for the two exclusion tests below. They assert an
+    // ABSENCE, and an absence assertion passes trivially if the thing was
+    // never present: "exclusion drops alt" and "alt is never harvested at all"
+    // are indistinguishable without this. It also fails loudly if `alt` ever
+    // leaves TRANSLATABLE_ATTRIBUTES, which would otherwise silently hollow
+    // out both tests while leaving them green.
+    it('harvests alt in the first place (control for the exclusion tests)', () => {
+        const el = span((e) => (e.innerHTML = '<img alt="ALTTEXT">'));
+        expect(tokenizeElement(el).tokens).toEqual(['ALTTEXT']);
+    });
+
     it('drops attributes of an excluded subtree along with its text', () => {
         // The exclusion check returns BEFORE attribute harvesting, so
         // translate="no" on an element removes its alt as well as its children.
-        const el = span((e) => (e.innerHTML = '<img translate="no" alt="Skipped"><b>kept</b>'));
-        expect(tokenizeElement(el).tokens).toEqual(['kept']);
+        const el = span((e) => (e.innerHTML = '<p>Keep <img translate="no" alt="ALTTEXT"> end</p>'));
+        expect(tokenizeElement(el).tokens).toEqual(['Keep', 'end']);
+    });
+
+    it('drops them when the exclusion is on an ancestor, not the element', () => {
+        const el = span(
+            (e) => (e.innerHTML = '<p>Keep <span translate="no"><img alt="ALTTEXT"></span> end</p>'),
+        );
+        expect(tokenizeElement(el).tokens).toEqual(['Keep', 'end']);
     });
 });
