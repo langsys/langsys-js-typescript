@@ -364,3 +364,56 @@ regression test must cover the hydrated path or it certifies nothing.
 
 The Svelte binding has offered to re-run all of these against a release
 candidate before publish; their harness is already set up.
+
+### The third state, traced — no line sets `parseComplete` false
+
+The Svelte binding measured a live instance resting at
+`parseComplete=false tokens=[] element.childNodes=6` and correctly declined to
+guess the line. There isn't one. **`tokenizeContent()` never reaches its
+assignment**, because it is suspended at an `await`.
+
+Path for a non-empty host that tokenizes to nothing (Svelte anchor comments
+are `childNodes`, so the `:119` empty guard does not fire):
+
+```
+:131  tokenizeElement()            -> tokens = []   (comments only)
+:137  this.tokens.length === 1     -> false
+:145  await this.handleContentBlock(contentBlock)
+        -> handleContentBlock: await LangsysApp.Translations.ready()
+:150  this.parseComplete = true    <- NEVER REACHED while ready() is pending
+```
+
+`ready()` resolves in exactly four places (`translations.ts:270`, `:288`,
+`:399`, `:422`), all inside catalog-load paths. `Translations`' constructor
+only calls `setup()` when `config.key && config.projectid`, so with no
+completed `init()` there is no fetch and nothing ever resolves it. Measured:
+
+```
+ready() without init():  STILL PENDING after 300ms
+```
+
+Two consequences:
+
+- **This is not specific to zero tokens.** *Any* multi-token block is suspended
+  at that same `await` between mount and the first catalog fetch settling. In a
+  healthy app that window is short; if `ready()` never resolves it is
+  permanent.
+- **While suspended, the block is deaf.** The constructor's locale subscriber
+  is gated `if (locale && this.parseComplete)` (`:78`), so the instance never
+  re-enters — not on locale change, not after the catalog arrives. Inert for
+  the lifetime of the page.
+
+So the boolean has **three** states, and the third arrives from a direction the
+first two don't suggest: *tokenized*, *gave up on an empty host* (`:120`), and
+*suspended mid-tokenize and never resumed*. A fix that only separates the first
+two leaves this one inert.
+
+**What the replacement needs to distinguish** — the Svelte binding's framing,
+which is the right one: *nothing to tokenize yet* (recoverable, retry) from
+*tokenized and found nothing* (a real answer, don't retry). Neither is the same
+as *still waiting on the catalog*.
+
+**Regression test, per their suggestion:** alongside hydrated `{#await}`, run
+client-only `{#await}` and assert the block is **reachable** afterwards — that
+it responds to a locale change at all. That assertion fails today and would
+have caught this.
