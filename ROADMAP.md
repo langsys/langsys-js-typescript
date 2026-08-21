@@ -154,3 +154,70 @@ Raised by the `langsys-skill` agent during the `langsys-js-server` spec review
 the lists differed. Decided by Darryl the same day. Mechanical claims
 re-verified here against the tagged PHP release; the migration question was
 deliberately left open rather than answered by whoever noticed it.
+
+## BACKLOG: skip `<script>` / `<style>` content when tokenizing
+
+**Not started.** Raised 2026-08-21 by the `langsys-js-server` agent, originally
+measured by the `langsys-php` owner on their side. Reproduced here against the
+published `0.6.5` dist:
+
+```
+<p>Keep</p><script>window.dataLayer.push({event:"view",sku:"ABC-123"})</script>
+   -> ["Keep", "window.dataLayer.push({event:\"view\",sku:\"ABC-123\"})"]
+
+<p>Keep</p><style>.plan{color:#fff}</style>
+   -> ["Keep", ".plan{color:#fff}"]
+```
+
+`_walkForTokens` has no element skip list. A `<script>` is not excluded, is not
+phrase-marked, and has a text-node child — so its child becomes a token like
+any other. With a write key that content is **registered permanently into the
+shared catalog**: translators are shown executable JS and CSS, and registered
+phrases cannot be withdrawn.
+
+This is a product harm on top of an id problem, which is what distinguishes it
+from the attribute convergence — that one fragments catalogs, this one puts
+garbage in them irreversibly.
+
+### Scope: `script` and `style`. NOT `noscript`.
+
+`<noscript>` content **is** user-visible — it renders whenever scripting is
+off, and "Enable JavaScript to continue" is exactly the kind of string that
+should be translated. It currently tokenizes (`["Keep","Enable JS"]`,
+measured) and should keep doing so. A skip list that sweeps it in because it
+looks technical would be a regression disguised as a fix.
+
+### `<template>` is a parser accident, not a skip
+
+Measured: `<template><b>Hidden</b></template>` yields **no** tokens — but not
+because anything skips it. `HTMLTemplateElement.content` lives in a separate
+`DocumentFragment`, so `childNodes` is empty and the walk finds nothing.
+
+**A server-side implementation parsing an HTML string may not reproduce that**,
+and would harvest template contents that the DOM path silently ignores. So
+`template` belongs in an explicit skip list precisely *because* the current
+behaviour is accidental — that makes it intentional and portable rather than
+dependent on a DOM quirk no fixture would think to pin.
+
+### Blocked on the same question as the attribute convergence
+
+Skipping changes `tokens[]`, therefore `custom_id`, for every existing block
+containing a `<script>` or `<style>`. Same migration decision: second
+derivation vs. one-time rebase, priced by a count that is queryable from the
+Translation Manager. See the attribute entry above — the two changes should
+almost certainly migrate **together**, as one re-key rather than two.
+
+`langsys-php`'s `tokenizer-reference.json` case [12] currently pins the
+un-skipped output (`["Keep","var a=1;",".a{}"]`) as the contract, so the shared
+fixture has to change in step. That makes this a cross-SDK coordination, not a
+local fix.
+
+### Meanwhile, `langsys-js-server` diverges deliberately
+
+That package skips `script`/`style`/`noscript`/`template` and does **not**
+implement bug-compatibility, at the PHP owner's request. It mitigates the
+fragmentation rather than accepting it: its primary id uses the skip list, and
+on a catalog miss it re-derives under the un-skipped rules before treating a
+block as new, so blocks registered by this SDK still resolve there.
+Registration always uses the corrected derivation. It asserts the divergence as
+a test that fails when we converge, rather than skipping the case.
