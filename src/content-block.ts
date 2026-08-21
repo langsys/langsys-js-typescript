@@ -322,10 +322,23 @@ function _writeKnownContentBlockToCache(category: string, customId: string): voi
  * call, or a textual comment-strip that closes the gap between two runs — a
  * breaking change to a wire value shared by every Langsys SDK, disguised as a
  * tidy-up. It reviews well, passes any test that asserts on rendered output,
- * and silently re-keys every catalog in existence. Frameworks routinely split
- * one authored sentence across several text nodes: React renders
- * `Hello {name}!` as three, separated by `<!-- -->` comments that survive
- * hydration.
+ * and silently re-keys every catalog in existence.
+ *
+ * Frameworks routinely split one authored sentence across several text nodes,
+ * and — this is the part that makes the contract unconditional — **each one
+ * gets there by a different route.** React renders `Hello {name}!` as three
+ * nodes separated by `<!-- -->` comments that survive hydration (measured
+ * here, `tests/content-block-identity.test.ts`). Svelte does NOT split on
+ * interpolation — a contiguous run compiles to one text node updated via
+ * `set_text` — but reaches the same exposure through block constructs, where
+ * `{#each}` splits a run into separate nodes (measured by the Svelte
+ * binding, not re-run here). Vue's mechanism is not known.
+ *
+ * So do not scope this contract to a framework, and do not conclude from one
+ * binding's behaviour that coalescing is safe "for the others". Checking only
+ * interpolation in Svelte would say Svelte is unaffected; checking `{#each}`
+ * says otherwise. The invariant is about the token array, not about any
+ * renderer.
  *
  * The comment handling below is part of the same contract. A comment is
  * neither `TEXT_NODE` nor `ELEMENT_NODE`, so the walk steps over it
