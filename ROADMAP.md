@@ -28,6 +28,30 @@ orphaned catalogs once already.
 Today, any element carrying one of the twelve tokenizes differently in JS than
 in PHP. That divergence is live, not prospective.
 
+### The omission was deliberate, and the reason it no longer holds
+
+`src/content-block.ts:39-47` documents the current 15 as a considered choice,
+not an oversight:
+
+> Framework-convention attributes (Bootstrap `data-bs-*`, Rails
+> `data-confirm`, and similar) are deliberately NOT mirrored: they're written
+> by server-rendered templates, and **a JS app renders those strings through
+> its own components instead.**
+
+That rationale was sound for a client-only JS family, and it is exactly what
+`langsys-js-server` invalidates. A JS package that renders HTML server-side is
+the case the comment excludes. So converging on 27 is not overriding a
+considered decision carelessly — it is a decision whose premise expired.
+
+**When the twelve land, that comment must be rewritten, not extended.** Left
+as-is it will read as documenting a deliberate omission that no longer exists,
+which is worse than no comment: the next maintainer would take it as a reason
+not to touch the list.
+
+The same paragraph's argument for the *shared* 15 is unaffected and should
+survive the rewrite — an attribute only one side harvests is a coverage hole,
+not a conflict.
+
 ### The twelve, in canonical order
 
 They append to the existing 15 — **this order is load-bearing**, see below.
