@@ -10,11 +10,26 @@ const STYLES = {
     error: 'display:inline-block;background:#e0005a;color:#fff;font-weight:bold;padding:3px 7px;border-radius:3px',
 };
 
-const supportsStyle = typeof window !== 'undefined';
+/**
+ * React Native defines `window`, so a bare `typeof window` check treats it as a
+ * browser — and its console does not render `%c`, so every line comes out as a
+ * literal "%cLangsys Debug" followed by an unrendered CSS string. Nothing
+ * breaks, so nothing reports it; it just looks broken forever.
+ * `navigator.product === 'ReactNative'` is the standard discriminator.
+ *
+ * Evaluated per call rather than once at module load: this module is commonly
+ * imported before a host finishes installing its globals, and a value latched
+ * at import time cannot be corrected afterwards — nor observed by a test,
+ * which is how the browser branch would go unverified.
+ */
+function supportsStyle(): boolean {
+    if (typeof window === 'undefined') return false;
+    return !(typeof navigator !== 'undefined' && navigator.product === 'ReactNative');
+}
 
 function emit(level: 'log' | 'warn' | 'error', label: string, args: unknown[]) {
     // Browsers render %c style. Node just gets the plain string.
-    if (supportsStyle) {
+    if (supportsStyle()) {
         // eslint-disable-next-line no-console
         console[level](`%c${label}`, STYLES[level], ...args);
     } else {

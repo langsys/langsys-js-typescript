@@ -192,24 +192,36 @@ class LangsysAppClass {
             });
         }
 
+        // Every early return below settles the ready() gate. No catalog is
+        // coming on these paths, and `Phrase`/`Translate` await that gate
+        // before rendering — so leaving it pending renders nothing, forever,
+        // with no error, on the commonest misconfigurations there are.
         if (!projectid) {
             this.debug.error('LangsysApp.init missing projectid in configuration object!');
+            this.Translations.settle();
             return { status: false, errors: ['Missing projectid'] };
         }
         if (!key) {
             this.debug.error('LangsysApp.init missing API key in configuration object!');
+            this.Translations.settle();
             return { status: false, errors: ['Missing API key'] };
         }
         if (!UserLocaleStore?.subscribe || typeof UserLocaleStore.get !== 'function') {
             this.debug.error(
                 "LangsysApp.init missing UserLocaleStore — pass any object satisfying LocaleSource (get + subscribe). createSignal('en-US') works if you have nothing of your own."
             );
+            this.Translations.settle();
             return { status: false, errors: ['Missing UserLocaleStore'] };
         }
 
-        // BCP 47 canonical form (`en-US`, `zh-Hant-TW`) — the CLDR-compliant
-        // backend and every internal cache key use this as the identity.
+        // Lowercase `xx-yy` (`en-us`, `zh-hant-tw`) — the form the backend
+        // stores and every internal cache key uses as the identity.
         baseLocale = canonicalizeLocale(baseLocale);
+
+        // Before `validate()`, deliberately: authorizing against the default
+        // host and then switching is the exact failure `setBaseUrl`-after-init
+        // produces, and it is silent.
+        if (initConfig.apiUrl) LangsysAppAPI.setBaseUrl(initConfig.apiUrl);
 
         if (!emulateFailureToLoad) {
             this.config = {
@@ -245,6 +257,12 @@ class LangsysAppClass {
             // safe sibling of `key_type` inside it (unlike `/translations`,
             // where `data` IS the category map and it must be envelope-level).
             this.applyAuthorization(validateResponse.data, 'init');
+        } else {
+            // Authorization failed — bad key, wrong host, unreachable server.
+            // The locale subscription installed below short-circuits on
+            // `!validateResponse.status`, so no catalog will ever load and
+            // nothing else would resolve the gate.
+            this.Translations.settle();
         }
 
         // Seed the translations store if initial data is provided (SSR handoff).
@@ -399,18 +417,41 @@ class LangsysAppClass {
         return this.getLocaleName(forLocale, shortName, locale);
     }
 
+    /**
+     * Synchronous locale-name lookup against the in-memory locales cache.
+     *
+     * The cache is only populated once `await getLocalesData(inLocale)` — or
+     * any `getLocaleNameWithLookup` call — has settled for that display locale.
+     * Called before then this returns `''`, the same value a genuinely unknown
+     * locale returns, so the two cases are told apart by the warning rather
+     * than by the return value. Use `getLocaleNameWithLookup` when you can
+     * await; it loads the data first.
+     */
     public getLocaleName(forLocale: string, shortName = false, inLocale?: string): string {
         const locale = this.resolveLocale(inLocale);
-        const target = canonicalizeLocale(forLocale).toLowerCase();
+
+        // Distinguished from a lookup miss deliberately. Both return '', and
+        // the old warning reported both as a failed match — sending developers
+        // to check a locale code that was fine, when the real problem was that
+        // nothing had been loaded to check it against.
+        if (!this.locales[locale]?.length) {
+            this.debug.warn(
+                `getLocaleName('${forLocale}') called before locale data for '${locale}' was loaded — ` +
+                    `run \`await getLocalesData('${locale}')\` first, or use \`await getLocaleNameWithLookup(...)\` instead.`
+            );
+            return '';
+        }
+
+        const target = canonicalizeLocale(forLocale);
         let name = '';
-        this.locales[locale]?.every((loc) => {
+        this.locales[locale].every((loc) => {
             if (loc.code.toLowerCase() === target) {
                 name = shortName ? loc.lang_name : loc.locale_name;
                 return false;
             }
             return true;
         });
-        if (!name) this.debug.warn('getLocaleNameWithLookup failed to match', forLocale);
+        if (!name) this.debug.warn('getLocaleName found no entry matching', forLocale);
         return name;
     }
 
@@ -424,6 +465,16 @@ class LangsysAppClass {
      *
      * - In browsers, uses `navigator.languages` with fallback to `navigator.language`.
      * - In SSR environments, parses the `Accept-Language` header.
+     *
+     * With `supportedLocales`, returns the best CLDR-aware match from that list
+     * or `false` when none of the user's preferences are supported — so the
+     * documented `detectPreferredLocale(header, supported) || 'en-us'` idiom
+     * actually reaches your default. Returning the user's own unsupported
+     * locale instead would send the app to fetch a catalog that does not
+     * exist, and the caller's `||` would never fire.
+     *
+     * Without `supportedLocales`, returns the user's first preference in
+     * canonical form, or `false` when no preference is detectable.
      */
     public detectPreferredLocale(
         acceptLanguageHeader?: string | null,
@@ -433,8 +484,7 @@ class LangsysAppClass {
         if (userLocales.length === 0) return false;
 
         if (supportedLocales && supportedLocales.length > 0) {
-            const bestMatch = this.findBestLocaleMatch(userLocales, supportedLocales);
-            if (bestMatch) return bestMatch;
+            return this.findBestLocaleMatch(userLocales, supportedLocales) ?? false;
         }
 
         return canonicalizeLocale(userLocales[0]);
@@ -510,8 +560,8 @@ class LangsysAppClass {
 
     /**
      * Resolve the effective locale for a data-fetching helper: explicit
-     * argument, else the user's current locale, else the base locale —
-     * always in BCP 47 canonical form so cache keys and API routes agree.
+     * argument, else the user's current locale, else the base locale — always
+     * in the SDK's lowercase `xx-yy` form so cache keys and API routes agree.
      */
     private resolveLocale(inLocale?: string): string {
         return canonicalizeLocale(inLocale || this.config.sUserLocale.get() || this.config.baseLocale);

@@ -7,13 +7,24 @@
 | **specVersion** | 8 |
 | **Spec revision read** | round-2 tree (GATE-8, WIRE-3 v4, HINT-6 dispatch/dedup split) |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 152 tests, `npm test` |
+| **Suite** | 220 tests, `npm test` |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
-than rebased, and the 838 surface is ported semantically. Two things were deliberately NOT
+than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
 carried: the MD5 UTF-8 fix and its legacy export, because main already ships both (verified
-bit-identical across 15 vectors, 0 disagreements), and the NUL-byte fix, likewise already
-on main. What *was* carried from that work is the conformance coverage — main fixed the
+bit-identical across 15 vectors, 0 disagreements).
+
+**Correction.** This paragraph also claimed the NUL-byte fix was already on main. It was
+not, and the claim was checked with a measurement that had no positive control — the same
+error this document exists to catch. `src/interpolate.ts` carried one literal `0x00` at
+`texts.join(…)` on every commit from `origin/main` through this branch, which makes git
+classify the file as binary: no diff, no blame, no three-way merge. Every change to that
+file, including this branch's own, was invisible to review while still shipping. The fix is
+Gianluca Capra's (`e1e9e83`, 2026-08-10) — written as the `'\0'` escape — the first fix,
+and the one carried here. It was not the only one: `671dd94` (2026-08-11) fixed the same
+byte independently on the pre-reland branch and was lost with it. Both blob-verified
+(parent carries the NUL, commit does not). It is now carried here with a comment saying why
+the escape must stay an escape. What *was* carried from that work is the conformance coverage — main fixed the
 hash and left an ASCII-only suite, so the codepoint-constructed vectors here are the
 only non-ASCII coverage the repo has: **8 strings built with
 `String.fromCodePoint`** — Latin-1, NFC and NFD forms of the same grapheme, CJK, Cyrillic,
@@ -215,6 +226,14 @@ that matters — the two halves must never ship apart.
 8. **CONF-3 — runtime rules are not proven by mutation.** The `setWriteGrant` tests would
    have caught the original inert version, but I have not verified that by reverting the
    fix and watching them fail.
+
+   One place this was done, recorded because the result was counter-intuitive: the logger's
+   React-Native detection is covered by a pair of tests, and under mutation only the BROWSER
+   one kills a latched implementation. The RN test passes either way — the test environment
+   is `node`, so `window` is undefined at import and a latched check yields plain text for
+   the wrong reason. The test that looks like it verifies the fix does not; the control does.
+   A negative result is only evidence once the search has been shown able to return a
+   positive, and which half of a pair carries that proof is not always the obvious one.
 9. **REG-12 — a redundant 32-hex guard remains** in the queue path. The primary mechanism
    is already structural, so the guard can only ever be wrong (it would reject a
    legitimate 32-hex phrase). Removing it needs confirmation that a content-block id never

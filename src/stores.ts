@@ -10,7 +10,11 @@ const initialTranslations: iCategories = {
     },
 };
 
-export const sTranslations = persist<iCategories>('translations', initialTranslations);
+// Namespaced: a bare 'translations' key in a host app's localStorage is a
+// collision waiting to happen, and the collision corrupts a catalog rather than
+// failing. The legacy key is read once so existing caches migrate instead of
+// being silently discarded on upgrade.
+export const sTranslations = persist<iCategories>('langsys:translations', initialTranslations, 'translations');
 
 export const currentlyLoadedLocale = createSignal<string>('');
 

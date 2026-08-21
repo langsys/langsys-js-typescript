@@ -60,15 +60,18 @@ executes.
 ### Pointing at a different API host
 
 The SDK talks to `https://api.langsys.dev/api` by default. To run it against a
-local instance, a staging host, or a test double, call `setBaseUrl` **before**
-`init` — it's on the exported API client, not an `init` option:
+local instance, a staging host, or a stateful test double, pass `apiUrl` to
+`init`:
 
 ```ts
-import { LangsysApp, LangsysAppAPI, createSignal } from 'langsys-js-typescript';
+import { LangsysApp, createSignal } from 'langsys-js-typescript';
 
-LangsysAppAPI.setBaseUrl('http://langsys2.test/api');   // no trailing slash needed
-
-await LangsysApp.init({ /* ... */ });
+await LangsysApp.init({
+    projectid: '...',
+    key: '...',
+    UserLocaleStore: createSignal('en-us'),
+    apiUrl: 'http://langsys2.test/api',   // no trailing slash needed
+});
 ```
 
 Same from the browser build, via the global:
@@ -76,31 +79,38 @@ Same from the browser build, via the global:
 ```html
 <script src=".../dist/langsys.browser.global.js"></script>
 <script>
-    Langsys.LangsysAppAPI.setBaseUrl('http://langsys2.test/api');
-    Langsys.LangsysApp.init({ /* ... */ });
+    Langsys.LangsysApp.init({
+        projectid: '...',
+        key: '...',
+        UserLocaleStore: Langsys.createSignal('en-us'),
+        apiUrl: 'http://langsys2.test/api',
+    });
 </script>
 ```
 
 This is what integration tests should use to point the SDK at a stateful test
 double rather than the live API. Patching the built artifact is never necessary.
 
-> **Call it before `init()`, and check what `init()` returns.**
-> Calling `setBaseUrl` *after* `init()` does not just miss the first request —
-> it leaves the SDK permanently inert. `init()` will already have authorized
-> against the default host, and with a key for a different environment that
-> authorization fails; the locale subscription is installed closed over that
-> failed result, so **it no-ops for the life of the app**. Later locale changes
-> won't recover it and neither will fixing the URL afterwards — only calling
-> `init()` again will.
+> **Prefer `apiUrl` over `LangsysAppAPI.setBaseUrl()`.**
+> `setBaseUrl` still exists and still works, but it has to run **before**
+> `init()`, and running it after leaves the SDK **permanently inert**. `init()`
+> will already have authorized against the default host, and with a key for a
+> different environment that authorization fails; the locale subscription is
+> installed closed over that failed result, so **it no-ops for the life of the
+> app**. Later locale changes won't recover it and neither will fixing the URL
+> afterwards — only calling `init()` again will.
 >
 > Nothing throws, so the symptom is simply that no translations ever arrive.
-> `init()` resolves to `{ status: false, errors: [...] }` in this case, which is
-> the one place it's visible:
->
-> ```ts
-> const res = await LangsysApp.init({ /* ... */ });
-> if (!res.status) console.error('Langsys init failed', res.errors);
-> ```
+> `apiUrl` is applied inside `init()` before authorization, in the same call
+> that consumes it, so the ordering cannot be got wrong.
+
+**Always check what `init()` returns.** A failed authorization — wrong key,
+wrong host, unreachable server — is reported there and nowhere else:
+
+```ts
+const res = await LangsysApp.init({ /* ... */ });
+if (!res.status) console.error('Langsys init failed', res.errors);
+```
 
 ## Quick start
 
@@ -229,23 +239,30 @@ The same pattern: subscribe to `tSignal` for invalidation, call the current `TFu
 
 For larger blocks of HTML — articles, help text, multi-sentence markup — use `Translate` to wrap an existing DOM element. It tokenizes text nodes and translatable attributes, registers the block with the Translation Manager (so translators see your styled markup), and re-translates on locale change.
 
-> **Single-token content is flattened — don't put test hooks inside it.**
-> When the wrapped element's content resolves to a *single* text run, `Translate`
-> replaces the element's entire contents with one text node. Any descendant
-> markup is destroyed in the process, so a `data-testid`, `id`, or ref you placed
-> on a child element inside `<Translate>` stops existing after mount:
+> **Single-token content keeps its markup.**
+> When the wrapped element's content resolves to a *single* text run,
+> `Translate` writes the translation into that one text node and leaves the
+> surrounding structure alone — so a `data-testid`, `id`, or ref on a child
+> element survives:
 >
 > ```html
 > <div>                                  <!-- before -->
 >   <p data-testid="greeting">Welcome back.</p>
 > </div>
-> <div>Welcome back.</div>               <!-- after: the <p> is gone -->
+> <div>                                  <!-- after -->
+>   <p data-testid="greeting">Bentornato.</p>
+> </div>
 > ```
 >
-> Multi-token content keeps its structure — it's translated node by node — and
-> `Phrase` preserves markup in all cases. The symptom of getting this wrong is a
-> selector that reads as flaky rather than an element that was replaced, so put
-> test hooks on the wrapper you pass to `Translate`, not inside it.
+> Earlier versions replaced the element's entire contents with one text node,
+> destroying any descendant markup on mount. If you moved test hooks onto the
+> wrapper to work around that, they can move back.
+>
+> The fallback is unchanged for genuinely ambiguous content: if the element
+> holds no non-whitespace text node, or more than one, there is no single place
+> to put the result and the contents are replaced flat. Multi-token content is
+> translated node by node and keeps its structure, and `Phrase` preserves markup
+> in all cases.
 
 ```ts
 import { Translate } from 'langsys-js-typescript';

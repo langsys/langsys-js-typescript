@@ -72,6 +72,23 @@ export interface iLangsysInitConfig {
     baseLocale?: string;
 
     /**
+     * Point the SDK at a different API host — a local instance, a staging
+     * host, or a stateful test double.
+     *
+     * Prefer this over `LangsysAppAPI.setBaseUrl()`. The setter has to run
+     * BEFORE `init()`, and running it after leaves the SDK permanently inert:
+     * `init()` has already authorized against the default host and failed, and
+     * the locale subscription is installed closed over that failed result, so
+     * it no-ops for the life of the app. Nothing throws, and no later locale
+     * change or URL fix recovers it. This option is applied inside `init()`
+     * before authorization, in the same call that consumes it, so there is no
+     * ordering left to get wrong.
+     *
+     * @default 'https://api.langsys.dev/api'
+     */
+    apiUrl?: string;
+
+    /**
      * Enable debug console messages.
      * @default false
      */
