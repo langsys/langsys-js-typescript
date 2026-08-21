@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import { generateCustomId, tokenizeElement, TRANSLATABLE_ATTRIBUTES } from '../src/content-block.js';
+import { encodeRichText } from '../src/richtext.js';
 
 /**
  * These tests pin `custom_id` IDENTITY, not rendered output.
@@ -146,5 +147,43 @@ describe('custom_id identity: attribute emission order', () => {
             (e) => (e.innerHTML = '<p>Keep <span translate="no"><img alt="ALTTEXT"></span> end</p>'),
         );
         expect(tokenizeElement(el).tokens).toEqual(['Keep', 'end']);
+    });
+});
+
+describe('Phrase path: coalescing is REQUIRED here, not forbidden', () => {
+    // The mirror image of everything above. `encodeRichText` feeds a plain
+    // phrase lookup — no token array, no custom_id — so adjacent text nodes
+    // MUST concatenate into one string. Every other test in this file guards
+    // against coalescing being added; these guard against it being removed by
+    // someone who read the `_walkForTokens` contract and applied it here.
+
+    it('concatenates adjacent text nodes into a single phrase', () => {
+        const el = span((e) => {
+            e.appendChild(document.createTextNode('Hello '));
+            e.appendChild(document.createTextNode('Bob'));
+            e.appendChild(document.createTextNode('!'));
+        });
+        expect(encodeRichText(el).phrase).toBe('Hello Bob!');
+    });
+
+    it('keeps a markup-bearing sentence whole across a split text run', () => {
+        const el = span((e) => {
+            e.appendChild(document.createTextNode('Based on '));
+            e.appendChild(document.createTextNode('42'));
+            const strong = document.createElement('strong');
+            strong.appendChild(document.createTextNode('reviews'));
+            e.appendChild(strong);
+        });
+        // One entry, so a translator can inflect the noun for the count.
+        expect(encodeRichText(el).phrase).toBe('Based on 42{m0o}reviews{m0c}');
+    });
+
+    it('is the OPPOSITE of the content-block path on identical DOM', () => {
+        const build = (e: HTMLElement) => {
+            e.appendChild(document.createTextNode('Hello '));
+            e.appendChild(document.createTextNode('world'));
+        };
+        expect(tokenizeElement(span(build)).tokens).toEqual(['Hello', 'world']);
+        expect(encodeRichText(span(build)).phrase).toBe('Hello world');
     });
 });

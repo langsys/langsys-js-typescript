@@ -61,6 +61,24 @@ export interface EncodedRichText {
  * Text nodes contribute their (whitespace-collapsed) text. Each child element
  * becomes a markup-token pair wrapping its recursively-encoded contents, and a
  * shallow clone of the element is captured as a slot. Nesting is preserved.
+ *
+ * COALESCING ADJACENT TEXT NODES IS CORRECT HERE — do not "fix" it.
+ *
+ * `_encodeNodes` concatenates adjacent text nodes and this function collapses
+ * whitespace, producing ONE phrase string. That string is the lookup key:
+ * `Phrase` calls `Translations.t(phrase, category)` and never computes a
+ * `custom_id`. A sentence must survive the round trip whole — that is the
+ * entire reason `<Phrase>` exists, since splitting `Based on {n}
+ * <strong>reviews</strong>` into fragments makes correct agreement impossible
+ * in languages with more than two plural forms.
+ *
+ * The `_walkForTokens` contract in `content-block.ts` says the OPPOSITE, for
+ * the content-block path, where token-array arity is identity. Both are right
+ * for their own path. If you arrived here from that comment intending to make
+ * this consistent with it, the paths are not meant to agree.
+ *
+ * Pinned by `tests/content-block-identity.test.ts` ("Phrase path"), which
+ * fails if this coalescing is removed.
  */
 export function encodeRichText(root: HTMLElement): EncodedRichText {
     const slots: RichSlot[] = [];

@@ -345,6 +345,24 @@ function _writeKnownContentBlockToCache(category: string, customId: string): voi
  * structurally while leaving the text either side as separate nodes. Skip
  * comments by walking, never by regexing the HTML.
  *
+ * SCOPE — this governs `_walkForTokens` and nothing else. The SDK has TWO
+ * identity mechanisms with deliberately OPPOSITE text handling:
+ *
+ *   `_walkForTokens`  (Translate / content-block path)  one token per text
+ *       node, never coalesced. Arity is identity.
+ *   `encodeRichText`  (Phrase path, `src/richtext.ts`)  adjacent text nodes
+ *       ARE concatenated and whitespace collapsed, into one phrase string.
+ *       That string is the key — there is no token array and no `custom_id`
+ *       on that path at all.
+ *
+ * Coalescing is the bug here and the requirement there. State the scope,
+ * because the realistic failure is not someone getting `<Phrase>` wrong on
+ * its own terms — it is someone who has just READ this contract finding
+ * `encodeRichText` concatenating adjacent text, recognising it as the exact
+ * defect they were warned about, and "fixing" it. A rule memorable enough to
+ * be worth writing down is memorable enough to be misapplied to the wrong
+ * path.
+ *
  * Pinned by `tests/content-block-identity.test.ts`, which is mutation-checked:
  * adding `clone.normalize()` to `tokenizeElement` turns three of those tests
  * red. If you are here because one of them failed, the pinned literal is not
