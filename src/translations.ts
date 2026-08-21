@@ -1,9 +1,10 @@
 import { LangsysAppAPI } from './api.js';
+import { recordMissForDiscovery } from './discovery.js';
 import { interpolate } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
 import { Logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
-import { currentlyLoadedLocale, sTranslations } from './stores.js';
+import { batchLimit, currentlyLoadedLocale, sTranslations, setWriteEnabled, writeEnabled } from './stores.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
 import type { TFunction } from './types/translation-fn.js';
@@ -14,6 +15,34 @@ interface iTokenUpdate {
     category: string;
     token: string;
 }
+
+/**
+ * `'auto'` SSR strategy: flush from the server while the queue is at or below
+ * this size. Above it, `'auto'` defers to the client — which cannot receive the
+ * queue across a real process boundary (see `shouldQueueForWrite`), so we also
+ * stop collecting at that point rather than retaining tokens nothing will send.
+ */
+const AUTO_SSR_FLUSH_THRESHOLD = 5;
+
+/**
+ * Client-side flush debounce. Long enough that a burst of misses from one
+ * render coalesces into a single POST, short enough that late-arriving content
+ * is still registered inside the discovery renderer's post-scroll grace window.
+ */
+const CLIENT_FLUSH_DEBOUNCE_MS = 400;
+
+/**
+ * Exponential backoff for a failing registration endpoint.
+ *
+ * A failed send leaves its batch queued so it can be retried — but the 3s
+ * interval then retries unconditionally, so a persistently failing server
+ * (a misconfigured CSRF rule, an outage, an expired key) gets a request every
+ * 3 seconds for as long as the page is open, with the payload growing as new
+ * misses accumulate. That is the same client-side amplification this feature's
+ * hint lane goes to some length to prevent, on the lane that never got it.
+ */
+const RETRY_BACKOFF_BASE_MS = 3_000;
+const RETRY_BACKOFF_MAX_MS = 300_000;
 
 function isObject(test: unknown): test is Record<string, unknown> {
     return typeof test === 'object' && !Array.isArray(test) && test !== null;
@@ -39,7 +68,15 @@ export class Translations {
     private missingTokens: iTokenUpdate[] = [];
     private timer: ReturnType<typeof setInterval> | null = null;
     private flushScheduled = false;
+    private updateInFlight = false;
+    private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    private consecutiveFailures = 0;
+    /** Epoch ms before which no send may be attempted. See RETRY_BACKOFF_*. */
+    private retryNotBefore = 0;
+    private teardownInstalled = false;
     private isFirstClientRun = true;
+    /** Process-level write decision for the SSR lane. See `canWrite`. */
+    private ssrWriteEnabled: boolean | undefined = undefined;
     private readyResolve: () => void = () => {};
     private readyPromise: Promise<void> = new Promise((resolve) => {
         this.readyResolve = resolve;
@@ -57,6 +94,24 @@ export class Translations {
         this.tSignal = createSignal<TFunction>(this.buildTFn());
         sTranslations.subscribe(() => this.tSignal.set(this.buildTFn()));
         currentlyLoadedLocale.subscribe(() => this.tSignal.set(this.buildTFn()));
+
+        // Misses collected before authorization resolved (or before a write
+        // grant arrived) are held, not dropped — flush them the moment the
+        // session turns out to be write-enabled.
+        writeEnabled.subscribe((enabled) => {
+            if (!this.missingTokens.length) return;
+            if (enabled === true) {
+                this.scheduleTokenFlush();
+            } else if (enabled === false && !LangsysAppAPI.hasWriteGrant()) {
+                // Authorization came back read-only and no grant can change
+                // that, so these can never be sent. They were recorded by the
+                // discovery lane when they missed, so releasing them loses
+                // nothing and keeps a long-lived session from holding a queue
+                // that will never drain.
+                this.debug.log(`Releasing ${this.missingTokens.length} held tokens (session is read-only)`);
+                this.missingTokens = [];
+            }
+        });
 
         if (config.key && config.projectid) this.setup(config);
     }
@@ -130,14 +185,34 @@ export class Translations {
             // feeds the POST wire payload, and clients are not allowed to
             // send the reserved sentinel as a category.
             const lookupCat = category || '__uncategorized__';
-            const value = cats[lookupCat]?.[phrase];
+            const bucket = cats[lookupCat];
+
+            // KEY PRESENCE, not truthiness. Three states, and the middle one is
+            // common rather than exotic:
+            //   1. key absent            — never seen. A genuine miss.
+            //   2. key present, value null — registered, translation still being
+            //      produced by MT (a minute or two).
+            //   3. key present, non-empty  — translated.
+            // States 2 and 3 both render the source-text fallback, but only
+            // state 1 may register/report. Collapsing 2 into 1 would make every
+            // visitor during the MT window re-report content that was already
+            // registered — worst on exactly the projects with the most
+            // untranslated content, which is the amplification this design
+            // exists to prevent.
+            //
+            // `hasOwnProperty` rather than `in`: the catalog comes from
+            // JSON.parse and so inherits Object.prototype, and `in` walks the
+            // chain — `t('toString')` and `t('constructor')` would read as
+            // already-known and never register.
+            const known = !!bucket && Object.prototype.hasOwnProperty.call(bucket, phrase);
+            const value = known ? bucket[phrase] : undefined;
 
             let translated: string;
             if (typeof value === 'string' && value.length > 0) {
                 this.debug.log('TRANSLATION FOUND', [lookupCat, phrase, value]);
                 translated = value;
             } else {
-                this.missingToken(category, phrase);
+                if (!known) this.missingToken(category, phrase);
                 translated = phrase;
             }
 
@@ -151,14 +226,6 @@ export class Translations {
             return this.debug.warn(`Received undefined or null token for category: ${category}`);
         }
 
-        if (this.config.key_type !== 'write') {
-            this.debug.log(`Skipping missing token collection (API key is ${this.config.key_type || 'unknown'}):`, {
-                category,
-                token,
-            });
-            return;
-        }
-
         // Skip content-block id lookups (32-hex md5 strings).
         if (/^[0-9a-f]{32}$/.test(token)) return;
         if (token === 'toJSON') {
@@ -170,12 +237,126 @@ export class Translations {
             return;
         }
 
+        // NOTE: no write-capability check here. It used to live at this line as
+        // `key_type !== 'write'`, which cannot express the current model — an
+        // `ip_write` key is read-only everywhere except from allow-listed IPs,
+        // and the discovery renderer relies on running this exact, unmodified
+        // path from such an IP. Worse, gating COLLECTION means a `t()` call
+        // landing before `validate()` resolves is dropped forever. The decision
+        // now happens at the flush site, so pre-authorization misses are held
+        // rather than discarded, and the lane is chosen once it's actually known.
+        //
+        // Recorded before the queue dedup below: the discovery lane keys on the
+        // URL the miss occurred on, and a phrase already queued from an earlier
+        // route must not suppress the record for the page being viewed now.
+        recordMissForDiscovery(category, token);
+
+        // Discovery has it; only hold it for registration if that queue can
+        // actually drain. See `shouldQueueForWrite`.
+        if (!this.shouldQueueForWrite()) {
+            this.debug.log('Not queueing for registration (no reachable flush path)', { category, token });
+            return;
+        }
+
         const missingToken: iTokenUpdate = { category, token, projectid: this.config.projectid };
         if (!this.missingTokens.some((t) => sameToken(t, missingToken))) {
             this.debug.log('MISSING TOKEN LOOKUP FAILED', [missingToken, [...this.missingTokens], { ...sTranslations.get() }]);
             this.missingTokens.push(missingToken);
             this.scheduleTokenFlush();
         }
+    }
+
+    /**
+     * Whether this session may write. The single decision point for the write
+     * lane — never infer capability from `key_type`.
+     *
+     * In the browser the server-computed signal is authoritative, and `undefined`
+     * (not yet authorized) correctly holds rather than writing or hinting.
+     *
+     * Under SSR the signal is deliberately never written (it is a process-wide
+     * singleton and write capability is per-session), so we fall back to the
+     * value the last catalog fetch reported for THIS process. That is only sound
+     * while capability depends on the server's IP alone, which is constant for
+     * the process. A configured write grant makes it per-user instead, so the
+     * server lane is unsafe and we degrade to flushing after hydration — where
+     * the decision is per-user and correct.
+     */
+    private canWrite(): boolean {
+        if (typeof window !== 'undefined') return writeEnabled.get() === true;
+        if (LangsysAppAPI.hasWriteGrant()) return false;
+        return this.ssrWriteEnabled === true;
+    }
+
+    /**
+     * Record the server's write decision from an `authorize-project` or catalog
+     * response. Browser: updates the shared signal. Server: keeps a
+     * process-level copy used only when no grant is configured (see `canWrite`).
+     */
+    public applyWriteEnabled(value: boolean | undefined): void {
+        if (typeof value !== 'boolean') return;
+        setWriteEnabled(value);
+        if (typeof window === 'undefined') this.ssrWriteEnabled = value;
+    }
+
+    /**
+     * Whether a miss is worth holding in the REGISTRATION queue. Distinct from
+     * `canWrite()`, which decides whether to send: this decides whether keeping
+     * it could ever lead to a send.
+     *
+     * What happens to a declined miss differs by arm, and the difference is
+     * load-bearing rather than incidental:
+     *
+     *  - In the BROWSER the discovery lane has already recorded it, so the page
+     *    is still reported and nothing is lost.
+     *  - Under SSR it is recorded NOWHERE — `recordMissForDiscovery` bails
+     *    without a `window`. The safety net there is that the client re-runs
+     *    `t()` after hydration and re-collects, which covers content rendered
+     *    on both sides and does NOT cover content that only ever executes
+     *    server-side. That gap is real and documented rather than closed.
+     *
+     * Two ways a queue becomes undrainable:
+     *
+     * SSR under `'client'` — the queue is meant to be flushed after hydration
+     * by `setup()`, but that reads the BROWSER's instance of this module. The
+     * push happened in the Node process's instance. Under real SSR (Next,
+     * Remix, Astro) those are different objects in different processes, and no
+     * channel carries tokens client-ward — `initialTranslations` goes the other
+     * way. So the tokens are silently dropped AND retained forever, since the
+     * 3s drain timer only exists in the browser branch of `setup()`. In a
+     * long-lived server that plateaus at "every phrase the app has ever
+     * server-rendered", held live and never sent. Declining to collect makes
+     * the limitation explicit instead of silent: server-side discovery requires
+     * `ssrTokenStrategy: 'server'`.
+     *
+     * Browser, definitively read-only — `writeEnabled` is `false` and no grant
+     * is configured, so no path exists by which this session becomes writable.
+     * (`undefined` still queues: capability isn't known yet and those misses
+     * must be held, not dropped. A configured grant also queues, since one
+     * arriving flips the session write-enabled.)
+     */
+    private shouldQueueForWrite(): boolean {
+        if (typeof window === 'undefined') {
+            // A configured grant makes the SSR write lane unusable — `canWrite`
+            // refuses it, because capability is then per-user and this queue is
+            // process-wide. Collecting anyway rebuilds precisely the
+            // undrainable plateau this method exists to prevent: nothing here
+            // can ever send it, and the `writeEnabled` release path can't fire
+            // either, since that signal is never written server-side. The
+            // degradation to the client lane is real, so the server instance
+            // must also stop collecting — not just stop sending.
+            if (LangsysAppAPI.hasWriteGrant()) return false;
+
+            const strategy = this.config.ssrTokenStrategy || 'client';
+            if (strategy === 'server') return true;
+            if (strategy === 'auto') {
+                // Past the threshold 'auto' defers to a client that can't receive it.
+                return this.missingTokens.length < AUTO_SSR_FLUSH_THRESHOLD;
+            }
+            return false;
+        }
+
+        if (writeEnabled.get() === false && !LangsysAppAPI.hasWriteGrant()) return false;
+        return true;
     }
 
     private scheduleTokenFlush() {
@@ -187,22 +368,14 @@ export class Translations {
                 case 'server':
                     if (!this.flushScheduled) {
                         this.flushScheduled = true;
-                        queueMicrotask(() => {
-                            this.updateTokens().then(() => {
-                                this.flushScheduled = false;
-                            });
-                        });
+                        queueMicrotask(() => void this.updateTokens());
                     }
                     break;
 
                 case 'auto':
-                    if (this.missingTokens.length <= 5 && !this.flushScheduled) {
+                    if (this.missingTokens.length <= AUTO_SSR_FLUSH_THRESHOLD && !this.flushScheduled) {
                         this.flushScheduled = true;
-                        queueMicrotask(() => {
-                            this.updateTokens().then(() => {
-                                this.flushScheduled = false;
-                            });
-                        });
+                        queueMicrotask(() => void this.updateTokens());
                     }
                     break;
 
@@ -212,16 +385,72 @@ export class Translations {
                     break;
             }
         } else {
-            // Client — flush immediately on first discovery, then let the 3s timer take over.
-            if (!this.flushScheduled && !this.timer) {
+            // Client — debounce briefly so a burst of misses coalesces into one
+            // POST, then send. It used to wait for the next 3s interval tick
+            // (the immediate path was gated on `!this.timer`, so it only ever
+            // ran before setup() installed the timer), which meant any content
+            // rendering after init was held for up to 3s. That is fatal for
+            // late-arriving content: the discovery renderer grants roughly 4s
+            // after its scroll phase, so an up-to-3s hold left about 1s of real
+            // budget, and anything past it was recorded and then destroyed with
+            // the page. Lazy-loaded and streamed content — precisely what the
+            // renderer exists to discover — is the common case for that.
+            if (!this.flushScheduled) {
                 this.flushScheduled = true;
-                queueMicrotask(() => {
-                    this.updateTokens().then(() => {
-                        this.flushScheduled = false;
-                    });
-                });
+                if (this.debounceTimer) clearTimeout(this.debounceTimer);
+                this.debounceTimer = setTimeout(() => {
+                    this.debounceTimer = null;
+                    void this.updateTokens();
+                }, CLIENT_FLUSH_DEBOUNCE_MS);
             }
         }
+    }
+
+    /**
+     * Send whatever is still queued while the page is going away.
+     *
+     * Even with the debounce there is always a window where a miss is queued
+     * and the document is torn down — a tab closing, a client-side navigation,
+     * or the discovery renderer finishing its grace period. A normal request is
+     * cancelled with the document; `keepalive` survives it.
+     *
+     * Deliberately NOT `navigator.sendBeacon`, the usual answer here: it cannot
+     * set custom headers, and our authorization is `x-Authorization`, so every
+     * beacon would be rejected.
+     *
+     * Fire-and-forget with no local bookkeeping — the page is leaving, so there
+     * is no "after" in which a cache write or queue mutation could matter, and
+     * skipping them keeps this off the critical path of teardown.
+     */
+    private flushOnTeardown(): void {
+        if (!this.missingTokens.length) return;
+        this.debug.log(`Teardown flush: sending ${this.missingTokens.length} queued tokens with keepalive`);
+
+        // The ordinary flush path, only with keepalive — NOT a bespoke
+        // fire-and-forget send. `visibilitychange → hidden` also fires on a
+        // plain tab switch, where the page does not go away; a send that
+        // skipped the bookkeeping would leave everything queued and the 3s
+        // backstop would re-send it all on return. Reusing the normal path
+        // means the queue is cleared and the catalog updated exactly as usual
+        // when the page survives, and when it genuinely dies the request is
+        // already dispatched and the unrun bookkeeping costs nothing.
+        void this.updateTokens(true);
+    }
+
+    /**
+     * `visibilitychange → hidden` is the reliable teardown signal; `pagehide`
+     * backs it up. `unload`/`beforeunload` are deliberately not used — they are
+     * unreliable on mobile and block bfcache.
+     */
+    private installTeardownFlush(): void {
+        if (this.teardownInstalled) return;
+        if (typeof document === 'undefined' || typeof window === 'undefined') return;
+        this.teardownInstalled = true;
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') this.flushOnTeardown();
+        });
+        window.addEventListener('pagehide', () => this.flushOnTeardown());
     }
 
     public setup(config: iLangsysConfig) {
@@ -243,6 +472,10 @@ export class Translations {
                 }
             }
 
+            this.installTeardownFlush();
+
+            // Backstop only — the debounce in scheduleTokenFlush is what
+            // actually sends. This catches anything a failed send left queued.
             if (this.timer) clearInterval(this.timer);
             this.timer = setInterval(() => this.updateTokens(), 3000);
             this.debug.log('UPDATE TOKEN INTERVAL', this.timer);
@@ -305,11 +538,51 @@ export class Translations {
         return true;
     }
 
-    private async updateTokens(): Promise<boolean> {
+    /**
+     * Record a failed send and push the next attempt out exponentially:
+     * 3s, 6s, 12s … capped at 5 minutes. Reset on the first success.
+     */
+    private noteSendFailure(): void {
+        this.consecutiveFailures += 1;
+        const delay = Math.min(
+            RETRY_BACKOFF_BASE_MS * 2 ** (this.consecutiveFailures - 1),
+            RETRY_BACKOFF_MAX_MS,
+        );
+        this.retryNotBefore = Date.now() + delay;
+        this.debug.log(`Registration send failed (${this.consecutiveFailures}x); next attempt in ${delay}ms`);
+    }
+
+    private async updateTokens(keepalive = false): Promise<boolean> {
+        // The scheduled flush has now started, so release the scheduling latch.
+        // `flushScheduled` guards only the window between scheduling and
+        // execution — holding it until the POST resolves would swallow the
+        // follow-up flush this method schedules in its own `finally`.
+        this.flushScheduled = false;
+
+        // The 3s interval calls this unconditionally, so without a lock a call
+        // can start while a previous one is still awaiting its POST — which
+        // re-sends the same tokens (they aren't cleared until the response
+        // lands) and makes the "what did I actually send" bookkeeping below
+        // ill-defined.
+        // `keepalive` means this is the teardown flush, and neither of the two
+        // guards below applies to it. The in-flight request is about to die
+        // with the document and its batch is still queued, so deferring to it
+        // loses exactly the work teardown exists to save; and a backoff window
+        // is about waiting for a *later* attempt, of which there will be none.
+        // Re-sending is safe: registration is idempotent server-side (advisory
+        // lock plus ON CONFLICT), so a duplicate costs a request, while
+        // deferring costs the content.
+        const isTeardown = keepalive;
+
+        if (!isTeardown && this.updateInFlight) return false;
         if (!this.missingTokens.length) return false;
+        if (!isTeardown && this.retryNotBefore && Date.now() < this.retryNotBefore) return false;
         if (!this.config.projectid || !this.config.key) return false;
-        if (this.config.key_type !== 'write') {
-            this.debug.log(`Skipping token updates (API key is ${this.config.key_type || 'unknown'})`);
+        if (!this.canWrite()) {
+            this.debug.log('Skipping token updates (session is not write-enabled)', {
+                writeEnabled: writeEnabled.get(),
+                key_type: this.config.key_type || 'unknown',
+            });
             return false;
         }
 
@@ -325,7 +598,13 @@ export class Translations {
             // bucket for the dedup check only. The queue itself keeps the
             // original (possibly empty) category for the wire payload.
             const lookupCat = tokenObj.category || '__uncategorized__';
-            if (lookupCat in currentData && tokenObj.token in currentData[lookupCat]) {
+            // hasOwnProperty, not `in` — same prototype-chain hazard as the
+            // lookup in `t()`. With `in`, a phrase named `toString` or
+            // `constructor` is queued by `t()` (which tests own properties) and
+            // then silently filtered out of every send here, so it re-queues
+            // forever and is never registered.
+            const bucket = currentData[lookupCat];
+            if (bucket && Object.prototype.hasOwnProperty.call(bucket, tokenObj.token)) {
                 this.debug.log('Missing token already exists! Skipping:', {
                     category: tokenObj.category,
                     token: tokenObj.token,
@@ -338,11 +617,25 @@ export class Translations {
 
         if (!this.missingTokens.length) return false;
 
-        this.debug.log('CREATE MISSING TOKENS', this.missingTokens);
+        // Snapshot the batch. Everything below operates on THIS list and never
+        // on the live array, because `t()` keeps running during the awaits:
+        // a miss recorded mid-flight would otherwise be marked present in the
+        // catalog and wiped from the queue without ever having been in a
+        // payload — and since it then reads as already-registered, it would
+        // never be retried. Silent, permanent loss, and the window is every
+        // in-flight POST (a modal opening, a route change, lazy content
+        // resolving), worst on a first visit when the catalog is emptiest.
+        const batch = [...this.missingTokens];
+        let drained = false;
+
+        // The teardown flush deliberately doesn't take the lock — it ran past
+        // it above, so it must not clear a lock a live request still owns.
+        if (!isTeardown) this.updateInFlight = true;
+        this.debug.log('CREATE MISSING TOKENS', batch);
         try {
             // Wire boundary: empty category → null. '__uncategorized__' is
             // server-internal and is rejected as a client input.
-            const phraseItems = this.missingTokens.map((tokenObj) => ({
+            const phraseItems = batch.map((tokenObj) => ({
                 type: 'phrase',
                 phrase: tokenObj.token,
                 category: tokenObj.category || null,
@@ -350,40 +643,66 @@ export class Translations {
 
             // /translatable-items caps each request (default 200 items); chunk so
             // a page registering many new phrases at once never overflows it.
-            const BATCH_SIZE = 200;
+            // Keepalive requests share a ~64KB budget across everything in
+            // flight, well below what 200 phrases can reach — and an oversized
+            // keepalive request is rejected by the browser, losing the batch at
+            // exactly the moment there is no retry left. So the teardown path
+            // really does chunk more conservatively than the normal one, which
+            // until now was only claimed in a comment.
+            const BATCH_SIZE = isTeardown ? Math.min(50, batchLimit.get()) : batchLimit.get();
             for (let offset = 0; offset < phraseItems.length; offset += BATCH_SIZE) {
                 const response: ResponseObject = await LangsysAppAPI.createTranslatableItems(
                     phraseItems.slice(offset, offset + BATCH_SIZE),
+                    { keepalive },
                 );
                 if (!response.status) {
                     if (response.errors) {
-                        this.debug.log('TOKEN UPDATE FAIL', this.missingTokens);
+                        this.debug.log('TOKEN UPDATE FAIL', batch);
                         this.debug.error('Error updating project tokens', response.errors);
                     }
+                    // Leave the batch queued — a failed send must be retryable.
+                    this.noteSendFailure();
                     return false;
                 }
             }
 
-            this.missingTokens.forEach((tokenObj) => {
+            // Re-read: a catalog fetch may have replaced the store while we were
+            // in flight, and writing back the pre-await snapshot would clobber it.
+            const latest = sTranslations.get();
+            batch.forEach((tokenObj) => {
                 // Same bucket normalization as the dedup check: write into
                 // the cats bucket that matches the server response shape.
                 const lookupCat = tokenObj.category || '__uncategorized__';
-                if (!currentData[lookupCat]) {
-                    currentData[lookupCat] = {
+                if (!latest[lookupCat]) {
+                    latest[lookupCat] = {
                         __category__: lookupCat,
                         __symbol__: lookupCat,
                     } as iTranslations;
                 }
-                currentData[lookupCat][tokenObj.token] = tokenObj.token;
-                currentData[lookupCat]['__category__'] = lookupCat;
+                latest[lookupCat][tokenObj.token] = tokenObj.token;
+                latest[lookupCat]['__category__'] = lookupCat;
             });
-            sTranslations.set({ ...currentData });
-            this.missingTokens = [];
+            sTranslations.set({ ...latest });
+
+            // Remove exactly what was sent, never `= []`.
+            this.missingTokens = this.missingTokens.filter((queued) => !batch.some((s) => sameToken(s, queued)));
+            drained = true;
+            this.consecutiveFailures = 0;
+            this.retryNotBefore = 0;
             return true;
         } catch (err) {
-            this.debug.log('CREATE MISSING TOKEN FAILURE', this.missingTokens);
+            this.debug.log('CREATE MISSING TOKEN FAILURE', batch);
             this.debug.error('Error updating project tokens', err);
+            this.noteSendFailure();
             return false;
+        } finally {
+            if (!isTeardown) this.updateInFlight = false;
+            // Anything recorded during the flush is still queued. The browser's
+            // 3s timer would eventually take it, but SSR has no timer at all —
+            // without this the remainder would sit unsent for the process's life.
+            // Guarded on an actual successful drain, so a persistently failing
+            // send retries on the normal cadence rather than spinning here.
+            if (drained && this.missingTokens.length) this.scheduleTokenFlush();
         }
     }
 
@@ -394,13 +713,24 @@ export class Translations {
 
         const response: ResponseObject = await LangsysAppAPI.getTranslations(this.locale);
         this.debug.log('GET TRANSLATIONS API RESPONSE', response);
+
+        // Envelope-level, alongside `words` / `untranslated_words` — never
+        // inside `data`, which IS the category map. Refreshed on every catalog
+        // fetch so a capability change (a grant arriving, an IP allow-list
+        // edit) is picked up without re-running init.
+        this.applyWriteEnabled(response.write_enabled);
+
         if (response.errors) {
             this.debug.error('Error', response.errors[0]);
             this.readyResolve();
             return;
         }
 
-        const trans = response.data as iCategories;
+        // An empty project serializes `data` as `[]`, not `{}`. Left as an
+        // array it would be persisted to localStorage by JSON.stringify with
+        // the seeded `__uncategorized__` bucket silently dropped (string
+        // properties on arrays don't survive serialization).
+        const trans = (isObject(response.data) ? response.data : {}) as iCategories;
 
         if (!isObject(trans['__uncategorized__'])) {
             trans['__uncategorized__'] = {

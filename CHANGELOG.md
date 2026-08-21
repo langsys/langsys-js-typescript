@@ -1,3 +1,17 @@
+## Unreleased
+
+### Changed — BREAKING
+
+- **Locale identifiers are now lowercase `xx-yy` everywhere, not BCP 47 canonical casing.** `canonicalizeLocale('en-US')` returns `en-us`; `zh-Hant-TW` returns `zh-hant-tw`. This is a public export, and `currentlyLoadedLocale` carries the same form — so any binding or application comparing against cased strings (`locale === 'en-US'`) stops matching. Compare against the normalized form, or run your own value through `canonicalizeLocale` first. Note this is breaking against **0.6.5**, which is published and emits the canonical form.
+
+  The API's database stores every locale lowercase — script subtags included, as `az-cyrl` / `bs-latn` — and its request middleware lowercases before any query runs. Sending that form is therefore the only way to behave identically on a route that does *not* mount that middleware, and the routes most likely to miss it are the legacy ones carrying the oldest clients. Relying on a normalization we cannot see, cannot version, and will not be told about when it moves is the actual risk; sending lowercase costs nothing.
+
+  CLDR handling is unaffected. `Intl` canonicalizes its own input, so `new Intl.Locale('zh-tw').maximize()` still yields `zh-Hant-TW` — a `zh-Hant` reader still never receives a `zh-Hans` catalog.
+
+### Added
+
+- **Server-gated writes and automatic content discovery** (ticket 838). Write capability is decided per session by the server via `write_enabled` rather than inferred from the key type, since a public key shipped in browser JS is extractable. Sessions that cannot write report the page URL instead, so the discovery renderer can visit it from an allow-listed address and register what it finds. Adds `writeEnabled` and `autoDiscovery` signals, `writeGrant` / `setWriteGrant` for login-walled apps, and a `./browser` build for pages with no bundler.
+
 ## 0.6.5 - 2026-08-16
 
 ### Added

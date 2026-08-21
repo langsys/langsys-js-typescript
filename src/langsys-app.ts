@@ -1,10 +1,16 @@
 import { LangsysAppAPI } from './api.js';
 import { canonicalizeLocale, maximizedLangScript } from './locale.js';
-import { Logger } from './logger.js';
-import { config as configStore, currentlyLoadedLocale, sTranslations } from './stores.js';
+import { Logger, logger } from './logger.js';
+import {
+    autoDiscovery,
+    batchLimit,
+    config as configStore,
+    currentlyLoadedLocale,
+    sTranslations,
+} from './stores.js';
 import { Translations } from './translations.js';
 import type { ResponseObject } from './types/api.js';
-import type { iLangsysConfig, iLangsysInitConfig } from './types/config.js';
+import type { iLangsysConfig, iLangsysInitConfig, WriteGrant } from './types/config.js';
 import type { iCountryDialCode, iCountryList } from './types/countries.js';
 import type { iCurrencyList } from './types/currencies.js';
 import type { iLocaleData, iLocaleDefault, iLocaleFlat } from './types/locales.js';
@@ -41,6 +47,108 @@ class LangsysAppClass {
         return this.Translations.t;
     }
 
+    /**
+     * Supply (or replace) the write grant after `init()` has run.
+     *
+     * This is for apps whose token only exists once the user logs in — i.e.
+     * after the SDK has already booted. It is NOT the refresh path: the token
+     * is resolved fresh before every request and never cached, so refresh is a
+     * pull. Pass a provider function and let your auth layer decide when to
+     * mint; that also makes this safe to call while a request is in flight,
+     * since an in-flight request has already resolved its own token.
+     *
+     * Pass `undefined` to drop the grant (e.g. on logout).
+     */
+    public async setWriteGrant(grant: WriteGrant | undefined): Promise<void> {
+        this.config.writeGrant = grant;
+        configStore.writeGrant = grant;
+        this.debug.log('Write grant', grant ? 'set' : 'cleared');
+
+        // Setting config is not enough: write capability is computed by the
+        // SERVER, and it has had no opportunity to re-evaluate this session
+        // with (or without) the new `X-Write-Grant` header. Without this
+        // re-authorization `writeEnabled` keeps whatever the original auth
+        // returned — so a grant supplied after login would never take effect
+        // on a stable locale, because nothing else re-derives it.
+        if (!this.config.projectid || !this.config.key) return;
+        const response = await LangsysAppAPI.validate(this.config);
+        if (response.status && response.data) this.applyAuthorization(response.data, 'grant change');
+    }
+
+    /**
+     * Apply an `authorize-project` payload. Shared by `init` and the
+     * re-authorization in `setWriteGrant`, so a policy or capability change is
+     * picked up identically by both — previously the re-auth path silently
+     * ignored `auto_discovery` even though the response carries it.
+     */
+    private applyAuthorization(data: object, context: string): void {
+        const authData = data as {
+            key_type?: string;
+            write_enabled?: boolean;
+            auto_discovery?: boolean;
+            langsys_settings?: { translatable_items?: { batch_limit?: number } };
+        };
+
+        if (authData.key_type) {
+            this.config.key_type = authData.key_type;
+            configStore.key_type = authData.key_type;
+            // Display/debug only — every write decision goes through
+            // `writeEnabled`. `key_type` cannot express `ip_write`.
+            this.debug.log('API Key Type:', authData.key_type);
+        }
+
+        // ONE condition drives both the write fallback and the report lane.
+        // A server with no `write_enabled` predates the capability, which means
+        // it also has no `/discovery/hint` to receive a report — so reading
+        // those two facts from separate signals lets them diverge, and the
+        // divergent state (reporting to an endpoint that does not exist) is
+        // silent by construction. Relying on `auto_discovery` also being absent
+        // would work today and only by coincidence.
+        const serverSpeaksCapability = typeof authData.write_enabled === 'boolean';
+
+        if (serverSpeaksCapability) {
+            this.Translations.applyWriteEnabled(authData.write_enabled as boolean);
+            this.debug.log(`Session write-enabled (${context}):`, authData.write_enabled);
+        } else {
+            // An ABSENT field is not `false`. It means the server predates
+            // `write_enabled`, and treating absence as a refusal would leave
+            // the SDK write-inert against every deployment that hasn't shipped
+            // the flag yet — silently, for every consumer, until the API
+            // catches up. That turns a release-ordering mistake into a dead
+            // integration, so fall back to the old inference for exactly this
+            // case. It is sound because `ip_write` cannot exist on a backend
+            // that doesn't return the flag, so `key_type` still describes the
+            // whole truth there.
+            const legacy = authData.key_type === 'write';
+            this.debug.warn(
+                `Server did not return write_enabled (${context}) — falling back to key_type ` +
+                    `'${authData.key_type ?? 'unknown'}' => ${legacy}. Upgrade the API for IP-gated and grant-based writes.`
+            );
+            this.Translations.applyWriteEnabled(legacy);
+        }
+
+        // Server-authoritative batch cap. Honour it rather than assuming ours.
+        const limit = authData.langsys_settings?.translatable_items?.batch_limit;
+        if (typeof limit === 'number' && limit > 0) {
+            batchLimit.set(limit);
+            this.debug.log(`Batch limit (${context}):`, limit);
+        }
+
+        if (!serverSpeaksCapability) {
+            // Same condition, deliberately not a second derivation. Whatever the
+            // legacy server said about policy is moot — there is nowhere to
+            // report to. Note this is the one place the two are coupled: while
+            // the server DOES speak the capability, policy remains strictly
+            // independent of it (see `autoDiscovery`), and the canonical public
+            // site is write-disabled AND reporting-permitted.
+            autoDiscovery.set(false);
+            this.debug.log(`Discovery reporting disabled (${context}): server predates the capability`);
+        } else if (typeof authData.auto_discovery === 'boolean') {
+            autoDiscovery.set(authData.auto_discovery);
+            this.debug.log(`Discovery reporting permitted (${context}):`, authData.auto_discovery);
+        }
+    }
+
     public async refresh() {
         const locale = this.config.sUserLocale.get();
         this.locales = {};
@@ -62,8 +170,18 @@ class LangsysAppClass {
         const ssrTokenStrategy = initConfig.ssrTokenStrategy || 'client';
         const initialTranslations = initConfig.initialTranslations;
         const initialTranslationsLocale = initConfig.initialTranslationsLocale;
+        const writeGrant = initConfig.writeGrant;
 
         this.debug.debugEnabled = debug;
+
+        // The module-scope `logger` singleton is a SEPARATE instance from the
+        // per-class `this.debug` loggers, and nothing else ever writes its flag
+        // — so anything gated on `logger.debugEnabled` was permanently off.
+        // That silently disabled `warnUnmatchedParams` (unmatched `params` keys
+        // in `<Translate>`/`<Phrase>`) for every consumer: the feature shipped,
+        // typechecked, had tests, and could never fire. `init` is the one place
+        // `debug` is resolved, so it is the right place to propagate it.
+        logger.debugEnabled = debug;
 
         if (debug && initialTranslations) {
             this.debug.log('SSR initial translations config:', {
@@ -101,20 +219,32 @@ class LangsysAppClass {
                 baseLocale,
                 debug,
                 ssrTokenStrategy,
+                writeGrant,
             };
             // Keep the exported config singleton in sync (used by Translate + API).
             Object.assign(configStore, this.config);
         }
 
+        // A grant makes write capability per-user, while the SSR write lane can
+        // only hold a process-wide decision — so it would apply one user's
+        // capability to every later visitor in that Node process. Degrading to
+        // the client lane is correct, but silent degradation costs someone an
+        // afternoon, so say it out loud.
+        if (writeGrant && ssrTokenStrategy !== 'client') {
+            this.debug.warn(
+                `ssrTokenStrategy '${ssrTokenStrategy}' degrades to 'client' while a writeGrant is configured — ` +
+                    'write capability is per-user with a grant, so a server-side decision would leak across ' +
+                    'requests. Tokens will flush after hydration instead.'
+            );
+        }
+
         const validateResponse = await LangsysAppAPI.validate(this.config);
 
         if (validateResponse.status && validateResponse.data) {
-            const authData = validateResponse.data as { key_type?: 'read' | 'write' };
-            if (authData.key_type) {
-                this.config.key_type = authData.key_type;
-                configStore.key_type = authData.key_type;
-                this.debug.log('API Key Type:', this.config.key_type);
-            }
+            // On this route `data` is not a catalog, so `write_enabled` is a
+            // safe sibling of `key_type` inside it (unlike `/translations`,
+            // where `data` IS the category map and it must be envelope-level).
+            this.applyAuthorization(validateResponse.data, 'init');
         }
 
         // Seed the translations store if initial data is provided (SSR handoff).

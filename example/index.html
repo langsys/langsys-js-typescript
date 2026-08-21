@@ -35,7 +35,17 @@
         <p><strong>Note:</strong> This demo does not call the live API — replace <code>YOUR_PROJECT_ID</code> and <code>YOUR_API_KEY</code> to try a real project.</p>
 
         <script type="module">
-            import { LangsysApp, Translate, createSignal } from '../dist/index.mjs';
+            // The BROWSER build. `../dist/index.mjs` is the package build and cannot be
+            // loaded here: it imports the bare specifier 'intl-messageformat', which a
+            // browser cannot resolve without an import map — the file fetches 200 and
+            // then the module body silently never runs. This build inlines its deps.
+            import { LangsysApp, LangsysAppAPI, Translate, createSignal } from '../dist/langsys.browser.mjs';
+
+            // Defaults to https://api.langsys.dev/api. Uncomment to point at a local
+            // instance, a staging host, or a test double — must be called BEFORE
+            // init(). There is no `apiUrl` option on init(); this is it.
+            // LangsysAppAPI.setBaseUrl('http://langsys2.test/api');
+            void LangsysAppAPI;
 
             const userLocale = createSignal('en-us');
 

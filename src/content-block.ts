@@ -26,9 +26,10 @@
  */
 
 import { LangsysAppAPI } from './api.js';
+import { recordMissForDiscovery } from './discovery.js';
 import { normalizeMarkupPlaceholders } from './interpolate.js';
 import { logger } from './logger.js';
-import { config as configStore, sTranslations } from './stores.js';
+import { config as configStore, sTranslations, writeEnabled } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
 import { md5, md5Legacy } from './utils.js';
@@ -160,7 +161,15 @@ export const SEMANTIC_STYLE_PROPERTIES = [
  * whether to call `registerContentBlock`.
  */
 export function generateCustomId(category: string, tokens: string[]): string {
-    return md5(JSON.stringify([category, tokens]));
+    // Coalesce at runtime, not just in the type. This is public API, so an
+    // untyped or plain-JS caller can pass `undefined` — which serializes to
+    // `[null, …]` and yields an id no wire path ever stores. Every shipping
+    // caller already coalesces; this enforces "no-category is '', never null"
+    // at the reference implementation rather than merely documenting it.
+    //
+    // `generateLegacyCustomId` deliberately does NOT do this: it must reproduce
+    // what was actually stored, including ids an untyped caller produced.
+    return md5(JSON.stringify([category || '', tokens]));
 }
 
 /**
@@ -213,9 +222,31 @@ export function isContentBlockKnown(category: string, customId: string): boolean
 export async function registerContentBlock(
     contentBlock: iContentBlock,
 ): Promise<{ status: boolean; errors?: unknown[] }> {
-    if (configStore.key_type !== 'write') {
+    // Server-computed capability, never inferred from `key_type`. This is the
+    // lane the discovery renderer depends on most: it exists for dynamic
+    // content, which is disproportionately content blocks rather than bare
+    // `t()` calls, and it runs with an `ip_write` key that a
+    // `key_type === 'write'` test would have rejected outright.
+    if (writeEnabled.get() !== true) {
+        // Hand the page to the discovery lane instead of dropping it.
+        //
+        // Without this, a page whose untranslated content lives entirely in
+        // multi-token `Translate` blocks is invisible to discovery: those
+        // tokens resolve through `lookupContent`, which registers nothing, so
+        // they never reach `t()` and never reach the miss recorder. The block
+        // was only discovered when some unrelated `t()` call happened to miss
+        // on the same page — and content blocks are disproportionately what the
+        // renderer exists to find, so the gap was worst where it mattered most.
+        //
+        // Carries no phrase payload: the recorder takes the block's identity
+        // only to dedup, and the hint itself is URL-only.
+        recordMissForDiscovery(contentBlock.category, contentBlock.custom_id);
+
         if (configStore.debug) {
-            logger.log(`Skipping content block save (API key is ${configStore.key_type || 'unknown'})`);
+            logger.log('Skipping content block save (session is not write-enabled)', {
+                writeEnabled: writeEnabled.get(),
+                key_type: configStore.key_type || 'unknown',
+            });
         }
         return { status: true };
     }

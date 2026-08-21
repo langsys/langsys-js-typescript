@@ -1,0 +1,177 @@
+# Conformance — `langsys-js-typescript`
+
+| | |
+|---|---|
+| **SDK** | `langsys-js-typescript` (browser reference implementation) |
+| **Profiles** | `all`, `browser` |
+| **specVersion** | 8 |
+| **Spec revision read** | round-2 tree (GATE-8, WIRE-3 v4, HINT-6 dispatch/dedup split) |
+| **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
+| **Suite** | 152 tests, `npm test` |
+
+**About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
+than rebased, and the 838 surface is ported semantically. Two things were deliberately NOT
+carried: the MD5 UTF-8 fix and its legacy export, because main already ships both (verified
+bit-identical across 15 vectors, 0 disagreements), and the NUL-byte fix, likewise already
+on main. What *was* carried from that work is the conformance coverage — main fixed the
+hash and left an ASCII-only suite, so the 18 codepoint-constructed vectors here are the
+only non-ASCII coverage the repo has.
+
+**What surfaced while writing this file.** Three things, each worth more than the row it
+came from. First, grading my own evidence against CONF-2 rather than against my
+memory of having tested things: nearly everything here is proven by *mocked* transport,
+which CONF-2 explicitly does not count — so the honest status of most rows is
+`provisional`, and that is a property of the shared contract fixture not existing rather
+than of the behaviour being doubtful. Second, filling in the Test column exposed rules I
+believe are satisfied but have no test pointing at them at all (GATE-3, GATE-4, CAT-3, REG-12,
+WIRE-4, SSR-3). A row I can only defend by reading the code is exactly the row CONF-1
+exists to distrust, so those are marked `provisional (no test)` rather than
+`implemented`.
+
+Third, filling in REG-9 found a live defect rather than a missing test: the batch size was
+hardcoded while the server returns its own limit on authorization. If the server lowered
+its cap, every oversized request would be rejected and those phrases never registered —
+silently, for every writing session. Fixed while writing this row, which is the best
+argument I have for the format.
+
+**Evidence grades** follow CONF-2: `live` (real server), `contract` (stateful double),
+`mock` (canned responses — does not meet the bar), `none`. Every `mock` and `none` row
+is `provisional` regardless of how confident I am in the behaviour.
+
+---
+
+## Status
+
+| Rule | Status | Evidence | Test |
+|---|---|---|---|
+| GATE-1 | provisional | mock | `write-lane` TS-1 · `discovery` mutual-exclusion · `grant-lane` applies re-authorized capability. IP arm verified live once, **not reproducible** |
+| GATE-2 | provisional | mock | `grant-lane` "flushes what was held once capability resolves true" |
+| GATE-3 | provisional (no test) | none | Code: `writeEnabled` is never `persist()`-backed; `setWriteEnabled` no-ops without `window`. **Carve-out declared below.** |
+| GATE-4 | provisional (no test) | none | Code: `getTranslations` takes `response.data` only; the authorize body is never cached |
+| GATE-5 | provisional | mock | `discovery` "a write-enabled session registers the block and does NOT report" (cache written only after confirmed acceptance) |
+| GATE-6 | provisional | mock | `discovery` "never reports from a write-enabled session" + content-block pair |
+| GATE-7 | provisional | mock | `discovery` "reports a page whose unregistered content is a content block, not a t() miss" — **both directions** |
+| GATE-8 | implemented | mock | `grant-lane` GATE-8 block (write/read fallback, `ip_write` refused, re-evaluated per response, report lane off from the same condition, permissive policy cannot re-enable it) + `discovery` constraint-3 block |
+| CAT-1 | implemented | n/a (pure) | `translations` lookup suite + `write-lane` TS-3 (prototype-named phrase) |
+| CAT-2 | implemented | n/a (pure) | `translations` "returns the phrase as fallback when no translation exists" |
+| CAT-3 | provisional (no test) | none | Code: `isContentBlockKnown` tests object-ness. Server shape pinned by backend's contract test, not mine |
+| REG-1 | provisional | mock | `discovery` content-block pair (read-only registers nothing) |
+| REG-2 | provisional | mock | `write-lane` "sends late-rendering content sub-second rather than on the 3s poll tick" |
+| REG-3 | provisional | mock | `write-lane` "sends what is still queued when the page goes away, with keepalive" |
+| REG-4 | provisional | mock | `write-lane` TS-2/TS-4 asserts `keepalive` on every teardown request |
+| REG-5 | provisional | mock | `write-lane` "does not re-send what the debounce already sent — visibilitychange also fires on a tab switch" |
+| REG-6 | provisional | mock | `write-lane` "does not drop a miss recorded while a send is in flight" |
+| REG-7 | provisional | mock | same test (asserts the first phrase is sent exactly once) |
+| REG-8 | provisional | mock | `write-lane` "backs off instead of hammering a failing server, and keeps the batch" |
+| REG-9 | provisional | mock | `grant-lane` REG-9 block — honours a lower server limit, keeps the default when absent, and chunks sends to it |
+| REG-10 | provisional | mock | `write-lane` backoff test (failure ⇒ queued + backoff, one behaviour) |
+| REG-11 | **not implemented** | none | No ellipsis warning. See gaps. |
+| REG-12 | provisional (no test) | none | Primary mechanism is structural (`t()` treats a non-string value as known). A redundant 32-hex guard remains — see gaps |
+| HINT-1 | implemented | mock | `discovery` — every assertion is on `page_url` only; no payload path exists |
+| HINT-2 | n/a | n/a | Profile `server`. This SDK is `browser`/`all`. |
+| HINT-3 | provisional | mock | `discovery` "names the MISS-time URL, not wherever the user navigated during the jitter" |
+| HINT-4 | provisional | mock | `discovery` "reports a URL at most once per session" + "reports each URL separately" |
+| HINT-5 | provisional | mock | `discovery` jitter is advanced explicitly in every lane test |
+| HINT-6 | implemented | n/a (pure) | `discovery` `normalizeHintUrl` suite. `utm_*` prefix-matched per the server. Fragments preserved verbatim — conformant because the server now splits `normalize()` (verbatim, feeds dispatch) from `dedupKey()` (folds `#!/`→`#/`, suppression only), so preserving is correct rather than merely divergent |
+| HINT-7 | provisional | mock | `discovery` — no retry/backoff path exists in the lane |
+| HINT-8 | provisional | mock | `discovery` "never reports during SSR" |
+| HINT-9 | provisional | mock | `discovery` auto_discovery block — **includes the positive control**, per the pairing constraint |
+| SSR-1 | provisional | mock | `write-lane` "'client' does not collect" + "'server' does" + "'auto' up to threshold" |
+| SSR-2 | provisional | mock | `write-lane` TS-1. **Was a warning only until `f617a0d`** — the degradation is now real |
+| SSR-3 | provisional (no test) | none | Precondition documented; verified live once, not reproducible |
+| BIND-1..6 | n/a | n/a | Profile `binding`. This is the core, not a binding. |
+| GRANT-1 | implemented | mock | `grant-lane` "is attached when a grant is configured, and resolved per request" |
+| GRANT-2 | implemented | mock | same test — asserts the provider is re-resolved, not cached |
+| GRANT-3 | implemented | mock | `grant-lane` "issues a fresh authorization carrying the grant" |
+| GRANT-4 | implemented | mock | `grant-lane` header assertions |
+| OBS-1 | partial | none | Debug-level lines exist for every inert state (HINT-9, gate skips, absent `write_enabled`). Nothing is surfaced above debug. See gaps. |
+| WIRE-1 | provisional | mock | `api-reachability` WIRE-1 block — `x-Authorization` asserted on every request, plus the ICU capability header |
+| WIRE-2 | provisional | mock | `api` suite; 204 handled by status rather than content-type |
+| WIRE-3 | implemented | n/a (pure) | `locale` WIRE-3 block + `api` wire assertion. Lowercase `xx-yy` internally and on the wire. **Deliberately supersedes main's BCP 47 casing** (operator ruling); CLAUDE.md invariant 1a and the CHANGELOG carry the reason and the migration note |
+| WIRE-4 | provisional (no test) | none | Guarded (`window.location?.href`). No test asserts `t()` cannot throw |
+| WIRE-5 | implemented | mock | `api-reachability` — redirect **observed** at the double, plus the ordering failure proven |
+| CONF-1 | partial | — | Registration lanes assert catalog state; **hint lanes assert the outgoing payload**. See gaps. |
+| CONF-2 | implemented | — | This file |
+| CONF-3 | partial | — | `setWriteGrant` inertness is covered, but not by mutation. See gaps. |
+
+---
+
+## Declared carve-out (GATE-3)
+
+`Translations.ssrWriteEnabled` is a **process-level** cache of the write decision, which
+GATE-3 forbids. It is permissible under the rule's exception clause and is declared here
+rather than left silent:
+
+- It is read **only** under SSR, and **only** when no write grant is configured.
+- Without a grant, capability depends solely on the server's own IP, which is constant
+  for the process — so it provably does not vary per session.
+- Configuring a grant invalidates that proof, and the code refuses the SSR write lane
+  entirely in that case (`shouldQueueForWrite`, fixed in `f617a0d` — it previously
+  refused to *send* but still *collected*, which rebuilt the leak the rule prevents).
+
+---
+
+## Historical ids — lookup-only, never re-keyed
+
+Content registered before the 0.6.0 MD5 correction is stored under ids produced by a hash
+that packed UTF-16 code units into byte lanes. Those ids are resolved by
+`generateLegacyCustomId` on **lookup only** and are never registered under.
+
+**There is no migration and there must not be one.** An earlier version of this file
+recorded a hard "migration before SDK" ordering constraint, written on the assumption that
+stored ids would be re-keyed. That assumption is dead, and the citation is a demonstrated
+collision: `["UI",["xxxA"]]` and `["UI",["xxxŁ"]]` both hash to
+`ba623bfd68d7c2b3fd3a63854bc5cd9d`, because the packing shift is unmasked and a code unit
+above `0xFF` loses its high byte at `i % 4 === 3`. Reachable in ordinary content — `A`/`Ł`
+in Polish, `e`/`ť` and `n`/`Ů` in Czech and Slovak. **A key space that is not injective
+cannot be re-keyed**: where two blocks collided there is no correct target row, and a
+partial unique index turns the guess into either a merge of two customers' distinct blocks
+or an orphan.
+
+So there is no ordering constraint, no orphaning risk, and no cost-of-delay. The
+correction and its tolerating fallback shipped together in 0.6.0, which is the property
+that matters — the two halves must never ship apart.
+
+## Gaps, ranked by cost
+
+1. **HINT-6 — resolved, retained for the record.** The SDK preserved hashbang fragments while
+   the server canonicalised them, which would have dispatched the renderer to a route
+   hashbang apps do not resolve. Resolved by the server splitting `normalize()` (verbatim,
+   feeds dispatch) from `dedupKey()` (folds `#!/`→`#/`, suppression only) — neither leg
+   conceded, and the two concerns that had been sharing one function were separated. Nothing
+   outstanding.
+
+2. **CONF-1 — the hint lanes assert on what the SDK sent.** They prove outgoing behaviour
+   and say nothing about whether discovery received anything. This is the failure CONF-1
+   exists to prevent, present in my own suite. Closing it needs a
+   `discovery_render_targets` assertion or the shared fixture.
+3. **Everything graded `mock`.** Not fixable in this repo alone — it needs the shared
+   stateful contract fixture (CONF-2, Open). Until then no row here can honestly claim
+   better, however confident the behaviour.
+4. **GATE-3, GATE-4, WIRE-4, CAT-3, REG-12, SSR-3 have no test at all.** I believe each is
+   satisfied and can point at the code, which is exactly the standard of evidence CONF-1
+   rejects. Low cost individually; the aggregate is that six rules rest on my reading.
+   (WIRE-1 was the seventh and is now covered — the reviewer picked it as the cheapest and
+   most load-bearing of the set.)
+5. **REG-11 — no ellipsis warning.** Agreed as correct in the spec discussion, never
+   implemented. Cost is catalog pollution plus double MT spend on truncated content,
+   bounded by how often customers render truncated text through `t()`.
+6. **OBS-1 — nothing is surfaced above debug level.** Deliberate for HINT-9 (the customer
+   chose it), but an SDK that is inert because the server never returned `write_enabled`
+   currently says so only at debug. Arguably that one warrants a warning, since nobody
+   chose it.
+7. **CONF-3 — runtime rules are not proven by mutation.** The `setWriteGrant` tests would
+   have caught the original inert version, but I have not verified that by reverting the
+   fix and watching them fail.
+8. **REG-12 — a redundant 32-hex guard remains** in the queue path. The primary mechanism
+   is already structural, so the guard can only ever be wrong (it would reject a
+   legitimate 32-hex phrase). Removing it needs confirmation that a content-block id never
+   reaches `t()`.
+
+## Not applicable
+
+`HINT-2` (server profile) and `BIND-1`..`BIND-6` (binding profile) — this package is the
+core browser implementation, so neither profile applies. Recorded with a revision because
+an `n/a` claim is a claim about the rule's Profiles line: a stale `implemented` row has a
+test that will eventually fail, whereas a stale `n/a` row has nothing that can ever
+contradict it.
