@@ -169,7 +169,7 @@ Target: ES2021. Module resolution: bundler. Strict TypeScript with `verbatimModu
 
 ## Testing approach
 
-`npm test` runs vitest over `tests/` — 6 files, 74 tests (`api`, `content-block-identity`, `interpolate`, `locale`, `richtext`, `translations`).
+`npm test` runs vitest over `tests/` — 6 files, 76 tests (`api`, `content-block-identity`, `interpolate`, `locale`, `richtext`, `translations`).
 
 `content-block-identity` pins `custom_id` **identity** rather than output: text-node arity, comment skipping, and attribute emission order. Those are wire values shared with every other SDK. It is mutation-checked — adding `clone.normalize()` to `tokenizeElement` turns three of its tests red. A failure there is a breaking change, not a stale expectation; never repin a literal to make it green. `npm run test:watch` for watch mode.
 
