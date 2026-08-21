@@ -398,10 +398,21 @@ Two consequences:
   at that same `await` between mount and the first catalog fetch settling. In a
   healthy app that window is short; if `ready()` never resolves it is
   permanent.
-- **While suspended, the block is deaf.** The constructor's locale subscriber
-  is gated `if (locale && this.parseComplete)` (`:78`), so the instance never
-  re-enters — not on locale change, not after the catalog arrives. Inert for
-  the lifetime of the page.
+- **While suspended, the block is deaf** — but only while suspended. The
+  constructor's locale subscriber is gated `if (locale && this.parseComplete)`
+  (`:78`), so a suspended instance does not re-enter. **CORRECTED
+  2026-08-21:** an earlier version of this entry said "inert for the lifetime
+  of the page." That was wrong, and wrong in the direction that makes the bug
+  sound worse than it is. Resolving `ready()` unsticks it. Measured here:
+
+  ```
+  no init():          parseComplete=false  tokens=[]
+  after markLoaded(): parseComplete=true   tokens=[]
+  ```
+
+  Permanent deafness needs `ready()` to never settle, which is not the normal
+  case. In a healthy app the suspension is transient and the block is
+  reachable afterwards.
 
 So the boolean has **three** states, and the third arrives from a direction the
 first two don't suggest: *tokenized*, *gave up on an empty host* (`:120`), and
@@ -413,7 +424,15 @@ which is the right one: *nothing to tokenize yet* (recoverable, retry) from
 *tokenized and found nothing* (a real answer, don't retry). Neither is the same
 as *still waiting on the catalog*.
 
-**Regression test, per their suggestion:** alongside hydrated `{#await}`, run
-client-only `{#await}` and assert the block is **reachable** afterwards — that
-it responds to a locale change at all. That assertion fails today and would
-have caught this.
+**Regression test — the first version of this was wrong.** An earlier entry
+required "assert the block is reachable after a client-only `{#await}`."
+**Reachability passes today** (see the correction above), so that assertion
+certifies nothing. The one that actually fails is on **registration**: after a
+client-only `{#await}` settles, the block's `tokens` should be non-empty and
+its content should be in the catalog. Assert that, plus the hydrated
+`{#await}` case.
+
+**The durable defect, true in both modes and surviving every correction in
+this thread: `tokens=[]`.** The block never registers anything, in healthy apps
+too. Everything about deafness and re-entry was contested and half-retracted;
+this was not.
