@@ -27,7 +27,8 @@
         "./browser": {
             "types": "./dist/index.d.ts",
             "import": "./dist/langsys.browser.mjs"
-        }
+        },
+        "./package.json": "./package.json"
     },
     "files": [
         "dist",
