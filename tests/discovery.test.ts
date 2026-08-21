@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangsysAppAPI } from '../src/api.js';
 import { registerContentBlock } from '../src/content-block.js';
 import { _resetDiscoveryState, normalizeHintUrl, recordMissForDiscovery } from '../src/discovery.js';
+import fragmentFixture from './fixtures/hint-url-fragment-reference.json';
+import { logger } from '../src/logger.js';
 import { autoDiscovery, sTranslations, writeEnabled } from '../src/stores.js';
 
 /**
@@ -228,16 +230,20 @@ describe('content blocks feed the report lane', () => {
     });
 });
 
-describe('TS-7: sensitive query params never leave the browser', () => {
-    it('strips credential-shaped params, which the renderer would otherwise REPLAY', () => {
-        // A reported URL is not just stored — the renderer visits it. A
-        // magic-link or single-use token in a query string would be exercised
-        // by our own infrastructure.
-        expect(normalizeHintUrl('https://a.com/p?token=abc123&page=3')).toBe('https://a.com/p?page=3');
-        expect(normalizeHintUrl('https://a.com/p?access_token=x&csrfToken=y')).toBe('https://a.com/p');
-        expect(normalizeHintUrl('https://a.com/p?email=a@b.com')).toBe('https://a.com/p');
-        expect(normalizeHintUrl('https://a.com/p?signature=s&sig=t&nonce=n')).toBe('https://a.com/p');
-        expect(normalizeHintUrl('https://a.com/p?api_key=k&apikey=k2&secret=s')).toBe('https://a.com/p');
+describe('TS-7: a credential-shaped param declines the WHOLE report', () => {
+    it('returns null rather than a stripped URL, because the renderer VISITS what we send', () => {
+        // Stripping the param produced a URL that is no longer the page the
+        // miss came from: the renderer loads a different page and registers
+        // what it finds there, and every page distinguished only by that param
+        // collapses onto one dedup key. Both failures are silent. Declining is
+        // the honest outcome — the page goes undiscovered and nothing wrong is
+        // registered in its name.
+        expect(normalizeHintUrl('https://a.com/p?token=abc123&page=3')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?access_token=x&csrfToken=y')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?email=a@b.com')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?signature=s&sig=t&nonce=n')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?apikey=k&secret=s')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?otp=123456')).toBeNull();
     });
 
     it('still keeps ordinary routing params, so discovery keeps working', () => {
@@ -247,23 +253,155 @@ describe('TS-7: sensitive query params never leave the browser', () => {
     });
 });
 
-describe('sensitive-param matching is whole-word where the word is ambiguous', () => {
-    it('strips OAuth code but keeps postcode / country_code', () => {
-        expect(normalizeHintUrl('https://a.com/p?code=oauth-grant')).toBe('https://a.com/p');
-        expect(normalizeHintUrl('https://a.com/p?postcode=SW1&country_code=gb')).toBe(
-            'https://a.com/p?country_code=gb&postcode=SW1',
+describe('route params that merely LOOK like credentials are carried', () => {
+    // The regression this pair exists to stop: `key` and `code` were on the
+    // whole-word list, so `?key=pricing` was destroyed and every tab of that
+    // page became the same dedup key. A stripped route param costs every page
+    // distinguished by it, permanently, with all statuses reporting success.
+    it('carries ?key=, a tab selector on exactly the pages discovery hunts', () => {
+        expect(normalizeHintUrl('https://a.com/plans?key=pricing')).toBe('https://a.com/plans?key=pricing');
+        expect(normalizeHintUrl('https://a.com/plans?key=enterprise')).not.toBe(
+            normalizeHintUrl('https://a.com/plans?key=pricing'),
         );
     });
 
-    it('strips sig and auth but keeps design and author', () => {
-        expect(normalizeHintUrl('https://a.com/p?sig=abc&auth=xyz')).toBe('https://a.com/p');
+    it('carries a bare ?code=, which is a country or a coupon far more often than a grant', () => {
+        expect(normalizeHintUrl('https://a.com/shop?code=US')).toBe('https://a.com/shop?code=US');
+        expect(normalizeHintUrl('https://a.com/shop?code=SAVE20')).toBe('https://a.com/shop?code=SAVE20');
+    });
+
+    it('declines ?code= only when an OAuth state marker rides along', () => {
+        expect(normalizeHintUrl('https://a.com/cb?code=abc&state=xyz')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/cb?code=abc&session_state=xyz')).toBeNull();
+    });
+
+    it('keeps design/author/postcode/country_code, which normalization must not newly catch', () => {
         expect(normalizeHintUrl('https://a.com/p?design=flat&author=jo')).toBe(
             'https://a.com/p?author=jo&design=flat',
         );
+        expect(normalizeHintUrl('https://a.com/p?postcode=SW1&country_code=gb')).toBe(
+            'https://a.com/p?country_code=gb&postcode=SW1',
+        );
+        expect(normalizeHintUrl('https://a.com/p?product_code=X1&state=california')).toBe(
+            'https://a.com/p?product_code=X1&state=california',
+        );
+    });
+});
+
+describe('param matching is separator-insensitive', () => {
+    it('catches every spelling of api key — the hyphen form used to sail through', () => {
+        // `api_key` matched the literal fragment; `api-key` and `x-api-key`
+        // matched nothing, so the two commonest real spellings of the thing
+        // this list exists to catch were transmitted verbatim.
+        expect(normalizeHintUrl('https://a.com/p?api-key=k')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?x-api-key=k')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?api_key=k')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?apiKey=k')).toBeNull();
+    });
+
+    it('catches the compound auth spellings left uncovered by dropping `code`', () => {
+        expect(normalizeHintUrl('https://a.com/p?auth_code=x')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?access-code=x')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?oauth_verifier=x')).toBeNull();
     });
 
     it('still strips the unambiguous ones as substrings', () => {
-        expect(normalizeHintUrl('https://a.com/p?authorization=b&user_email=c&session_id=d')).toBe('https://a.com/p');
+        expect(normalizeHintUrl('https://a.com/p?authorization=b')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?user_email=c')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?session_id=d')).toBeNull();
+    });
+});
+
+describe('credentials hidden in the fragment', () => {
+    // `searchParams` cannot see these, and the fragment is deliberately
+    // PRESERVED by normalization (HINT-6), so a route-shaped fragment carrying
+    // a grant would otherwise leave the browser verbatim.
+    const fixture = fragmentFixture as {
+        cases: { id: string; url: string; expect: string; expected_url?: string }[];
+    };
+
+    for (const c of fixture.cases) {
+        it(`${c.expect}s: ${c.id}`, () => {
+            if (c.expect === 'decline') {
+                expect(normalizeHintUrl(c.url)).toBeNull();
+            } else {
+                expect(normalizeHintUrl(c.url)).toBe(c.expected_url);
+            }
+        });
+    }
+
+    it('reads the whole fragment as pairs when there is no ? at all', () => {
+        // The implicit-flow shape. A ?-tail-only parser misses it silently.
+        expect(normalizeHintUrl('https://a.com/cb#id_token=x')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/cb#refresh_token=x&scope=openid')).toBeNull();
+    });
+
+    it('ignores fragment segments with no `=`, which are routes and anchors', () => {
+        expect(normalizeHintUrl('https://a.com/p#/products/42')).toBe('https://a.com/p#/products/42');
+        expect(normalizeHintUrl('https://a.com/p#!/checkout')).toBe('https://a.com/p#!/checkout');
+    });
+
+    it('applies the OAuth co-occurrence rule across the fragment too', () => {
+        expect(normalizeHintUrl('https://a.com/app#/cb?code=abc&state=xyz')).toBeNull();
+        // …and still leaves a bare fragment `code` alone.
+        expect(normalizeHintUrl('https://a.com/app#/shop?code=US')).toBe('https://a.com/app#/shop?code=US');
+    });
+});
+
+describe('declining tells the developer why', () => {
+    // Behaviour with no observable trace is undiscoverable by construction:
+    // otherwise a developer staring at the one page that never gets translated
+    // has no way to learn that we refused to report it.
+    it('names the offending param, in the spelling the page actually uses', () => {
+        const wasDebug = logger.debugEnabled;
+        const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        logger.debugEnabled = true;
+        try {
+            expect(normalizeHintUrl('https://a.com/p?X-Api-Key=abc')).toBeNull();
+            const said = spy.mock.calls.flat().join(' ');
+            expect(said).toContain('declined');
+            expect(said).toContain('X-Api-Key');
+            expect(said).toContain('query string');
+            // The NAME, never the value.
+            expect(said).not.toContain('abc');
+        } finally {
+            logger.debugEnabled = wasDebug;
+            spy.mockRestore();
+        }
+    });
+
+    it('names a FRAGMENT param in the page\'s own spelling too', () => {
+        const wasDebug = logger.debugEnabled;
+        const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        logger.debugEnabled = true;
+        try {
+            expect(normalizeHintUrl('https://a.com/cb#Access_Token=secretvalue')).toBeNull();
+            const said = spy.mock.calls.flat().join(' ');
+            expect(said).toContain('declined');
+            expect(said).toContain('Access_Token');
+            // Says WHERE, and says the right where. Calling this a "query
+            // parameter" while the developer stares at a URL with no query
+            // string at all teaches them to distrust the notice.
+            expect(said).toContain('fragment');
+            expect(said).not.toContain('query string');
+            expect(said).not.toContain('secretvalue');
+        } finally {
+            logger.debugEnabled = wasDebug;
+            spy.mockRestore();
+        }
+    });
+
+    it('says nothing when the URL is fine', () => {
+        const wasDebug = logger.debugEnabled;
+        const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        logger.debugEnabled = true;
+        try {
+            expect(normalizeHintUrl('https://a.com/plans?key=pricing')).not.toBeNull();
+            expect(spy.mock.calls.flat().join(' ')).not.toContain('declined');
+        } finally {
+            logger.debugEnabled = wasDebug;
+            spy.mockRestore();
+        }
     });
 });
 

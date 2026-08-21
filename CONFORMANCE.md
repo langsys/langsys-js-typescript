@@ -77,7 +77,7 @@ is `provisional` regardless of how confident I am in the behaviour.
 | HINT-3 | provisional | mock | `discovery` "names the MISS-time URL, not wherever the user navigated during the jitter" |
 | HINT-4 | provisional | mock | `discovery` "reports a URL at most once per session" + "reports each URL separately" |
 | HINT-5 | provisional | mock | `discovery` jitter is advanced explicitly in every lane test |
-| HINT-6 | implemented | n/a (pure) | `discovery` `normalizeHintUrl` suite. `utm_*` prefix-matched per the server. Fragments preserved verbatim — conformant because the server now splits `normalize()` (verbatim, feeds dispatch) from `dedupKey()` (folds `#!/`→`#/`, suppression only), so preserving is correct rather than merely divergent |
+| HINT-6 | implemented | n/a (pure) | `discovery` `normalizeHintUrl` suite. `utm_*` prefix-matched per the server. Fragments preserved verbatim — conformant because the server now splits `normalize()` (verbatim, feeds dispatch) from `dedupKey()` (folds `#!/`→`#/`, suppression only), so preserving is correct rather than merely divergent. Credential-shaped params — in the query AND inside the fragment — decline the whole report rather than being stripped from it. Two contracts, deliberately different: NORMALIZATION stays identical across legs (divergence breaks dedup keys and renderer targets); the DECLINE PREDICATE is a union, where each leg may be stricter without coordination, because a passing URL is byte-identical whatever matched. See the credential-param gap under Gaps |
 | HINT-7 | provisional | mock | `discovery` — no retry/backoff path exists in the lane |
 | HINT-8 | provisional | mock | `discovery` "never reports during SSR" |
 | HINT-9 | provisional | mock | `discovery` auto_discovery block — **includes the positive control**, per the pairing constraint |
@@ -150,25 +150,72 @@ that matters — the two halves must never ship apart.
    and say nothing about whether discovery received anything. This is the failure CONF-1
    exists to prevent, present in my own suite. Closing it needs a
    `discovery_render_targets` assertion or the shared fixture.
-3. **Everything graded `mock`.** Not fixable in this repo alone — it needs the shared
+3. **A page whose URL carries a credential-shaped query param is never discovered.** Deliberate,
+   and the cost is real: `?sig=`, `?otp=`, `?nonce=`, `?auth=`, anything containing `token`,
+   `secret`, `password`, `apikey`, `authoriz`, `session`, `signature`, `credential`, `email`,
+   `oauth`, `authcode` or `accesscode` (separator-insensitively), and `?code=` when an OAuth
+   `state`/`session_state` rides with it. The same test applies to parameters carried in the
+   FRAGMENT, which `searchParams` cannot see and which normalization deliberately preserves:
+   `#/cb?code=x&state=y`, and the OAuth implicit flow `#access_token=…`, which has no `?` at
+   all and is missed by any parser that only reads a `?` tail. A fragment segment without `=`
+   is not a pair, so routes and anchors (`#/pricing`, `#section`, `#contact-email`) are
+   unaffected. Such a page is not reported, so its content must be translated by hand.
+   `normalizeHintUrl` returns `null` and logs the offending param name — in the page's own
+   spelling, never its value — at debug level, so the developer gets an answer rather than
+   silence.
+
+   The decline predicate is a UNION across legs, not a synchronized list: it gates an
+   unmodified URL, so a URL that passes is byte-identical whatever matched, and a stricter leg
+   only declines more. That is why the server may carry checks this SDK lacks — the SDK build
+   already deployed will never update, and the server is the only leg in front of it. The five
+   fragment shapes are written down in `tests/fixtures/hint-url-fragment-reference.json` as
+   documentation of intent rather than enforcement; a leg that misses one is contributing less,
+   not failing a contract. The fixture also pins one asymmetry that looks like an
+   inconsistency and is not: a valueless `?email` declines while `#contact-email` carries,
+   because the `?` has already established parameter space and a fragment without one has not.
+   Unifying it in either direction breaks one of the two.
+
+   Worth recording, since it argues against the reflex that produced this bug: the whole-word
+   treatment of `code`/`sig`/`auth` was already the right mechanism — structure over substring,
+   the same insight the fragment rule needed — added in `22a9e09` (2026-08-15) with
+   `postcode`/`country_code`/`design`/`author` named as the cases it protected. The defect was
+   never the mechanism. It was the membership: `key` and `code` were credentials in the abstract
+   and routes in practice, and no amount of matching precision saves a list that names the wrong
+   words.
+
+   **For the record: stripping the param instead was inherited from the original
+   implementation, not chosen.** It was wrong in two directions at once. Removing a param
+   yields a URL that is no longer the page the miss came from, so the renderer visits a
+   different page and registers what it finds there; and every page distinguished only by that
+   param collapses onto one dedup key in both legs. Both failures are silent, with every status
+   reporting success. Declining trades a discoverable page for an undiscovered one, which is at
+   least consistent with what the customer observes.
+
+   The list also carried `key` and `code` as whole words, which destroyed `?key=pricing` and
+   `?code=US` — ordinary selectors on exactly the content-bearing pages discovery exists to
+   find. Removed. Ranked here rather than lower because the residue is permanent and invisible
+   from outside; ranked below CONF-1 because the class of affected pages is small and, unlike
+   CONF-1, it is now stated rather than assumed.
+
+4. **Everything graded `mock`.** Not fixable in this repo alone — it needs the shared
    stateful contract fixture (CONF-2, Open). Until then no row here can honestly claim
    better, however confident the behaviour.
-4. **GATE-3, GATE-4, WIRE-4, CAT-3, REG-12, SSR-3 have no test at all.** I believe each is
+5. **GATE-3, GATE-4, WIRE-4, CAT-3, REG-12, SSR-3 have no test at all.** I believe each is
    satisfied and can point at the code, which is exactly the standard of evidence CONF-1
    rejects. Low cost individually; the aggregate is that six rules rest on my reading.
    (WIRE-1 was the seventh and is now covered — the reviewer picked it as the cheapest and
    most load-bearing of the set.)
-5. **REG-11 — no ellipsis warning.** Agreed as correct in the spec discussion, never
+6. **REG-11 — no ellipsis warning.** Agreed as correct in the spec discussion, never
    implemented. Cost is catalog pollution plus double MT spend on truncated content,
    bounded by how often customers render truncated text through `t()`.
-6. **OBS-1 — nothing is surfaced above debug level.** Deliberate for HINT-9 (the customer
+7. **OBS-1 — nothing is surfaced above debug level.** Deliberate for HINT-9 (the customer
    chose it), but an SDK that is inert because the server never returned `write_enabled`
    currently says so only at debug. Arguably that one warrants a warning, since nobody
    chose it.
-7. **CONF-3 — runtime rules are not proven by mutation.** The `setWriteGrant` tests would
+8. **CONF-3 — runtime rules are not proven by mutation.** The `setWriteGrant` tests would
    have caught the original inert version, but I have not verified that by reverting the
    fix and watching them fail.
-8. **REG-12 — a redundant 32-hex guard remains** in the queue path. The primary mechanism
+9. **REG-12 — a redundant 32-hex guard remains** in the queue path. The primary mechanism
    is already structural, so the guard can only ever be wrong (it would reject a
    legitimate 32-hex phrase). Removing it needs confirmation that a content-block id never
    reaches `t()`.
