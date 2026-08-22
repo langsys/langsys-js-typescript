@@ -141,6 +141,56 @@ describe('an attribute-only token must not take the single-token fast path', () 
         expect(el.querySelector('img')?.getAttribute('alt')).toBe('Texto alt');
     });
 
+    it('reaches an attribute token TWO levels down', async () => {
+        withBlock(['Alt text'], { 'Alt text': 'Texto alt' });
+        const { el } = make('<div><div><img alt="Alt text"></div></div>');
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(el.querySelector('div > div > img')).not.toBeNull();
+        expect(el.querySelector('img')?.getAttribute('alt')).toBe('Texto alt');
+    });
+
+    it('handles an attribute token surrounded by whitespace-only text nodes', async () => {
+        // Whitespace nodes are not tokens and must not be mistaken for the
+        // single text node the fast path needs — otherwise this shape routes
+        // to the fast path and the <img> is replaced by a whitespace write.
+        withBlock(['Alt text'], { 'Alt text': 'Texto alt' });
+        const { el } = make('  <img alt="Alt text">  ');
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(el.querySelector('img')?.getAttribute('alt')).toBe('Texto alt');
+        expect(el.textContent).toBe('    ');
+    });
+
+    it('translates two attributes on one element', async () => {
+        withBlock(['Alt text', 'Other'], { 'Alt text': 'Texto alt', Other: 'Otro' });
+        const { el } = make('<img alt="Alt text" title="Other">');
+        await new Promise((r) => setTimeout(r, 10));
+
+        const img = el.querySelector('img');
+        expect(img?.getAttribute('alt')).toBe('Texto alt');
+        expect(img?.getAttribute('title')).toBe('Otro');
+    });
+
+    it('translates <option> text without losing the <select>', async () => {
+        withBlock(['Pick'], { Pick: 'Elige' });
+        const { el } = make('<select><option>Pick</option></select>');
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(el.querySelector('select > option')).not.toBeNull();
+        expect(el.querySelector('option')?.textContent).toBe('Elige');
+    });
+
+    it('translates an aria-label and the element text together', async () => {
+        withBlock(['Close', 'x'], { Close: 'Cerrar', x: 'X' });
+        const { el } = make('<a href="#" aria-label="Close">x</a>');
+        await new Promise((r) => setTimeout(r, 10));
+
+        const a = el.querySelector('a');
+        expect(a?.getAttribute('aria-label')).toBe('Cerrar');
+        expect(a?.textContent).toBe('X');
+    });
+
     it('still uses the fast path for a genuine single TEXT token', async () => {
         // Regression guard. The fast path is correct for what it was built
         // for; this change narrows which content reaches it, not what it does.

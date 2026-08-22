@@ -239,7 +239,11 @@ The `innerText` fallback was REMOVED rather than left unreachable — an
 unreachable branch that still performs the destructive write is how this comes
 back the next time someone widens the routing.
 
-Measured against the branch, nine shapes, all correct:
+Measured against the branch, nine shapes, all correct — and each one PINNED in
+`tests/translate.test.ts` rather than measured once and discarded. The first
+version of this entry claimed nine measured shapes while the suite pinned six;
+the two fix-governed ones among the missing five (two-deep nesting,
+whitespace-wrapped) were regressions-in-waiting with nothing holding them:
 
 ```
 <img alt="Alt text">                      -> <img alt="AT-es">                    FIXED
