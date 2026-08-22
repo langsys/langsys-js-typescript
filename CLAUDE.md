@@ -22,7 +22,7 @@ src/
     api.ts                  # LangsysAppAPI — singleton HTTP client (validate, getTranslations, post/get/delete/patch/put with [projectid] path substitution)
     signal.ts               # Signal<T> + createSignal + getValue
     persist.ts              # persist<T>(key, initial) — Signal backed by localStorage with SSR-safe fallback
-    stores.ts               # Module-scoped state: sTranslations (persist), currentlyLoadedLocale, contentBlocks, shared config
+    stores.ts               # Module-scoped state: sTranslations (persist), currentlyLoadedLocale, writeEnabled, autoDiscovery, batchLimit, shared config
     interpolate.ts          # {name}-style + ICU MessageFormat placeholder substitution (CLDR number/date formatting in both paths)
     locale.ts               # canonicalizeLocale (lowercase xx-yy form) + maximizedLangScript (CLDR likely-subtags matching)
     logger.ts               # Logger + logger singleton — debug-gated, styled grouping in browser / plain in Node
@@ -64,7 +64,8 @@ persist<T>(key, initial): Signal<T>     // localStorage-backed Signal
 // Reactive stores (also exported for direct subscription)
 sTranslations                           // Signal<iCategories>
 currentlyLoadedLocale                   // Signal<string>
-contentBlocks                           // Signal<iContentBlock[]>
+writeEnabled                            // Signal<boolean | undefined> — server-computed write capability
+autoDiscovery                           // Signal<boolean | undefined> — per-key reporting policy
 
 // Logger
 Logger, logger
@@ -171,7 +172,7 @@ Target: ES2021. Module resolution: bundler. Strict TypeScript with `verbatimModu
 
 ## Testing approach
 
-`npm test` runs vitest over `tests/` — 6 files, 79 tests (`api`, `content-block-identity`, `interpolate`, `locale`, `richtext`, `translations`).
+`npm test` runs vitest over `tests/` — 16 files, 232 tests (`api`, `api-reachability`, `content-block-identity`, `custom-id`, `discovery`, `grant-lane`, `init-settle`, `interpolate`, `langsys-app`, `locale`, `logger`, `persist`, `richtext`, `translate`, `translations`, `write-lane`).
 
 `content-block-identity` pins `custom_id` **identity** rather than output: text-node arity, comment skipping, and attribute emission order. Those are wire values shared with every other SDK. It is mutation-checked — adding `clone.normalize()` to `tokenizeElement` turns three of its tests red. It also pins the **opposite** rule on the `<Phrase>` path: `encodeRichText` coalesces adjacent text nodes by design, because the phrase string is the key and a sentence must survive whole. The two paths are not meant to agree — the realistic bug is someone applying the content-block contract to `richtext.ts`. A failure there is a breaking change, not a stale expectation; never repin a literal to make it green. `npm run test:watch` for watch mode.
 

@@ -222,9 +222,30 @@ block as new, so blocks registered by this SDK still resolve there.
 Registration always uses the corrected derivation. It asserts the divergence as
 a test that fails when we converge, rather than skipping the case.
 
-## DEFECT (live, shipped): the single-token fast path destroys the subtree
+## DEFECT (partly fixed on `feature/838_write_key_gating_reland`): the single-token fast path destroys the subtree
 
-**Not started.** Raised 2026-08-21 by `langsys-skill`, from a SvelteKit
+**Status, 2026-08-21.** Manifestation 2 is FIXED on that branch; manifestation 1
+is NOT, and remains live. `renderSingleToken` now writes into the element's
+single non-whitespace text node instead of assigning `innerText`, so framework
+anchor comments and wrapper markup survive. Where there is NO text node — which
+is exactly the attribute-only case in manifestation 1 — it still falls back to
+`innerText` and still destroys the element.
+
+Measured against the branch rather than reasoned about:
+
+```
+<div><img alt="Alt text"></div>          -> innerHTML "Texto alt"   STILL BROKEN
+<div><input placeholder="Your name"></div> -> innerHTML "Tu nombre"   STILL BROKEN
+<div><!--[-->loading<!--]--></div>       -> both anchors survive     FIXED
+```
+
+The remaining fix is not the same shape as the one applied: an attribute-sourced
+token has no text node to write into, so the single-token fast path should not
+claim it at all — it belongs on the node-walking path that already handles
+attributes. That is a behaviour change to which branch runs, and is left for its
+own change rather than folded in here.
+
+**Originally raised as: Not started.** Raised 2026-08-21 by `langsys-skill`, from a SvelteKit
 reference deployment. Verified here against `src/translate.ts` and reproduced
 against the published `0.6.5` dist. **This is a live defect in client-only
 apps — no SSR involved.**
