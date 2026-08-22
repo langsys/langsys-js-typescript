@@ -222,33 +222,56 @@ block as new, so blocks registered by this SDK still resolve there.
 Registration always uses the corrected derivation. It asserts the divergence as
 a test that fails when we converge, rather than skipping the case.
 
-## DEFECT (partly fixed on `feature/838_write_key_gating_reland`): the single-token fast path destroys the subtree
+## DEFECT (DOM manifestations FIXED; one compounding factor still live): the single-token fast path destroys the subtree
 
-**Status, 2026-08-21.** Manifestation 2 is FIXED on that branch; manifestation 1
-is NOT, and remains live. `renderSingleToken` now writes into the element's
-single non-whitespace text node instead of assigning `innerText`, so framework
-anchor comments and wrapper markup survive. Where there is NO text node — which
-is exactly the attribute-only case in manifestation 1 — it still falls back to
-`innerText` and still destroys the element.
+**Status, 2026-08-22.** Both manifestations are fixed on
+`feature/838_write_key_gating_reland`, as is the repeat-write compounding
+factor. The tokenize-once compounding factor is NOT fixed and remains live.
 
-Measured against the branch rather than reasoned about:
+The fix is the one this entry's "Direction for a fix" section called for, taken
+in both halves. `renderSingleToken` writes the element's single non-whitespace
+text node instead of assigning `innerText`, so siblings — including comments a
+framework owns — survive. And the fast path is now gated on
+`usesSingleTextNodeFastPath()`: one token is not the same question as one text
+node, so an attribute-only block has no text node, does not take the fast path
+at all, and goes to the node-walking path that updates the attribute in place.
+The `innerText` fallback was REMOVED rather than left unreachable — an
+unreachable branch that still performs the destructive write is how this comes
+back the next time someone widens the routing.
+
+Measured against the branch, nine shapes, all correct:
 
 ```
-<div><img alt="Alt text"></div>          -> innerHTML "Texto alt"   STILL BROKEN
-<div><input placeholder="Your name"></div> -> innerHTML "Tu nombre"   STILL BROKEN
-<div><!--[-->loading<!--]--></div>       -> both anchors survive     FIXED
+<img alt="Alt text">                      -> <img alt="AT-es">                    FIXED
+<input placeholder="Your name">           -> <input placeholder="YN-es">          FIXED
+<div><div><img alt="…"></div></div>       -> attribute translated, nesting intact  FIXED
+"  <img alt="…">  "                       -> attribute translated, whitespace kept FIXED
+<img alt="…" title="…">                   -> both attributes translated            FIXED
+<select><option>Pick</option></select>    -> <option>Elige</option>                FIXED
+<a aria-label="Close">x</a>               -> label and text both translated        FIXED
+<p data-testid="g">Welcome back.</p>      -> text written, wrapper + hook survive  FIXED
+<!--[-->loading<!--]-->                   -> both anchors survive                  FIXED
 ```
 
-The remaining fix is not the same shape as the one applied: an attribute-sourced
-token has no text node to write into, so the single-token fast path should not
-claim it at all — it belongs on the node-walking path that already handles
-attributes. That is a behaviour change to which branch runs, and is left for its
-own change rather than folded in here.
+Compounding factor 2 ("the write repeats on every locale change") is fixed:
+`translateUpdate` now sets `lastTranslatedLocale` in BOTH branches, so the
+guard short-circuits as intended.
 
-**Originally raised as: Not started.** Raised 2026-08-21 by `langsys-skill`, from a SvelteKit
-reference deployment. Verified here against `src/translate.ts` and reproduced
-against the published `0.6.5` dist. **This is a live defect in client-only
-apps — no SSR involved.**
+**Compounding factor 1 ("tokenization happens once, in the constructor") is
+NOT fixed and is now the whole of what remains.** `tokenizeContent()` is still
+called only from the constructor and `this.tokens` is assigned only there;
+there is still no MutationObserver and no re-tokenize path. So for `{#await}`,
+`this.tokens` is permanently the pending placeholder, the resolved content is
+never registered, and every `{#await}` sharing a pending string still collapses
+onto one id. The DOM is no longer destroyed — which is what froze the reference
+deployment — but the registration gap is untouched.
+
+That also bounds constraint (a) rather than clearing it: the branch decision is
+now re-evaluated on every update, so a block CAN cross between paths as its DOM
+changes, but it crosses using tokens captured at construction. Re-tokenization
+is its own change and is not attempted here.
+
+**Originally raised as: Not started.**
 
 `src/translate.ts:109-110` and `:137-138`, both sites identical:
 

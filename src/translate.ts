@@ -13,6 +13,7 @@ import {
 } from './content-block.js';
 import { interpolate, normalizeMarkupPlaceholders, warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
+import { logger } from './logger.js';
 import { currentlyLoadedLocale, sTranslations, config as configStore } from './stores.js';
 import type { Unsubscriber } from './signal.js';
 import type { iContentBlock } from './types/content-block.js';
@@ -125,7 +126,7 @@ export class Translate {
 
         const { category = '' } = this.options;
 
-        if (this.tokens.length === 1) {
+        if (this.usesSingleTextNodeFastPath()) {
             this.renderSingleToken(category);
             this.lastTranslatedLocale = currentLocale;
         } else {
@@ -148,15 +149,45 @@ export class Translate {
         const fromBlock = LangsysApp.Translations.lookupContent(category, this.custom_id, token);
         const resolved = this.applyParams(fromBlock ?? LangsysApp.Translations.t(token, category));
 
-        // A single-token block still commonly wraps its text in markup —
-        // `<Translate><p data-testid="x">text</p></Translate>` is the ordinary
-        // framework-component shape. Assigning `innerText` flattens the whole
-        // subtree, so the wrapper and every hook on it (a test id, an id, a
-        // ref) are destroyed on first render. Writing the one text node leaves
-        // the structure intact.
+        // Write the ONE text node. Never `innerText`, which replaces every
+        // child of the host element: a single-token block still commonly wraps
+        // its text in markup — `<Translate><p data-testid="x">text</p></Translate>`
+        // is the ordinary framework-component shape — and flattening it destroys
+        // the wrapper along with any test id, id, ref or framework anchor on it.
+        //
+        // There is no `innerText` fallback on purpose. Both callers gate on
+        // `usesSingleTextNodeFastPath()`, so the node is guaranteed to exist;
+        // an unreachable fallback that quietly does the destructive thing is
+        // how this defect would come back the next time someone widens the
+        // routing. If it is ever null, that is a routing bug and should be
+        // visible as one rather than absorbed into a wiped subtree.
         const textNode = this.findSingleTextNode(this.element);
-        if (textNode) textNode.nodeValue = resolved;
-        else this.element.innerText = resolved;
+        if (!textNode) {
+            logger.warn(
+                'Translate: single-token fast path reached an element with no text node — this is a routing bug, ' +
+                    'not a content problem. Leaving the DOM untouched rather than replacing it.'
+            );
+            return;
+        }
+        textNode.nodeValue = resolved;
+    }
+
+    /**
+     * Whether the single-token fast path may claim this element.
+     *
+     * "One token" is NOT the same question as "one text node", and treating
+     * them as one was the defect. A translatable ATTRIBUTE is also a token, and
+     * an element carrying only an attribute token — `<img alt="…">`,
+     * `<input placeholder="…">` — has no text node anywhere in its subtree. The
+     * fast path would then write the translation as the element's text, and the
+     * element itself is gone.
+     *
+     * So the fast path requires an actual text node to write into. Everything
+     * else goes to the node-walking path, which already translates attributes
+     * in place and recurses, so a token on a nested element is reached too.
+     */
+    private usesSingleTextNodeFastPath(): boolean {
+        return this.tokens.length === 1 && this.findSingleTextNode(this.element) !== null;
     }
 
     /**
@@ -203,7 +234,7 @@ export class Translate {
 
         const { category = '' } = this.options;
 
-        if (this.tokens.length === 1) {
+        if (this.usesSingleTextNodeFastPath()) {
             // Derive the id even for a single token: without one there is
             // nothing to look the block up BY, so a single-token block stored
             // in the catalog could never be found and would re-register on
@@ -242,7 +273,7 @@ export class Translate {
 
         if (isContentBlockKnown(contentBlock.category, this.custom_id)) {
             // Backend already has this block — translate locally, no POST.
-            if (this.tokens.length > 1 && this.element) {
+            if (!this.usesSingleTextNodeFastPath() && this.element) {
                 this.translate(Array.from(this.element.childNodes));
                 this.lastTranslatedLocale = currentlyLoadedLocale.get();
             }
@@ -271,7 +302,7 @@ export class Translate {
                 if (candidate === this.custom_id) continue;
                 if (!isContentBlockKnown(contentBlock.category, candidate)) continue;
                 this.custom_id = candidate;
-                if (this.tokens.length > 1 && this.element) {
+                if (!this.usesSingleTextNodeFastPath() && this.element) {
                     this.translate(Array.from(this.element.childNodes));
                     this.lastTranslatedLocale = currentlyLoadedLocale.get();
                 }
@@ -286,7 +317,10 @@ export class Translate {
         // the GET response arrives.
         void registerContentBlock(contentBlock);
 
-        if (this.tokens.length > 1 && this.element) {
+        // Not `tokens.length > 1`: an attribute-only block has ONE token and
+        // still belongs here, and that guard is what would silently skip its
+        // render after the routing above sent it down this path.
+        if (!this.usesSingleTextNodeFastPath() && this.element) {
             this.translate(Array.from(this.element.childNodes));
             this.lastTranslatedLocale = currentlyLoadedLocale.get();
         }

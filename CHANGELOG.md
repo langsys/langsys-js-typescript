@@ -40,6 +40,8 @@
 
 - **Discovery hints no longer strip credential-shaped query parameters — they decline the whole report.** Stripping produced a URL that was no longer the page the miss came from, so the renderer registered content from a different page, and pages distinguished only by that parameter collapsed onto one key. `key` and `code` are also no longer treated as credentials: `?key=pricing` and `?code=US` are ordinary selectors on exactly the pages discovery exists to find. Parameter matching is now separator-insensitive, so `api-key` and `x-api-key` are caught alongside `api_key`.
 
+- **`<Translate>` no longer destroys elements whose only token is an attribute.** `<img alt="…">` and `<input placeholder="…">` produce one token, and the single-token fast path assumed one token meant one text node — so it wrote the translation as the element's text and the element itself was gone. Attribute-only content now takes the node-walking path, which updates the attribute in place and recurses, so tokens on nested elements are reached too. The `innerText` fallback was removed rather than left unreachable.
+
 - **`src/interpolate.ts` is a text file again.** It carried one literal NUL byte, which made git classify the whole file as binary — no diff, no blame, no three-way merge — so every change to it was invisible to review while still shipping. No behaviour change: the separator is the same character, written as an escape.
 
 Several of the fixes above were found by Gianluca Capra (PRs #2 and #3, and `e1e9e83` for the NUL byte — the first fix, and the one carried here); the implementations here are re-derived against the current base.
