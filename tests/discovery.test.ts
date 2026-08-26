@@ -348,6 +348,36 @@ describe('credentials hidden in the fragment', () => {
     });
 });
 
+describe('declining is all-or-nothing', () => {
+    // The property that makes the two legs agree without a shared contract: a
+    // URL that PASSES the gate is byte-identical whatever matched, because the
+    // gate runs before any mutation and returns null rather than a partial.
+    // Without this, a leg that declines more would also emit different bytes
+    // for the URLs it keeps, and the dedup keys would drift apart.
+    it('returns null, not a URL with the tracking params already stripped', () => {
+        // Mutation-checked, and the first version of this comment was wrong.
+        // It claimed to detect the tracking-deletion pass being moved ABOVE the
+        // gate. It cannot: the gate returns null and the mutated URL object is
+        // discarded, so the return value is null either way. That ordering is
+        // real and worth keeping, but it is NOT observable through this
+        // function's output and therefore cannot be pinned from out here.
+        //
+        // What this does kill is strip-reversion — a gate that deletes the
+        // offending param and carries on instead of declining. Under that
+        // mutant these return 'https://a.com/p?page=3': a real, plausible URL
+        // for a page we refused to report.
+        expect(normalizeHintUrl('https://a.com/p?utm_source=x&token=abc&page=3')).toBeNull();
+        expect(normalizeHintUrl('https://a.com/p?fbclid=z&sig=abc')).toBeNull();
+    });
+
+    it('leaves a carried URL identical whether or not the gate had anything to consider', () => {
+        // Same route params, one URL carrying a name the gate inspects and
+        // clears, one carrying nothing it looks at twice. Same output.
+        expect(normalizeHintUrl('https://a.com/p?author=jo&page=3')).toBe('https://a.com/p?author=jo&page=3');
+        expect(normalizeHintUrl('https://a.com/p?design=flat&page=3')).toBe('https://a.com/p?design=flat&page=3');
+    });
+});
+
 describe('declining tells the developer why', () => {
     // Behaviour with no observable trace is undiscoverable by construction:
     // otherwise a developer staring at the one page that never gets translated

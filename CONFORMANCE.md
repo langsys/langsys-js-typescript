@@ -109,8 +109,45 @@ is `provisional` regardless of how confident I am in the behaviour.
 | CONF-1 | partial | — | Registration lanes assert catalog state; **hint lanes assert the outgoing payload**. See gaps. |
 | CONF-2 | implemented | — | This file |
 | CONF-3 | partial | — | `setWriteGrant` inertness is covered, but not by mutation. See gaps. |
+| HINT-10 | implemented | n/a (pure) | `discovery` — exact set narrowed to `{sig, auth, otp, nonce}`; `normalizeParamName` strips `-`/`_` before matching; fragments gain `oauth`/`authcode`/`accesscode`; `code` matches only with an OAuth marker (`state`/`session_state`). Red-first: 14 of these fail against the parent commit |
+| HINT-11 | implemented | n/a (pure) | `discovery` — `normalizeHintUrl` returns `null` for the whole report; both fragment shapes (`#/cb?code=&state=`, bare `#access_token=`); the no-`=` rule; the `?email` declines / `#contact-email` carries asymmetry. Seven shapes in `tests/fixtures/hint-url-fragment-reference.json`, iterated by the suite rather than restated |
+| HINT-12 | partial | n/a (pure) | Re-filed after the rule's revision put the server mirror out of SDK scope. The byte-identity half IS evidenced: `discovery` "declining is all-or-nothing" plus 28 decline assertions (a refusal returns `null`, never a partial) and the fixture's exact-output carry cases. **Mutation-checked against strip-reversion; the pre-mutation ORDERING is not mutation-checkable from here** — the gate discards the URL object, so moving the tracking pass above it changes nothing observable. That half rests on reading the code, so `partial` rather than `implemented` |
+| ICU-1 | implemented | n/a (pure) | `interpolate` "missing select arguments fall back to `other`" — supplied branch, absent argument, unrecognised value all pinned |
+| ICU-2 | implemented | n/a (pure) | same suite, "treats null and undefined as absent" |
+| ICU-3 | implemented | n/a (pure) | same suite — `#` with no count renders `{argName}`; covered by the nested plural/select cases |
+| ICU-4 | implemented | n/a (pure) | `interpolate` "debug notice for defaulted arguments" — names the argument and locale, **deduped per template+locale**, **silent unless `logger.debugEnabled`**, and fires for plural as well as select recoveries. Both directions asserted |
+| CID-1 | **provisional** | none | Byte-identical hashing is anchored on `langsys-php/tests/fixtures/custom-id-reference.json`, and **this branch has never been executed against it** — CLAUDE.md requires running the *published tarball*, and none of this surface is published. Re-deriving the vectors here would prove nothing; both sides would share the mistake |
+| CID-2 | implemented | n/a (pure) | `custom-id` — `generateCustomId` coalesces `category \|\| ''` on this branch. **This is NOT a cross-SDK divergence and produces no id change**: on `origin/main` and published 0.6.5 the function itself does not coalesce, but every internal caller already passes `''` (`iContentBlock.category` is non-optional; `translate.ts` destructures `const { category = '' }` at `:107`, `:135`, `:271`), so every SDK-generated id already matches PHP. The guard closes a third-party-caller hole in the *export*, not a behaviour gap. See the note below |
+| CID-3 | implemented | mock | `translate` migration-fallback path — three historical id shapes tried on LOOKUP only, registration always uses the corrected id, so the legacy-keyed population can only shrink. Documented under "Historical ids" above |
+| CID-4 | implemented | n/a (pure) | `content-block-identity` — one token per text node, arity is identity, comments skipped, attribute emission order pinned. Mutation-checked: adding `clone.normalize()` to `tokenizeElement` turns three of its tests red |
 
 ---
+
+### CID-2 — enforcement differs, behaviour does not
+
+The `category || ''` coalescing exists in the JS core only on
+`feature/838_write_key_gating_reland`. `origin/main` and published `0.6.5`
+compute `md5(JSON.stringify([category, tokens]))` with no coalescing.
+
+**That is a difference in where the invariant is enforced, not in the ids
+produced.** Every shipping caller already passes `''`: `iContentBlock.category`
+is typed non-optional, and `translate.ts` destructures
+`const { category = '' }` at `:107`, `:135` and `:271` before the value ever
+reaches the hash. So published JS and PHP agree on every SDK-generated id, and
+this branch changes no id at all — `'' || ''` is `''`, and a real category is
+unchanged. There is no migration here.
+
+The residual exposure is narrow and worth stating exactly: `generateCustomId`
+is a public export, so a plain-JS or untyped third-party caller can pass
+`undefined` directly, which serialises to `[null, …]` and yields an id no wire
+path stores. This branch enforces the invariant at the reference implementation
+rather than relying on every caller to hold it.
+
+Recorded this way because the shorter version of this row — "enforced on this
+branch, not on main" — reads as a live cross-SDK hash divergence, and that
+reading reached the PHP lane before it was corrected. The claim is about a
+function; the behaviour is a property of the function *plus its callers*, and
+the two answers differ.
 
 ## Declared carve-out (GATE-3)
 
