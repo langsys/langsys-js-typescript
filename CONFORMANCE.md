@@ -50,6 +50,14 @@ its cap, every oversized request would be rejected and those phrases never regis
 silently, for every writing session. Fixed while writing this row, which is the best
 argument I have for the format.
 
+**On the vendored fixture.** `tests/fixtures/custom-id-reference.json` is a copy of
+langsys-php's, at `8862841`. Vendored rather than fetched so the suite stays hermetic and a
+fixture change arrives as a reviewable diff. The serialization is compared through
+`canonicalContentBlockJson`, the same function `generateCustomId` hashes — never a second
+expression written in the test. The PHP lane found four separate sites re-deriving their
+serialization, one inside the assertion meant to be checking it; a parallel
+reimplementation agrees with itself, and keeps agreeing after the real one moves.
+
 **On the observation point.** HINT-12 was `partial` while its evidence was an
 internal-ordering test, because that test could not be made to fail: the gate returns
 `null` and discards the URL object, so ordering is invisible to any caller. Re-pointing the
@@ -64,7 +72,14 @@ that landed there are described and dated instead. Don't re-add a bare SHA for t
 reads as verifiable and isn't.
 
 **Evidence grades** follow CONF-2: `live` (real server), `contract` (stateful double),
-`mock` (canned responses — does not meet the bar), `none`. Every `mock` and `none` row
+`mock` (canned responses — does not meet the bar), `none`.
+
+`corroborated (cross-implementation)` is a distinct status, not a synonym for
+`implemented`, and the distinction is worth keeping. `implemented` means this SDK does
+what the rule says, as judged here. `corroborated` means a second implementation, written
+independently in another language, produces the same bytes — which excludes a whole class
+of error that no amount of testing inside this repo can: the two sides sharing my mistake.
+Only CID-1 currently holds it. Every `mock` and `none` row
 is `provisional` regardless of how confident I am in the behaviour.
 
 ---
@@ -129,7 +144,7 @@ is `provisional` regardless of how confident I am in the behaviour.
 | ICU-2 | implemented | n/a (pure) | same suite, "treats null and undefined as absent" |
 | ICU-3 | implemented | n/a (pure) | same suite — `#` with no count renders `{argName}`; covered by the nested plural/select cases |
 | ICU-4 | implemented | n/a (pure) | `interpolate` "debug notice for defaulted arguments" — names the argument and locale, **deduped per template+locale**, **silent unless `logger.debugEnabled`**, and fires for plural as well as select recoveries. Both directions asserted |
-| CID-1 | **provisional** | none | Byte-identical hashing is anchored on `langsys-php/tests/fixtures/custom-id-reference.json`, and **this branch has never been executed against it** — CLAUDE.md requires running the *published tarball*, and none of this surface is published. Re-deriving the vectors here would prove nothing; both sides would share the mistake |
+| CID-1 | **corroborated (cross-implementation)** | contract (shared fixture) | `custom-id-cross-impl` — all 13 rows of langsys-php's `custom-id-reference.json`, vendored @ `8862841`. Per row: the vendored codepoints are checked FIRST (so a normalising editor can't mangle the file into agreement), then canonical string, then UTF-8 bytes vs `serialized_hex`, then `generateCustomId` vs `custom_id`. Two independently written serializers in different languages agreeing byte-for-byte, so implementation error is excluded and only spec-level error remains. Mutation-checked: escaping non-ASCII (the 2-flag equivalent) fails 10/13, swapping the envelope order fails 13/13 |
 | CID-2 | implemented | n/a (pure) | `custom-id` — `generateCustomId` coalesces `category \|\| ''` on this branch. **This is NOT a cross-SDK divergence and produces no id change**: on `origin/main` and published 0.6.5 the function itself does not coalesce, but every internal caller already passes `''` (`iContentBlock.category` is non-optional; `translate.ts` destructures `const { category = '' }` at `:107`, `:135`, `:271`), so every SDK-generated id already matches PHP. The guard closes a third-party-caller hole in the *export*, not a behaviour gap. See the note below |
 | CID-3 | implemented | mock | `translate` migration-fallback path — three historical id shapes tried on LOOKUP only, registration always uses the corrected id, so the legacy-keyed population can only shrink. Documented under "Historical ids" above |
 | CID-4 | implemented | n/a (pure) | `content-block-identity` — one token per text node, arity is identity, comments skipped, attribute emission order pinned. Mutation-checked: adding `clone.normalize()` to `tokenizeElement` turns three of its tests red |

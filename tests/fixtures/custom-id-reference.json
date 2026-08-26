@@ -1,0 +1,394 @@
+[
+    {
+        "category": "Blog",
+        "tokens": [
+            "Hello",
+            "World"
+        ],
+        "canonical_json": "[\"Blog\",[\"Hello\",\"World\"]]",
+        "custom_id": "e842b4fa43d2a813dded03f74d2ff5bf",
+        "codepoints": {
+            "category": [
+                "U+0042",
+                "U+006C",
+                "U+006F",
+                "U+0067"
+            ],
+            "tokens": [
+                [
+                    "U+0048",
+                    "U+0065",
+                    "U+006C",
+                    "U+006C",
+                    "U+006F"
+                ],
+                [
+                    "U+0057",
+                    "U+006F",
+                    "U+0072",
+                    "U+006C",
+                    "U+0064"
+                ]
+            ]
+        },
+        "serialized_hex": "5b22426c6f67222c5b2248656c6c6f222c22576f726c64225d5d"
+    },
+    {
+        "category": "",
+        "tokens": [
+            "Hello",
+            "World"
+        ],
+        "canonical_json": "[\"\",[\"Hello\",\"World\"]]",
+        "custom_id": "129c7fff6e0191131fb4e45845b89550",
+        "codepoints": {
+            "category": [],
+            "tokens": [
+                [
+                    "U+0048",
+                    "U+0065",
+                    "U+006C",
+                    "U+006C",
+                    "U+006F"
+                ],
+                [
+                    "U+0057",
+                    "U+006F",
+                    "U+0072",
+                    "U+006C",
+                    "U+0064"
+                ]
+            ]
+        },
+        "serialized_hex": "5b22222c5b2248656c6c6f222c22576f726c64225d5d"
+    },
+    {
+        "category": "a/b",
+        "tokens": [
+            "Café",
+            "e/mail"
+        ],
+        "canonical_json": "[\"a/b\",[\"Café\",\"e/mail\"]]",
+        "custom_id": "08871336fa83c616153d636996cf59cb",
+        "codepoints": {
+            "category": [
+                "U+0061",
+                "U+002F",
+                "U+0062"
+            ],
+            "tokens": [
+                [
+                    "U+0043",
+                    "U+0061",
+                    "U+0066",
+                    "U+00E9"
+                ],
+                [
+                    "U+0065",
+                    "U+002F",
+                    "U+006D",
+                    "U+0061",
+                    "U+0069",
+                    "U+006C"
+                ]
+            ]
+        },
+        "serialized_hex": "5b22612f62222c5b22436166c3a9222c22652f6d61696c225d5d"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "Don’t miss out"
+        ],
+        "canonical_json": "[\"home\",[\"Don’t miss out\"]]",
+        "custom_id": "78c84ab81cfc4a106fb24d37c5eb1029",
+        "codepoints": {
+            "category": [
+                "U+0068",
+                "U+006F",
+                "U+006D",
+                "U+0065"
+            ],
+            "tokens": [
+                [
+                    "U+0044",
+                    "U+006F",
+                    "U+006E",
+                    "U+2019",
+                    "U+0074",
+                    "U+0020",
+                    "U+006D",
+                    "U+0069",
+                    "U+0073",
+                    "U+0073",
+                    "U+0020",
+                    "U+006F",
+                    "U+0075",
+                    "U+0074"
+                ]
+            ]
+        },
+        "serialized_hex": "5b22686f6d65222c5b22446f6ee2809974206d697373206f7574225d5d"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "éa"
+        ],
+        "canonical_json": "[\"home\",[\"éa\"]]",
+        "custom_id": "e431ac112f131bea0f462b30397c1a9a",
+        "codepoints": {
+            "category": [
+                "U+0068",
+                "U+006F",
+                "U+006D",
+                "U+0065"
+            ],
+            "tokens": [
+                [
+                    "U+00E9",
+                    "U+0061"
+                ]
+            ]
+        },
+        "serialized_hex": "5b22686f6d65222c5b22c3a961225d5d"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "ǩa"
+        ],
+        "canonical_json": "[\"home\",[\"ǩa\"]]",
+        "custom_id": "b8fa4ac2eb2fd7f14ef3fd0d69240089",
+        "codepoints": {
+            "category": [
+                "U+0068",
+                "U+006F",
+                "U+006D",
+                "U+0065"
+            ],
+            "tokens": [
+                [
+                    "U+01E9",
+                    "U+0061"
+                ]
+            ]
+        },
+        "serialized_hex": "5b22686f6d65222c5b22c7a961225d5d"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "Mon–Fri"
+        ],
+        "canonical_json": "[\"home\",[\"Mon–Fri\"]]",
+        "custom_id": "1f8f1b74e663a0c09388523116cd59b4",
+        "codepoints": {
+            "category": [
+                "U+0068",
+                "U+006F",
+                "U+006D",
+                "U+0065"
+            ],
+            "tokens": [
+                [
+                    "U+004D",
+                    "U+006F",
+                    "U+006E",
+                    "U+2013",
+                    "U+0046",
+                    "U+0072",
+                    "U+0069"
+                ]
+            ]
+        },
+        "serialized_hex": "5b22686f6d65222c5b224d6f6ee28093467269225d5d"
+    },
+    {
+        "category": "inicio",
+        "tokens": [
+            "Bienvenido, ¿cómo estás?"
+        ],
+        "canonical_json": "[\"inicio\",[\"Bienvenido, ¿cómo estás?\"]]",
+        "custom_id": "fa2fd78a840f3e608f1bcd10b84c2b04",
+        "codepoints": {
+            "category": [
+                "U+0069",
+                "U+006E",
+                "U+0069",
+                "U+0063",
+                "U+0069",
+                "U+006F"
+            ],
+            "tokens": [
+                [
+                    "U+0042",
+                    "U+0069",
+                    "U+0065",
+                    "U+006E",
+                    "U+0076",
+                    "U+0065",
+                    "U+006E",
+                    "U+0069",
+                    "U+0064",
+                    "U+006F",
+                    "U+002C",
+                    "U+0020",
+                    "U+00BF",
+                    "U+0063",
+                    "U+00F3",
+                    "U+006D",
+                    "U+006F",
+                    "U+0020",
+                    "U+0065",
+                    "U+0073",
+                    "U+0074",
+                    "U+00E1",
+                    "U+0073",
+                    "U+003F"
+                ]
+            ]
+        },
+        "serialized_hex": "5b22696e6963696f222c5b224269656e76656e69646f2c20c2bf63c3b36d6f20657374c3a1733f225d5d"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "☃"
+        ],
+        "canonical_json": "[\"home\",[\"☃\"]]",
+        "custom_id": "d64db93d63a83eeffb038928463b74d7",
+        "codepoints": {
+            "category": [
+                "U+0068",
+                "U+006F",
+                "U+006D",
+                "U+0065"
+            ],
+            "tokens": [
+                [
+                    "U+2603"
+                ]
+            ]
+        },
+        "serialized_hex": "5b22686f6d65222c5b22e29883225d5d"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "a😀b"
+        ],
+        "canonical_json": "[\"home\",[\"a😀b\"]]",
+        "custom_id": "42b5b87e44ff094fab41c681002eabc4",
+        "codepoints": {
+            "category": [
+                "U+0068",
+                "U+006F",
+                "U+006D",
+                "U+0065"
+            ],
+            "tokens": [
+                [
+                    "U+0061",
+                    "U+1F600",
+                    "U+0062"
+                ]
+            ]
+        },
+        "serialized_hex": "5b22686f6d65222c5b2261f09f988062225d5d"
+    },
+    {
+        "category": "home",
+        "tokens": [],
+        "canonical_json": "[\"home\",[]]",
+        "custom_id": "51ba045cdf5b4f3d06ce8fe915742a2c",
+        "codepoints": {
+            "category": [
+                "U+0068",
+                "U+006F",
+                "U+006D",
+                "U+0065"
+            ]
+        },
+        "serialized_hex": "5b22686f6d65222c5b5d5d"
+    },
+    {
+        "category": "ключ",
+        "tokens": [
+            "Привет"
+        ],
+        "canonical_json": "[\"ключ\",[\"Привет\"]]",
+        "custom_id": "31146090dd066fdd469ac17b57d45307",
+        "codepoints": {
+            "category": [
+                "U+043A",
+                "U+043B",
+                "U+044E",
+                "U+0447"
+            ],
+            "tokens": [
+                [
+                    "U+041F",
+                    "U+0440",
+                    "U+0438",
+                    "U+0432",
+                    "U+0435",
+                    "U+0442"
+                ]
+            ]
+        },
+        "serialized_hex": "5b22d0bad0bbd18ed187222c5b22d09fd180d0b8d0b2d0b5d182225d5d"
+    },
+    {
+        "category": "Legal",
+        "tokens": [
+            "line one line two",
+            "para break"
+        ],
+        "canonical_json": "[\"Legal\",[\"line one line two\",\"para break\"]]",
+        "custom_id": "7a91549c8e51919ed854f126d2e27588",
+        "codepoints": {
+            "category": [
+                "U+004C",
+                "U+0065",
+                "U+0067",
+                "U+0061",
+                "U+006C"
+            ],
+            "tokens": [
+                [
+                    "U+006C",
+                    "U+0069",
+                    "U+006E",
+                    "U+0065",
+                    "U+0020",
+                    "U+006F",
+                    "U+006E",
+                    "U+0065",
+                    "U+2028",
+                    "U+006C",
+                    "U+0069",
+                    "U+006E",
+                    "U+0065",
+                    "U+0020",
+                    "U+0074",
+                    "U+0077",
+                    "U+006F"
+                ],
+                [
+                    "U+0070",
+                    "U+0061",
+                    "U+0072",
+                    "U+0061",
+                    "U+2029",
+                    "U+0062",
+                    "U+0072",
+                    "U+0065",
+                    "U+0061",
+                    "U+006B"
+                ]
+            ]
+        },
+        "serialized_hex": "5b224c6567616c222c5b226c696e65206f6e65e280a86c696e652074776f222c2270617261e280a9627265616b225d5d"
+    }
+]

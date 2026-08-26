@@ -169,7 +169,25 @@ export function generateCustomId(category: string, tokens: string[]): string {
     //
     // `generateLegacyCustomId` deliberately does NOT do this: it must reproduce
     // what was actually stored, including ids an untyped caller produced.
-    return md5(JSON.stringify([category || '', tokens]));
+    return md5(canonicalContentBlockJson(category, tokens));
+}
+
+/**
+ * The exact string whose UTF-8 bytes are hashed to produce a `custom_id`.
+ *
+ * Extracted so the cross-implementation assertion can compare the SAME bytes
+ * the id function hashes, rather than a second expression that happens to look
+ * the same. The PHP lane found four separate sites re-deriving their
+ * serialization, one of them inside the test that was supposed to be checking
+ * it — a parallel reimplementation agrees with itself, and would keep agreeing
+ * after this function changed.
+ *
+ * Deliberately NOT re-exported from `src/index.ts`: this is the reference
+ * implementation's internals, not public API. `generateCustomId` is the
+ * contract.
+ */
+export function canonicalContentBlockJson(category: string, tokens: string[]): string {
+    return JSON.stringify([category || '', tokens]);
 }
 
 /**
