@@ -4,10 +4,10 @@
 |---|---|
 | **SDK** | `langsys-js-typescript` (browser reference implementation) |
 | **Profiles** | `all`, `browser` |
-| **specVersion** | 8 |
-| **Spec revision read** | round-2 tree (GATE-8, WIRE-3 v4, HINT-6 dispatch/dedup split) |
+| **specVersion** | 7 (read at 7.0.1) |
+| **Spec revision read** | langsys `d4ca65f0` (2026-08-25) — the revision the HINT-10/11/12, ICU-1…5 and CID-1…4 rows are filed against |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 220 tests, `npm test` |
+| **Suite** | 268 tests in 17 files, `npm test`, counted at `1697d3d` |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -78,6 +78,12 @@ this branch, or a GitHub PR head. The original 838 branch was deleted after its 
 re-derived onto the reland line, so its SHAs no longer resolve in a fresh clone; changes
 that landed there are described and dated instead. Don't re-add a bare SHA for them: it
 reads as verifiable and isn't.
+
+**Grade vocabulary.** This file grades every row `implemented`, `partial`, `provisional`,
+`corroborated (cross-implementation)` or `n/a`. The verification gate's reports use `met`
+for what this file calls `implemented` — one grade, two words, and the mapping is stated
+here once rather than by mixing both tokens into one column. `corroborated` is the only
+grade that is not a synonym for anything the gate uses: see below for why it is kept apart.
 
 **Evidence grades** follow CONF-2: `live` (real server), `contract` (stateful double),
 `mock` (canned responses — does not meet the bar), `none`.
