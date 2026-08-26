@@ -50,6 +50,14 @@ its cap, every oversized request would be rejected and those phrases never regis
 silently, for every writing session. Fixed while writing this row, which is the best
 argument I have for the format.
 
+**Two fixtures are still unvendored.** `tokenizer-reference.json` (17 cases) and
+`interpolation-reference.json` (19) remain checked only at release time, against the
+published tarball. So ICU-5 and the tokenizer rules rest on evidence from inside this repo
+alone, which is precisely the class CID-1 just escaped. Recorded as a follow-up rather than
+quietly left: the machinery now exists — vendor at a named SHA, assert through the same
+code path the implementation uses, check the input's codepoints before trusting it — and
+applying it to those two is mechanical.
+
 **On the vendored fixture.** `tests/fixtures/custom-id-reference.json` is a copy of
 langsys-php's, at `8862841`. Vendored rather than fetched so the suite stays hermetic and a
 fixture change arrives as a reviewable diff. The serialization is compared through
@@ -144,6 +152,7 @@ is `provisional` regardless of how confident I am in the behaviour.
 | ICU-2 | implemented | n/a (pure) | same suite, "treats null and undefined as absent" |
 | ICU-3 | implemented | n/a (pure) | same suite — `#` with no count renders `{argName}`; covered by the nested plural/select cases |
 | ICU-4 | implemented | n/a (pure) | `interpolate` "debug notice for defaulted arguments" — names the argument and locale, **deduped per template+locale**, **silent unless `logger.debugEnabled`**, and fires for plural as well as select recoveries. Both directions asserted |
+| ICU-5 | implemented | n/a (pure) | `interpolate` "a recovered argument survives the format call" — five vectors: a null plain argument beside a supplied plural, a null plural count, a null nested inside a **supplied** select branch (proves the rewrite recurses into branches that were not themselves recovered), null `number`/`date` arguments, and an absent-argument control sitting beside the null cases so a divergence between them fails rather than passing quietly. Conforming by the remove-binding-sites mechanism, not by withholding params: recovery replaces the argument node with a literal, so no node bearing that name reaches the formatter and the original `params` object is passed unfiltered and harmlessly. Mutation-checked — restoring the argument node reproduces the PHP lane's live symptom (`' has 2 items'`) and two it did not report (a null `number` renders `'0 due'`, and absent-argument recovery breaks outright). **Not corroborated**: `interpolation-reference.json` exists but is not vendored — see the note below |
 | CID-1 | **corroborated (cross-implementation)** | contract (shared fixture) | `custom-id-cross-impl` — all 13 rows of langsys-php's `custom-id-reference.json`, vendored @ `8862841`. Per row: the vendored codepoints are checked FIRST (so a normalising editor can't mangle the file into agreement), then canonical string, then UTF-8 bytes vs `serialized_hex`, then `generateCustomId` vs `custom_id`. Two independently written serializers in different languages agreeing byte-for-byte, so implementation error is excluded and only spec-level error remains. Mutation-checked: escaping non-ASCII (the 2-flag equivalent) fails 10/13, swapping the envelope order fails 13/13 |
 | CID-2 | implemented | n/a (pure) | `custom-id` — `generateCustomId` coalesces `category \|\| ''` on this branch. **This is NOT a cross-SDK divergence and produces no id change**: on `origin/main` and published 0.6.5 the function itself does not coalesce, but every internal caller already passes `''` (`iContentBlock.category` is non-optional; `translate.ts` destructures `const { category = '' }` at `:107`, `:135`, `:271`), so every SDK-generated id already matches PHP. The guard closes a third-party-caller hole in the *export*, not a behaviour gap. See the note below |
 | CID-3 | implemented | mock | `translate` migration-fallback path — three historical id shapes tried on LOOKUP only, registration always uses the corrected id, so the legacy-keyed population can only shrink. Documented under "Historical ids" above |
