@@ -44,7 +44,7 @@
 
 - **`src/interpolate.ts` is a text file again.** It carried one literal NUL byte, which made git classify the whole file as binary — no diff, no blame, no three-way merge — so every change to it was invisible to review while still shipping. No behaviour change: the separator is the same character, written as an escape.
 
-Several of the fixes above were found by Gianluca Capra (PRs #2 and #3, and `e1e9e83` for the NUL byte — the first fix, and the one carried here); the implementations here are re-derived against the current base.
+Several of the fixes above were found by Gianluca Capra (PRs #2 and #3, including `e1e9e83` in PR #3 for the NUL byte — the first fix, and the one carried here); the implementations here are re-derived against the current base.
 
 ## 0.6.5 - 2026-08-16
 

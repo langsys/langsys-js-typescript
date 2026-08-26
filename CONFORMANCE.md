@@ -20,10 +20,10 @@ error this document exists to catch. `src/interpolate.ts` carried one literal `0
 `texts.join(…)` on every commit from `origin/main` through this branch, which makes git
 classify the file as binary: no diff, no blame, no three-way merge. Every change to that
 file, including this branch's own, was invisible to review while still shipping. The fix is
-Gianluca Capra's (`e1e9e83`, 2026-08-10) — written as the `'\0'` escape — the first fix,
-and the one carried here. It was not the only one: `671dd94` (2026-08-11) fixed the same
-byte independently on the pre-reland branch and was lost with it. Both blob-verified
-(parent carries the NUL, commit does not). It is now carried here with a comment saying why
+Gianluca Capra's, in PR #3 (`e1e9e83`, 2026-08-10) — written as the `'\0'` escape — the
+first fix, and the one carried here. It was not the only one: a second fix landed
+independently on the original 838 branch a day later and was lost with it. Both
+blob-verified at the time (parent carries the NUL, commit does not). It is now carried here with a comment saying why
 the escape must stay an escape. What *was* carried from that work is the conformance coverage — main fixed the
 hash and left an ASCII-only suite, so the codepoint-constructed vectors here are the
 only non-ASCII coverage the repo has: **8 strings built with
@@ -49,6 +49,12 @@ hardcoded while the server returns its own limit on authorization. If the server
 its cap, every oversized request would be rejected and those phrases never registered —
 silently, for every writing session. Fixed while writing this row, which is the best
 argument I have for the format.
+
+**Commit citations.** Only SHAs reachable from a live ref are cited — `origin/main`,
+this branch, or a GitHub PR head. The original 838 branch was deleted after its work was
+re-derived onto the reland line, so its SHAs no longer resolve in a fresh clone; changes
+that landed there are described and dated instead. Don't re-add a bare SHA for them: it
+reads as verifiable and isn't.
 
 **Evidence grades** follow CONF-2: `live` (real server), `contract` (stateful double),
 `mock` (canned responses — does not meet the bar), `none`. Every `mock` and `none` row
@@ -93,7 +99,7 @@ is `provisional` regardless of how confident I am in the behaviour.
 | HINT-8 | provisional | mock | `discovery` "never reports during SSR" |
 | HINT-9 | provisional | mock | `discovery` auto_discovery block — **includes the positive control**, per the pairing constraint |
 | SSR-1 | provisional | mock | `write-lane` "'client' does not collect" + "'server' does" + "'auto' up to threshold" |
-| SSR-2 | provisional | mock | `write-lane` TS-1. **Was a warning only until `f617a0d`** — the degradation is now real |
+| SSR-2 | provisional | mock | `write-lane` TS-1. **Was a warning only until the TS-1..TS-11 review pass** — the degradation is now real |
 | SSR-3 | provisional (no test) | none | Precondition documented; verified live once, not reproducible |
 | BIND-1..6 | n/a | n/a | Profile `binding`. This is the core, not a binding. |
 | GRANT-1 | implemented | mock | `grant-lane` "is attached when a grant is configured, and resolved per request" |
@@ -159,7 +165,7 @@ rather than left silent:
 - Without a grant, capability depends solely on the server's own IP, which is constant
   for the process — so it provably does not vary per session.
 - Configuring a grant invalidates that proof, and the code refuses the SSR write lane
-  entirely in that case (`shouldQueueForWrite`, fixed in `f617a0d` — it previously
+  entirely in that case (`shouldQueueForWrite`, fixed in the TS-1..TS-11 review pass — it previously
   refused to *send* but still *collected*, which rebuilt the leak the rule prevents).
 
 ---
@@ -225,7 +231,7 @@ that matters — the two halves must never ship apart.
 
    Worth recording, since it argues against the reflex that produced this bug: the whole-word
    treatment of `code`/`sig`/`auth` was already the right mechanism — structure over substring,
-   the same insight the fragment rule needed — added in `22a9e09` (2026-08-15) with
+   the same insight the fragment rule needed — added during the original 838 work (2026-08-15) with
    `postcode`/`country_code`/`design`/`author` named as the cases it protected. The defect was
    never the mechanism. It was the membership: `key` and `code` were credentials in the abstract
    and routes in practice, and no amount of matching precision saves a list that names the wrong
