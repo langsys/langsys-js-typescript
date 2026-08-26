@@ -348,6 +348,57 @@ describe('credentials hidden in the fragment', () => {
     });
 });
 
+describe('HINT-12: a declined URL crosses no boundary', () => {
+    // The observable form of the leg obligation. Internal check-ordering cannot
+    // be mutation-tested — the gate returns null and the mutated URL object is
+    // discarded, so ordering changes nothing a caller can see. The obligation
+    // that IS observable sits at the seams: for a matching URL, zero bytes of
+    // it reach the transport, and nothing derived from it lands in SDK-side
+    // state — the per-session hint memory included.
+    const SECRET_PATH = 'reset-password';
+    const SECRET_VALUE = 'SECRETVALUE123';
+    const DECLINED = `https://site.local/${SECRET_PATH}?token=${SECRET_VALUE}`;
+
+    /** Everything the SDK let out or wrote down, as one searchable blob. */
+    function everythingObservable(): string {
+        return [...sent, ...[...sessionStore.entries()].flat()].join('\u0000');
+    }
+
+    it('sends nothing and stores nothing for a declined URL', async () => {
+        HREF.value = DECLINED;
+        recordMissForDiscovery('UI', 'Some phrase');
+        await runOutJitter();
+
+        expect(sent).toEqual([]);
+        expect([...sessionStore.keys()]).toEqual([]);
+    });
+
+    it('leaks no fragment of it either — not the path, not the value', async () => {
+        // Stronger than "no exact match". A stripped URL, a hash of it, a
+        // truncation, or a hint-memory key derived from it would all carry
+        // something recognisable; none of those may appear anywhere.
+        HREF.value = DECLINED;
+        recordMissForDiscovery('UI', 'Some phrase');
+        await runOutJitter();
+
+        const observable = everythingObservable();
+        expect(observable).not.toContain(SECRET_PATH);
+        expect(observable).not.toContain(SECRET_VALUE);
+        expect(observable).not.toContain('site.local');
+    });
+
+    it('positive control: a carried URL DOES cross both seams', async () => {
+        // Without this the two assertions above are satisfied by a lane that
+        // does nothing at all, which is the failure mode they exist to rule out.
+        HREF.value = 'https://site.local/plans?key=pricing';
+        recordMissForDiscovery('UI', 'Some phrase');
+        await runOutJitter();
+
+        expect(sent).toEqual(['https://site.local/plans?key=pricing']);
+        expect([...sessionStore.keys()]).toEqual(['langsys:hinted:https://site.local/plans?key=pricing']);
+    });
+});
+
 describe('declining is all-or-nothing', () => {
     // The property that makes the two legs agree without a shared contract: a
     // URL that PASSES the gate is byte-identical whatever matched, because the

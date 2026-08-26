@@ -50,6 +50,13 @@ its cap, every oversized request would be rejected and those phrases never regis
 silently, for every writing session. Fixed while writing this row, which is the best
 argument I have for the format.
 
+**On the observation point.** HINT-12 was `partial` while its evidence was an
+internal-ordering test, because that test could not be made to fail: the gate returns
+`null` and discards the URL object, so ordering is invisible to any caller. Re-pointing the
+assertion at the transport and persistence seams made the same obligation falsifiable —
+two mutants that previously passed now turn it red. Where a row is stuck at `partial`, the
+question worth asking first is whether the obligation is being observed in the wrong place.
+
 **Commit citations.** Only SHAs reachable from a live ref are cited — `origin/main`,
 this branch, or a GitHub PR head. The original 838 branch was deleted after its work was
 re-derived onto the reland line, so its SHAs no longer resolve in a fresh clone; changes
@@ -117,7 +124,7 @@ is `provisional` regardless of how confident I am in the behaviour.
 | CONF-3 | partial | — | `setWriteGrant` inertness is covered, but not by mutation. See gaps. |
 | HINT-10 | implemented | n/a (pure) | `discovery` — exact set narrowed to `{sig, auth, otp, nonce}`; `normalizeParamName` strips `-`/`_` before matching; fragments gain `oauth`/`authcode`/`accesscode`; `code` matches only with an OAuth marker (`state`/`session_state`). Red-first: 14 of these fail against the parent commit |
 | HINT-11 | implemented | n/a (pure) | `discovery` — `normalizeHintUrl` returns `null` for the whole report; both fragment shapes (`#/cb?code=&state=`, bare `#access_token=`); the no-`=` rule; the `?email` declines / `#contact-email` carries asymmetry. Seven shapes in `tests/fixtures/hint-url-fragment-reference.json`, iterated by the suite rather than restated |
-| HINT-12 | partial | n/a (pure) | Re-filed after the rule's revision put the server mirror out of SDK scope. The byte-identity half IS evidenced: `discovery` "declining is all-or-nothing" plus 28 decline assertions (a refusal returns `null`, never a partial) and the fixture's exact-output carry cases. **Mutation-checked against strip-reversion; the pre-mutation ORDERING is not mutation-checkable from here** — the gate discards the URL object, so moving the tracking pass above it changes nothing observable. That half rests on reading the code, so `partial` rather than `implemented` |
+| HINT-12 | implemented | mock | Upgraded from `partial` by moving the observation point. `discovery` "a declined URL crosses no boundary": for a matching URL **zero bytes reach the transport and nothing derived from it enters SDK-side state** — no `postDiscoveryHint` call, no `langsys:hinted:` entry, and no fragment of the path, host or param value anywhere in either. Mutation-checked twice: strip-and-send and no-gate-at-all both turn it red, and the positive control (a carried URL DOES cross both seams) stays green under both. The internal check-ordering remains unobservable and is no longer what the row rests on |
 | ICU-1 | implemented | n/a (pure) | `interpolate` "missing select arguments fall back to `other`" — supplied branch, absent argument, unrecognised value all pinned |
 | ICU-2 | implemented | n/a (pure) | same suite, "treats null and undefined as absent" |
 | ICU-3 | implemented | n/a (pure) | same suite — `#` with no count renders `{argName}`; covered by the nested plural/select cases |
