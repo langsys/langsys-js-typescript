@@ -226,6 +226,52 @@ describe('interpolate — missing select arguments fall back to `other`', () => 
     });
 });
 
+describe('interpolate — a recovered argument survives the format call', () => {
+    // Cross-leg hole PHP hit live: if recovery rewrites the missing nodes but
+    // the ORIGINAL params object still reaches the formatter, a
+    // present-but-null argument gets substituted as an EMPTY STRING, erasing
+    // the `{argName}` literal the rewrite just produced. Their fixture row went
+    // from '{count} items' to ' items'.
+    //
+    // This leg is safe by a different mechanism than theirs, and the mechanism
+    // is the thing worth pinning: recovery REPLACES the argument node with a
+    // literal, so no node bearing that name survives for the formatter to
+    // substitute. Nothing is withheld from `params` — there is simply nothing
+    // left to bind. An implementation that instead left the node in place and
+    // filtered `params` would pass every other test in this file.
+    //
+    // The discriminating vector is a null-VALUED argument. An absent one does
+    // not expose it, which is why the control below sits next to it.
+    it('does not erase a recovered plain argument whose value is null', () => {
+        expect(interpolate('{name} has {count, plural, one {# item} other {# items}}', { name: null, count: 2 }, 'en')).toBe(
+            '{name} has 2 items'
+        );
+    });
+
+    it('does not erase a recovered plural count whose value is null', () => {
+        expect(interpolate('{count, plural, one {# item} other {# items}}', { count: null }, 'en')).toBe('{count} items');
+    });
+
+    it('reaches a null argument nested inside a SUPPLIED select branch', () => {
+        expect(interpolate('{g, select, female {Ella {n}} other {Elle {n}}}', { g: 'female', n: null }, 'en')).toBe(
+            'Ella {n}'
+        );
+    });
+
+    it('covers number and date arguments, not only plain ones', () => {
+        expect(interpolate('{amt, number} due', { amt: null }, 'en')).toBe('{amt} due');
+        expect(interpolate('{when, date} due', { when: null }, 'en')).toBe('{when} due');
+    });
+
+    it('control: an ABSENT argument behaves identically', () => {
+        // If this and the null cases ever diverge, ICU-2's "null is missing"
+        // has stopped holding somewhere in the path.
+        expect(interpolate('{name} has {count, plural, one {# item} other {# items}}', { count: 2 }, 'en')).toBe(
+            '{name} has 2 items'
+        );
+    });
+});
+
 describe('interpolate — debug notice for defaulted arguments', () => {
     // The fallback above is silent by design in production, which is also what
     // makes the argument undiscoverable: it never appears in the source phrase,
