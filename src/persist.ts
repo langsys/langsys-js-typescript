@@ -1,4 +1,5 @@
 import { createSignal, type Signal } from './signal.js';
+import { structuredCloneShim } from './utils.js';
 
 /**
  * Minimal synchronous storage contract for `persist` — structurally a subset of
@@ -12,6 +13,8 @@ import { createSignal, type Signal } from './signal.js';
 export interface PersistStorage {
     getItem(key: string): string | null;
     setItem(key: string, value: string): void;
+    /** Optional. Used to drop superseded keys; absent on minimal adapters. */
+    removeItem?(key: string): void;
 }
 
 interface PersistEntry {
@@ -102,6 +105,97 @@ export function persist<T>(key: string, initial: T, legacyKey?: string): Signal<
     });
 
     return signal;
+}
+
+/**
+ * A persisted signal whose storage key is not known at module-init time.
+ *
+ * `persist` reads its key immediately, which is wrong for anything scoped by
+ * identity the SDK does not have yet. The translation catalog is keyed by
+ * project AND locale (CACHE-1), and neither exists until `init()` has run — so
+ * reading at module load means restoring *some* catalog and serving it before
+ * anyone can tell whether it belongs to this project or this language.
+ *
+ * This variant touches storage only once `scope()` supplies the identity:
+ *
+ *   - Before the first `scope()`: nothing is read and nothing is written. The
+ *     signal holds whatever it was created with, so an SSR handoff that seeded
+ *     it is preserved.
+ *   - `scope(s)` with data stored under `s`: adopt it.
+ *   - `scope(s)` with nothing stored, and a PREVIOUS scope was set: reset to
+ *     `initial`. Leaving the old scope's value in place is the bug — it is how
+ *     project A's catalog gets served to project B.
+ *   - `scope(s)` with nothing stored and no previous scope: leave the signal
+ *     alone, so an SSR-seeded catalog survives.
+ *   - `scope(null)`: stop persisting.
+ */
+export function persistScoped<T>(
+    keyPrefix: string,
+    initial: T,
+    supersedes: string[] = []
+): { signal: Signal<T>; scope: (scope: string | null) => void } {
+    const signal = createSignal<T>(initial);
+    let currentKey: string | null = null;
+    let everScoped = false;
+
+    signal.subscribe((value) => {
+        if (!currentKey) return;
+        const target = activeStorage();
+        if (!target) return;
+        try {
+            target.setItem(currentKey, JSON.stringify(value));
+        } catch {
+            // Quota / serialization failure — in-memory stays authoritative.
+        }
+    });
+
+    const scope = (next: string | null): void => {
+        const key = next === null ? null : `${keyPrefix}:${next}`;
+        if (key === currentKey) return;
+
+        const storage = activeStorage();
+        const stored = key && storage ? readStored(storage, key) : undefined;
+        const hadScope = everScoped;
+
+        currentKey = key;
+        if (key !== null) everScoped = true;
+
+        if (stored !== undefined) {
+            signal.set(stored as T);
+            return;
+        }
+        // Nothing stored for the new scope. Clear only if we are LEAVING a
+        // scope — otherwise this is the first scoping and the signal may hold
+        // an SSR handoff we must not discard.
+        if (hadScope && key !== null) signal.set(structuredCloneShim(initial));
+    };
+
+    // Drop the unscoped keys this replaces, once, when identity first arrives.
+    // They can never be read again, and a stale catalog left in localStorage
+    // forever is the kind of thing nobody goes looking for.
+    if (supersedes.length) {
+        const drop = () => {
+            const storage = activeStorage();
+            if (!storage?.removeItem) return;
+            for (const k of supersedes) {
+                try {
+                    if (storage.getItem(k) !== null) storage.removeItem(k);
+                } catch {
+                    // Unreadable storage — nothing to clean.
+                }
+            }
+        };
+        const originalScope = scope;
+        return {
+            signal,
+            scope: (next) => {
+                originalScope(next);
+                if (next !== null) drop();
+            },
+        };
+    }
+
+    return { signal, scope };
 }
 
 /** Current key first, then the legacy one. `undefined` means "nothing usable stored". */

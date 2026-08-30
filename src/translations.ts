@@ -4,7 +4,7 @@ import { interpolate } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
 import { Logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
-import { batchLimit, currentlyLoadedLocale, sTranslations, setWriteEnabled, writeEnabled } from './stores.js';
+import { batchLimit, currentlyLoadedLocale, scopeCatalogCache, sTranslations, setWriteEnabled, writeEnabled } from './stores.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
 import type { TFunction } from './types/translation-fn.js';
@@ -94,6 +94,18 @@ export class Translations {
         this.debug = new Logger(!!config.debug);
         this.locale = canonicalizeLocale(config.baseLocale || '');
 
+        // A FRESH closure per emit, and that is a contract, not an accident.
+        // `Signal.set` drops a value that is `Object.is`-equal to the current
+        // one (`signal.ts`), so identity IS the change signal every binding
+        // subscribes to. Memoizing `buildTFn` — the obvious optimization, since
+        // the closure body never varies — makes every `set` a no-op: no
+        // subscriber fires, nothing throws, and every consumer renders stale
+        // text while the correct catalog sits in the store.
+        //
+        // The closure reads `sTranslations` at CALL time, so a stable reference
+        // would still return fresh values to anyone who called it. That is what
+        // makes the failure so quiet: `t()` is right, and nobody re-renders to
+        // ask it. Pinned by `tfunction-identity.test.ts`.
         this.tSignal = createSignal<TFunction>(this.buildTFn());
         sTranslations.subscribe(() => this.tSignal.set(this.buildTFn()));
         currentlyLoadedLocale.subscribe(() => this.tSignal.set(this.buildTFn()));
@@ -271,6 +283,27 @@ export class Translations {
         // now happens at the flush site, so pre-authorization misses are held
         // rather than discarded, and the lane is chosen once it's actually known.
         //
+        // REG-11 — an ellipsis in the phrase itself is usually upstream
+        // truncation: the truncated form gets translated and stored, never
+        // matches the full paragraph, and the paragraph later registers as a
+        // second phrase. Catalog pollution plus double translation spend.
+        //
+        // WARN ONLY, deliberately. A blanket skip has real false positives —
+        // "Loading…", "Saving…", "Please wait…" are legitimate phrases — and
+        // silently refusing to register them would create a NEW silent failure,
+        // which is the class this whole surface exists to remove. The spec
+        // permits suppression only on a second signal (a longer catalog entry
+        // sharing the prefix); that is not implemented here, so nothing is
+        // skipped. Note CSS truncation needs no handling: `text-overflow` and
+        // `-webkit-line-clamp` clip visually and leave the DOM text complete.
+        if (/(?:…|\.\.\.)\s*$/.test(token)) {
+            this.debug.warn(
+                `Langsys: phrase ends in an ellipsis — "${token}". If this is upstream truncation, the ` +
+                    `shortened form will be translated and stored, and the full text will later register as a ` +
+                    `separate phrase. Register the untruncated string if you can. Registering anyway.`
+            );
+        }
+
         // Recorded before the queue dedup below: the discovery lane keys on the
         // URL the miss occurred on, and a phrase already queued from an earlier
         // route must not suppress the record for the page being viewed now.
@@ -577,6 +610,12 @@ export class Translations {
         // Canonical form is the cache identity — `en-us` and `en-US` must hit
         // the same `lastLoaded` entry and compare equal to `this.locale`.
         locale = canonicalizeLocale(locale);
+
+        // Point the cache at this project+locale BEFORE anything reads or
+        // writes the catalog. A hit warms the start; a miss simply misses.
+        // Previously the cache was keyed by neither, so a page load restored
+        // whatever was stored and served it until a fetch replaced it.
+        scopeCatalogCache(`${this.config.projectid}:${locale}`);
 
         if (skipFetch) {
             this.debug.log('Using pre-fetched translations for locale', locale);

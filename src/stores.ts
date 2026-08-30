@@ -1,5 +1,5 @@
 import { createSignal } from './signal.js';
-import { persist } from './persist.js';
+import { persistScoped } from './persist.js';
 import type { iCategories } from './types/translations.js';
 import type { iLangsysConfig } from './types/config.js';
 
@@ -10,11 +10,36 @@ const initialTranslations: iCategories = {
     },
 };
 
-// Namespaced: a bare 'translations' key in a host app's localStorage is a
-// collision waiting to happen, and the collision corrupts a catalog rather than
-// failing. The legacy key is read once so existing caches migrate instead of
-// being silently discarded on upgrade.
-export const sTranslations = persist<iCategories>('langsys:translations', initialTranslations, 'translations');
+/**
+ * The translation catalog, cached in localStorage for a warm start.
+ *
+ * Keyed by PROJECT and LOCALE (CACHE-1), and hydrated only once `init()` knows
+ * both. The key used to be a bare `translations` with neither, which meant a
+ * page load restored whatever catalog was there and served it before anything
+ * could check whose it was: a visitor who used the app in French saw French
+ * until the English fetch landed, and two projects sharing an origin
+ * overwrote and then served each other's content. Both failed silently.
+ *
+ * `persist` cannot express this because it reads its key at module load, and
+ * neither project nor locale exists then — see `persistScoped`.
+ *
+ * The two superseded keys are removed when identity first arrives; they can
+ * never be read again, and a stale catalog sitting in localStorage forever is
+ * not something anyone goes looking for.
+ */
+const catalogCache = persistScoped<iCategories>('langsys:translations', initialTranslations, [
+    'translations',
+    'langsys:translations',
+]);
+
+export const sTranslations = catalogCache.signal;
+
+/**
+ * Point the catalog cache at a `<projectid>:<locale>` scope. Called by
+ * `Translations.change()` before a fetch, so a hit warms and a miss simply
+ * misses — never serves another scope's catalog.
+ */
+export const scopeCatalogCache = catalogCache.scope;
 
 export const currentlyLoadedLocale = createSignal<string>('');
 
