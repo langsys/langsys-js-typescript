@@ -1,0 +1,188 @@
+[
+    {
+        "description": "select options are harvested once, not twice",
+        "html": "<select><option>S</option><option>M</option></select>",
+        "tokens": [
+            "S",
+            "M"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"S\",\"M\"]]",
+        "custom_id": "6376867e1891718e8c6a1c77d5a862f0"
+    },
+    {
+        "description": "optgroup label is harvested via the label attribute",
+        "html": "<select><optgroup label=\"Size\"><option>S</option></optgroup></select>",
+        "tokens": [
+            "Size",
+            "S"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Size\",\"S\"]]",
+        "custom_id": "09392d59fb6b87a89aeecc0a7edf4633"
+    },
+    {
+        "description": "inline markup splits at tag boundaries by default",
+        "html": "<p>Based on {n} <strong>reviews</strong></p>",
+        "tokens": [
+            "Based on {n}",
+            "reviews"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Based on {n}\",\"reviews\"]]",
+        "custom_id": "81e058c38e0b4003679927ddb438fe70"
+    },
+    {
+        "description": "markup wrapping the whole text stays one phrase",
+        "html": "<p><strong>Hello World</strong></p>",
+        "tokens": [
+            "Hello World"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Hello World\"]]",
+        "custom_id": "af67ea1452cd089aabff342e31651cb9"
+    },
+    {
+        "description": "nested markup yields document order",
+        "html": "<p>Read the <a href=\"/d\">docs</a> now</p>",
+        "tokens": [
+            "Read the",
+            "docs",
+            "now"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Read the\",\"docs\",\"now\"]]",
+        "custom_id": "4125fc93615a40afced996de6f0a4444"
+    },
+    {
+        "description": "translatable attributes are harvested",
+        "html": "<input placeholder=\"Email\" title=\"Your email\" alt=\"icon\">",
+        "tokens": [
+            "Email",
+            "icon",
+            "Your email"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Email\",\"icon\",\"Your email\"]]",
+        "custom_id": "5a9b8eaa39182811716b8df4eadb6864"
+    },
+    {
+        "description": "aria text is harvested",
+        "html": "<div aria-label=\"Close\" aria-description=\"Closes the dialog\" aria-valuetext=\"Half\" aria-roledescription=\"slider\">x</div>",
+        "tokens": [
+            "Close",
+            "Closes the dialog",
+            "Half",
+            "slider",
+            "x"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Close\",\"Closes the dialog\",\"Half\",\"slider\",\"x\"]]",
+        "custom_id": "6f9c12bb0848b7e275e2a1880a8e4810"
+    },
+    {
+        "description": "button and submit values are harvested",
+        "html": "<button value=\"Send\">Go</button><input type=\"submit\" value=\"Submit\">",
+        "tokens": [
+            "Send",
+            "Go",
+            "Submit"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Send\",\"Go\",\"Submit\"]]",
+        "custom_id": "0f4a111a72c55510b1f9d913fceb3f2b"
+    },
+    {
+        "description": "text input values are NOT harvested",
+        "html": "<input type=\"text\" value=\"user typed\">",
+        "tokens": [],
+        "category": "home",
+        "canonical_json": "[\"home\",[]]",
+        "custom_id": "51ba045cdf5b4f3d06ce8fe915742a2c"
+    },
+    {
+        "description": "translate=no excludes a subtree",
+        "html": "<div><p>Keep</p><p translate=\"no\">Skip</p></div>",
+        "tokens": [
+            "Keep"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Keep\"]]",
+        "custom_id": "599b51157531f4d67329951c0fe71356"
+    },
+    {
+        "description": "data-notrans excludes a subtree (bare)",
+        "html": "<div><p>Keep</p><p data-notrans>Skip</p></div>",
+        "tokens": [
+            "Keep"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Keep\"]]",
+        "custom_id": "599b51157531f4d67329951c0fe71356"
+    },
+    {
+        "description": "data-notrans=false does NOT exclude",
+        "html": "<div><p data-notrans=\"false\">Keep</p></div>",
+        "tokens": [
+            "Keep"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Keep\"]]",
+        "custom_id": "599b51157531f4d67329951c0fe71356"
+    },
+    {
+        "description": "script and style contents are never harvested",
+        "html": "<div><p>Keep</p><script>var a=1;</script><style>.a{}</style></div>",
+        "tokens": [
+            "Keep",
+            "var a=1;",
+            ".a{}"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Keep\",\"var a=1;\",\".a{}\"]]",
+        "custom_id": "467ca66d26dad2dec740cc0108633c71"
+    },
+    {
+        "description": "comments contribute nothing",
+        "html": "<p>a<!-- note -->b</p>",
+        "tokens": [
+            "a",
+            "b"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"a\",\"b\"]]",
+        "custom_id": "240f7f856a9f2d05e7129de637aa3b1b"
+    },
+    {
+        "description": "whitespace is collapsed and trimmed",
+        "html": "<p>  Multiple   spaces\n  here  </p>",
+        "tokens": [
+            "Multiple spaces here"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Multiple spaces here\"]]",
+        "custom_id": "9b920d6fd67eef24aefebc7209d742e4"
+    },
+    {
+        "description": "duplicate phrases are preserved in order",
+        "html": "<ul><li>Item</li><li>Item</li></ul>",
+        "tokens": [
+            "Item",
+            "Item"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Item\",\"Item\"]]",
+        "custom_id": "59548e132df8c21e4d61220acb4ed75c"
+    },
+    {
+        "description": "void elements contribute nothing",
+        "html": "<p>a<br>b</p>",
+        "tokens": [
+            "a",
+            "b"
+        ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"a\",\"b\"]]",
+        "custom_id": "240f7f856a9f2d05e7129de637aa3b1b"
+    }
+]

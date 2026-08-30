@@ -1,0 +1,196 @@
+[
+    {
+        "description": "select: complete",
+        "template": "{name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}} {name}",
+        "params": {
+            "name": "Sarah",
+            "name_gender": "female"
+        },
+        "locale": "es-ES",
+        "expected": "Bienvenida Sarah",
+        "requires_intl": false
+    },
+    {
+        "description": "select: argument missing falls to other",
+        "template": "{name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}} {name}",
+        "params": {
+            "name": "Sarah"
+        },
+        "locale": "es-ES",
+        "expected": "Bienvenide Sarah",
+        "requires_intl": false
+    },
+    {
+        "description": "select: null argument treated as missing",
+        "template": "{name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}} {name}",
+        "params": {
+            "name": "Sarah",
+            "name_gender": null
+        },
+        "locale": "es-ES",
+        "expected": "Bienvenide Sarah",
+        "requires_intl": false
+    },
+    {
+        "description": "plural: complete",
+        "template": "{count, plural, one {# item} other {# items}}",
+        "params": {
+            "count": 1
+        },
+        "locale": "en-US",
+        "expected": "1 item",
+        "requires_intl": false
+    },
+    {
+        "description": "plural: argument missing keeps sentence, shows gap",
+        "template": "{count, plural, one {# item} other {# items}}",
+        "params": {
+            "name": "Sarah"
+        },
+        "locale": "en-US",
+        "expected": "{count} items",
+        "requires_intl": false
+    },
+    {
+        "description": "plural: NULL is missing, not zero",
+        "template": "{count, plural, one {# item} other {# items}}",
+        "params": {
+            "count": null
+        },
+        "locale": "en-US",
+        "expected": "{count} items",
+        "requires_intl": false
+    },
+    {
+        "description": "plural: a real zero still renders as zero",
+        "template": "{count, plural, one {# item} other {# items}}",
+        "params": {
+            "count": 0
+        },
+        "locale": "en-US",
+        "expected": "0 items",
+        "requires_intl": false
+    },
+    {
+        "description": "nested: missing arg inside satisfied branch",
+        "template": "{g, select, f {Ella} other {{n, plural, one {# amigo} other {# amigos}}}}",
+        "params": {
+            "g": "m"
+        },
+        "locale": "es-ES",
+        "expected": "{n} amigos",
+        "requires_intl": false
+    },
+    {
+        "description": "nested: unsatisfied branch never evaluated",
+        "template": "{g, select, f {Ella} other {{n, plural, one {# amigo} other {# amigos}}}}",
+        "params": {
+            "g": "f"
+        },
+        "locale": "es-ES",
+        "expected": "Ella",
+        "requires_intl": false
+    },
+    {
+        "description": "russian plural: few",
+        "template": "{n, plural, one {# отзыв} few {# отзыва} many {# отзывов} other {# отзыва}}",
+        "params": {
+            "n": 5
+        },
+        "locale": "ru-RU",
+        "expected": "5 отзывов",
+        "requires_intl": true
+    },
+    {
+        "description": "russian plural: 21 is one",
+        "template": "{n, plural, one {# отзыв} few {# отзыва} many {# отзывов} other {# отзыва}}",
+        "params": {
+            "n": 21
+        },
+        "locale": "ru-RU",
+        "expected": "21 отзыв",
+        "requires_intl": true
+    },
+    {
+        "description": "russian plural: 111 is many",
+        "template": "{n, plural, one {# отзыв} few {# отзыва} many {# отзывов} other {# отзыва}}",
+        "params": {
+            "n": 111
+        },
+        "locale": "ru-RU",
+        "expected": "111 отзывов",
+        "requires_intl": true
+    },
+    {
+        "description": "simple: unknown key left verbatim",
+        "template": "Hello, {name}! Bye {other}",
+        "params": {
+            "name": "Sarah"
+        },
+        "locale": "en-US",
+        "expected": "Hello, Sarah! Bye {other}",
+        "requires_intl": false
+    },
+    {
+        "description": "simple: null value left verbatim",
+        "template": "Hello, {name}!",
+        "params": {
+            "name": null
+        },
+        "locale": "en-US",
+        "expected": "Hello, {name}!",
+        "requires_intl": false
+    },
+    {
+        "description": "simple: whitespace in braces tolerated",
+        "template": "Hi { name }!",
+        "params": {
+            "name": "Sarah"
+        },
+        "locale": "en-US",
+        "expected": "Hi Sarah!",
+        "requires_intl": false
+    },
+    {
+        "description": "simple: string opts out of number formatting",
+        "template": "Order {id}",
+        "params": {
+            "id": "1234567"
+        },
+        "locale": "de-DE",
+        "expected": "Order 1234567",
+        "requires_intl": false
+    },
+    {
+        "description": "simple: integer formatted per locale",
+        "template": "Order {id}",
+        "params": {
+            "id": 1234567
+        },
+        "locale": "de-DE",
+        "expected": "Order 1.234.567",
+        "requires_intl": true
+    },
+    {
+        "description": "simple: bool renders true/false, not 1/empty",
+        "template": "a={a} b={b}",
+        "params": {
+            "a": true,
+            "b": false
+        },
+        "locale": "en-US",
+        "expected": "a=true b=false",
+        "requires_intl": false
+    },
+    {
+        "description": "simple: dollar signs are not backreferences",
+        "template": "Price: {p} and {q}",
+        "params": {
+            "p": "$5",
+            "q": "$&"
+        },
+        "locale": "en-US",
+        "expected": "Price: $5 and $&",
+        "requires_intl": false
+    }
+]
