@@ -8,6 +8,8 @@
 
   CLDR handling is unaffected. `Intl` canonicalizes its own input, so `new Intl.Locale('zh-tw').maximize()` still yields `zh-Hant-TW` — a `zh-Hant` reader still never receives a `zh-Hans` catalog.
 
+- **The cached catalog is now keyed by project and locale.** It was stored under a single `translations` key carrying neither, so a page load restored whatever catalog was there and served it before anything could check whose it was: a visitor who had used the app in French saw French until the English fetch landed — permanently if that fetch failed — and two projects sharing an origin overwrote and then served each other's content. Both failed silently. The cache is now hydrated only once `init()` knows both, so a mismatch is a cache miss rather than foreign content. **Impact on upgrade: one extra catalog fetch on each visitor's first page load, then normal.** Nothing is lost — the catalog is server-owned — and the two superseded keys are removed automatically.
+
 - **`detectPreferredLocale` returns `false` when nothing in `supportedLocales` matches.** It previously returned the user's own first preference — a locale the caller had just said it does not support — so the documented `detectPreferredLocale(header, supported) || 'en-us'` idiom could never reach its default, and the app fetched a catalog that does not exist. Callers already using the `||` idiom get the behaviour it always described. Callers relying on the old return value need an explicit fallback.
 
 - **The persisted catalog moved from the `translations` storage key to `langsys:translations`.** A bare `translations` key in a host app's `localStorage` is a collision waiting to happen, and a collision corrupts a catalog rather than failing. The old key is read once on first load so existing caches migrate rather than being discarded, and is never written back — a downgrade still finds its cache where it left it.
@@ -17,6 +19,8 @@
 - **`apiUrl` init option.** Points the SDK at a different API host from inside `init()`, applied before authorization. `LangsysAppAPI.setBaseUrl()` still works but has to run *before* `init()`, and running it after leaves the SDK permanently inert with no error — the option removes the ordering rather than documenting it.
 
 - **`setPersistStorage(storage)` and the `PersistStorage` type.** Injects a synchronous storage backend for environments without a usable `localStorage` — React Native, workers. Signals created before the injection are re-hydrated from it, which is the point: the catalog store is built at module load, long before an app can hand us MMKV.
+
+- **A warning when a write-capable key cannot write from here.** If the server resolves `write_enabled: false` for a `write` or `ip_write` key, the SDK now says so once, above debug level, naming the key type and the likely remedy. Previously this was debug-only, which made a misconfigured integration completely silent — no request, no error, nothing in the Translation Manager — so the integrator believed they were connected and had nothing to report. Deliberately silent for a `read` key, which is behaving correctly.
 
 - **Debug notice when an interpolation argument is defaulted.** A gendered target locale can introduce an argument the source phrase never had (`{name}` → `{name_gender, select, …}`), which the SDK already recovered from silently. Silence is also what made it undiscoverable — the argument appears nowhere in the source. Names the argument and the locale, once per template+locale, debug only.
 

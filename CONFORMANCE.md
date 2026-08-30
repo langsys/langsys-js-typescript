@@ -5,9 +5,9 @@
 | **SDK** | `langsys-js-typescript` (browser reference implementation) |
 | **Profiles** | `all`, `browser` |
 | **specVersion** | 7 (read at 7.0.1) |
-| **Spec revision read** | langsys `d4ca65f0` (2026-08-25) — the revision the HINT-10/11/12, ICU-1…5 and CID-1…4 rows are filed against |
+| **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `06ae105a0a1f7b5245ec32929f0b3885c63f0336` (specVersion 7, latest history entry 7.0.1). Every rule profiled `all` or `browser` is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 268 tests in 17 files, `npm test`, counted at `1697d3d` |
+| **Suite** | 329 tests in 23 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -50,13 +50,13 @@ its cap, every oversized request would be rejected and those phrases never regis
 silently, for every writing session. Fixed while writing this row, which is the best
 argument I have for the format.
 
-**Two fixtures are still unvendored.** `tokenizer-reference.json` (17 cases) and
-`interpolation-reference.json` (19) remain checked only at release time, against the
-published tarball. So ICU-5 and the tokenizer rules rest on evidence from inside this repo
-alone, which is precisely the class CID-1 just escaped. Recorded as a follow-up rather than
-quietly left: the machinery now exists — vendor at a named SHA, assert through the same
-code path the implementation uses, check the input's codepoints before trusting it — and
-applying it to those two is mechanical.
+**All three shared fixtures are now vendored and asserted every run** —
+`custom-id-reference.json` (13 rows), `tokenizer-reference.json` (17) and
+`interpolation-reference.json` (19). Until this round the last two were checked only at
+release time against the published tarball, which left ICU-1…5 and the tokenizer family
+resting on evidence from inside this repo alone: tests I wrote against code I wrote,
+unable to detect a mistake both sides share. That was the weakness CID-1 escaped first and
+the reason it was recorded here as a follow-up rather than left to be noticed.
 
 **On the vendored fixture.** `tests/fixtures/custom-id-reference.json` is a copy of
 langsys-php's, at `8862841`. Vendored rather than fetched so the suite stays hermetic and a
@@ -93,7 +93,7 @@ grade that is not a synonym for anything the gate uses: see below for why it is 
 what the rule says, as judged here. `corroborated` means a second implementation, written
 independently in another language, produces the same bytes — which excludes a whole class
 of error that no amount of testing inside this repo can: the two sides sharing my mistake.
-Only CID-1 currently holds it. Every `mock` and `none` row
+Six rows hold it: CID-1, CID-4 and ICU-1/2/3/5, backed by three vendored fixtures. Every `mock` and `none` row
 is `provisional` regardless of how confident I am in the behaviour.
 
 ---
@@ -123,7 +123,7 @@ is `provisional` regardless of how confident I am in the behaviour.
 | REG-8 | provisional | mock | `write-lane` "backs off instead of hammering a failing server, and keeps the batch" |
 | REG-9 | provisional | mock | `grant-lane` REG-9 block — honours a lower server limit, keeps the default when absent, and chunks sends to it |
 | REG-10 | provisional | mock | `write-lane` backoff test (failure ⇒ queued + backoff, one behaviour) |
-| REG-11 | **not implemented** | none | No ellipsis warning. See gaps. |
+| REG-11 | implemented | mock | `ellipsis-warning` — a phrase ending in `…` or `...` warns, naming it, and is **registered anyway**. The spec permits suppression only on a second signal (a longer catalog entry sharing the prefix); that half is NOT implemented, so nothing is ever skipped. Deliberate: a blanket skip has real false positives (`Loading…`) and silently refusing to register those would create a new silent failure, which is the class this surface exists to remove. Mid-string ellipses are not matched |
 | REG-12 | provisional (no test) | none | Primary mechanism is structural (`t()` treats a non-string value as known). A redundant 32-hex guard remains — see gaps |
 | HINT-1 | implemented | mock | `discovery` — every assertion is on `page_url` only; no payload path exists |
 | HINT-2 | n/a | n/a | Profile `server`. This SDK is `browser`/`all`. |
@@ -142,27 +142,28 @@ is `provisional` regardless of how confident I am in the behaviour.
 | GRANT-2 | implemented | mock | same test — asserts the provider is re-resolved, not cached |
 | GRANT-3 | implemented | mock | `grant-lane` "issues a fresh authorization carrying the grant" |
 | GRANT-4 | implemented | mock | `grant-lane` header assertions |
-| OBS-1 | partial | none | Debug-level lines exist for every inert state (HINT-9, gate skips, absent `write_enabled`). Nothing is surfaced above debug. See gaps. |
+| OBS-1 | implemented | mock | `obs-notice` — a `write`/`ip_write` key resolving `write_enabled: false` warns once, ABOVE debug level, naming the key type and the remedy. Latched on the outcome, so a re-authorization that changes the answer speaks again and one that changes nothing stays quiet. Deliberately silent for a `read` key resolving read-only, which is correct behaviour and would otherwise make this the notice everyone silences. Mutation-checked: dropping the expected-to-write guard turns the read-key test red, dropping the latch turns the repeat test red |
 | WIRE-1 | provisional | mock | `api-reachability` WIRE-1 block — `x-Authorization` asserted on every request, plus the ICU capability header |
 | WIRE-2 | provisional | mock | `api` suite; 204 handled by status rather than content-type |
 | WIRE-3 | implemented | n/a (pure) | `locale` WIRE-3 block + `api` wire assertion. Lowercase `xx-yy` internally and on the wire. **Deliberately supersedes main's BCP 47 casing** (operator ruling); CLAUDE.md invariant 1a and the CHANGELOG carry the reason and the migration note |
 | WIRE-4 | provisional (no test) | none | Guarded (`window.location?.href`). No test asserts `t()` cannot throw |
 | WIRE-5 | implemented | mock | `api-reachability` — redirect **observed** at the double, plus the ordering failure proven |
+| CACHE-1 | implemented | mock | `cache-scope` — the catalog is keyed `langsys:translations:<projectid>:<locale>` and hydrated only once `init()` knows both, so a mismatch is a cache MISS rather than foreign content. Was keyed by neither: a page load restored whatever was stored and `t()` served it before anything could check whose it was. Mutation-checked twice — never-clear-on-scope-change turns the cross-project and cross-locale tests red; module-load hydration turns the superseded-key test red. Superseded keys are removed on first scoping |
 | CONF-1 | partial | — | Registration lanes assert catalog state; **hint lanes assert the outgoing payload**. See gaps. |
 | CONF-2 | implemented | — | This file |
 | CONF-3 | partial | — | `setWriteGrant` inertness is covered, but not by mutation. See gaps. |
 | HINT-10 | implemented | n/a (pure) | `discovery` — exact set narrowed to `{sig, auth, otp, nonce}`; `normalizeParamName` strips `-`/`_` before matching; fragments gain `oauth`/`authcode`/`accesscode`; `code` matches only with an OAuth marker (`state`/`session_state`). Red-first: 14 of these fail against the parent commit |
 | HINT-11 | implemented | n/a (pure) | `discovery` — `normalizeHintUrl` returns `null` for the whole report; both fragment shapes (`#/cb?code=&state=`, bare `#access_token=`); the no-`=` rule; the `?email` declines / `#contact-email` carries asymmetry. Seven shapes in `tests/fixtures/hint-url-fragment-reference.json`, iterated by the suite rather than restated |
 | HINT-12 | implemented | mock | Upgraded from `partial` by moving the observation point. `discovery` "a declined URL crosses no boundary": for a matching URL **zero bytes reach the transport and nothing derived from it enters SDK-side state** — no `postDiscoveryHint` call, no `langsys:hinted:` entry, and no fragment of the path, host or param value anywhere in either. Mutation-checked twice: strip-and-send and no-gate-at-all both turn it red, and the positive control (a carried URL DOES cross both seams) stays green under both. The internal check-ordering remains unobservable and is no longer what the row rests on |
-| ICU-1 | implemented | n/a (pure) | `interpolate` "missing select arguments fall back to `other`" — supplied branch, absent argument, unrecognised value all pinned |
-| ICU-2 | implemented | n/a (pure) | same suite, "treats null and undefined as absent" |
-| ICU-3 | implemented | n/a (pure) | same suite — `#` with no count renders `{argName}`; covered by the nested plural/select cases |
-| ICU-4 | implemented | n/a (pure) | `interpolate` "debug notice for defaulted arguments" — names the argument and locale, **deduped per template+locale**, **silent unless `logger.debugEnabled`**, and fires for plural as well as select recoveries. Both directions asserted |
-| ICU-5 | implemented | n/a (pure) | `interpolate` "a recovered argument survives the format call" — five vectors: a null plain argument beside a supplied plural, a null plural count, a null nested inside a **supplied** select branch (proves the rewrite recurses into branches that were not themselves recovered), null `number`/`date` arguments, and an absent-argument control sitting beside the null cases so a divergence between them fails rather than passing quietly. Conforming by the remove-binding-sites mechanism, not by withholding params: recovery replaces the argument node with a literal, so no node bearing that name reaches the formatter and the original `params` object is passed unfiltered and harmlessly. Mutation-checked — restoring the argument node reproduces the PHP lane's live symptom (`' has 2 items'`) and two it did not report (a null `number` renders `'0 due'`, and absent-argument recovery breaks outright). **Not corroborated**: `interpolation-reference.json` exists but is not vendored — see the note below |
+| ICU-1 | **corroborated (cross-implementation)** | contract (shared fixture) | `interpolation-cross-impl` — all 19 rows of langsys-php's `interpolation-reference.json`, vendored @ `5fa4d48` blob `d369bd185ca2`, plus `interpolate` "missing select arguments fall back to `other`" |
+| ICU-2 | **corroborated (cross-implementation)** | contract (shared fixture) | same fixture; plus `interpolate` "treats null and undefined as absent" |
+| ICU-3 | **corroborated (cross-implementation)** | contract (shared fixture) | same fixture; plus the nested plural/select cases where `#` with no count renders `{argName}` |
+| ICU-4 | implemented | n/a (pure) | `interpolate` "debug notice for defaulted arguments" — names the argument and locale, deduped per template+locale, silent unless `logger.debugEnabled`, fires for plural as well as select. Both directions asserted. NOT corroborated: a debug-only emission has no counterpart in the shared fixture, which asserts rendered output |
+| ICU-5 | **corroborated (cross-implementation)** | contract (shared fixture) | `interpolation-cross-impl` (19 rows) plus `interpolate` "a recovered argument survives the format call" — five vectors, mutation-checked against restoring the argument node, which reproduces the PHP lane's live symptom. Conforming by remove-binding-sites, which the amended clause names explicitly |
 | CID-1 | **corroborated (cross-implementation)** | contract (shared fixture) | `custom-id-cross-impl` — all 13 rows of langsys-php's `custom-id-reference.json`, vendored @ `8862841`. Per row: the vendored codepoints are checked FIRST (so a normalising editor can't mangle the file into agreement), then canonical string, then UTF-8 bytes vs `serialized_hex`, then `generateCustomId` vs `custom_id`. Two independently written serializers in different languages agreeing byte-for-byte, so implementation error is excluded and only spec-level error remains. Mutation-checked: escaping non-ASCII (the 2-flag equivalent) fails 10/13, swapping the envelope order fails 13/13 |
 | CID-2 | implemented | n/a (pure) | `custom-id` — `generateCustomId` coalesces `category \|\| ''` on this branch. **This is NOT a cross-SDK divergence and produces no id change**: on `origin/main` and published 0.6.5 the function itself does not coalesce, but every internal caller already passes `''` (`iContentBlock.category` is non-optional; `translate.ts` destructures `const { category = '' }` at `:107`, `:135`, `:271`), so every SDK-generated id already matches PHP. The guard closes a third-party-caller hole in the *export*, not a behaviour gap. See the note below |
 | CID-3 | implemented | mock | `translate` migration-fallback path — three historical id shapes tried on LOOKUP only, registration always uses the corrected id, so the legacy-keyed population can only shrink. Documented under "Historical ids" above |
-| CID-4 | implemented | n/a (pure) | `content-block-identity` — one token per text node, arity is identity, comments skipped, attribute emission order pinned. Mutation-checked: adding `clone.normalize()` to `tokenizeElement` turns three of its tests red |
+| CID-4 | **corroborated (cross-implementation)** | contract (shared fixture) | `tokenizer-cross-impl` — all 17 rows of `tokenizer-reference.json`, vendored @ `5fa4d48` blob `a8632b462c52`, asserting the token ARRAY (arity and order are the identity) and the id that follows from it; plus `content-block-identity`, mutation-checked — adding `clone.normalize()` to `tokenizeElement` turns three of its tests red |
 
 ---
 
@@ -296,9 +297,7 @@ that matters — the two halves must never ship apart.
    rejects. Low cost individually; the aggregate is that six rules rest on my reading.
    (WIRE-1 was the seventh and is now covered — the reviewer picked it as the cheapest and
    most load-bearing of the set.)
-6. **REG-11 — no ellipsis warning.** Agreed as correct in the spec discussion, never
-   implemented. Cost is catalog pollution plus double MT spend on truncated content,
-   bounded by how often customers render truncated text through `t()`.
+6. **REG-11 — the permitted suppression half is not implemented.** The warning is in and nothing is skipped, which conforms. The optional second signal — suppress when a longer catalog entry shares the prefix — would need a prefix scan of the catalog on every miss, and buys only the pollution case the warning already surfaces. Recorded as a deliberate omission rather than a gap.
 7. **OBS-1 — nothing is surfaced above debug level.** Deliberate for HINT-9 (the customer
    chose it), but an SDK that is inert because the server never returned `write_enabled`
    currently says so only at debug. Arguably that one warrants a warning, since nobody

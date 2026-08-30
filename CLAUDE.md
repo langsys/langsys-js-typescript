@@ -138,6 +138,13 @@ Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC
 
 Runs on every push to `main` and every PR. `npm ci` → `npm run typecheck` → `npm run build`. Failures here block merges.
 
+## Commit conventions
+
+Commit messages carry **no trailers** — no `Co-Authored-By`, no `Claude-Session`, no agent
+attribution of any kind. Fleet convention across every Langsys SDK repo, and the operator's
+standing instruction here. Credit humans in the message body where they found something
+(see the ticket-838 fold commits); that is different from a machine trailer.
+
 ## Design invariants
 
 Things to preserve when making changes:
