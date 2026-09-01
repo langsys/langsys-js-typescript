@@ -179,7 +179,7 @@ Target: ES2021. Module resolution: bundler. Strict TypeScript with `verbatimModu
 
 ## Testing approach
 
-`npm test` runs vitest over `tests/` — 17 files, 268 tests (`api`, `api-reachability`, `content-block-identity`, `custom-id`, `custom-id-cross-impl`, `discovery`, `grant-lane`, `init-settle`, `interpolate`, `langsys-app`, `locale`, `logger`, `persist`, `richtext`, `translate`, `translations`, `write-lane`).
+`npm test` runs vitest over `tests/` — 23 files, 337 tests (`api`, `api-reachability`, `content-block-identity`, `custom-id`, `custom-id-cross-impl`, `discovery`, `grant-lane`, `init-settle`, `interpolate`, `langsys-app`, `locale`, `logger`, `persist`, `richtext`, `translate`, `translations`, `write-lane`).
 
 `content-block-identity` pins `custom_id` **identity** rather than output: text-node arity, comment skipping, and attribute emission order. Those are wire values shared with every other SDK. It is mutation-checked — adding `clone.normalize()` to `tokenizeElement` turns three of its tests red. It also pins the **opposite** rule on the `<Phrase>` path: `encodeRichText` coalesces adjacent text nodes by design, because the phrase string is the key and a sentence must survive whole. The two paths are not meant to agree — the realistic bug is someone applying the content-block contract to `richtext.ts`. A failure there is a breaking change, not a stale expectation; never repin a literal to make it green. `npm run test:watch` for watch mode.
 

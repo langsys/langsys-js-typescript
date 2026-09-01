@@ -7,7 +7,7 @@
 | **specVersion** | 7 (read at 7.0.1) |
 | **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `06ae105a0a1f7b5245ec32929f0b3885c63f0336` (specVersion 7, latest history entry 7.0.1). Every rule profiled `all` or `browser` is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 329 tests in 23 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 337 tests in 23 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -78,6 +78,19 @@ this branch, or a GitHub PR head. The original 838 branch was deleted after its 
 re-derived onto the reland line, so its SHAs no longer resolve in a fresh clone; changes
 that landed there are described and dated instead. Don't re-add a bare SHA for them: it
 reads as verifiable and isn't.
+
+**Coverage arithmetic**, so the counts reconcile rather than needing to be trusted. The spec
+carries **67 rules**. **60 bind this SDK** (44 profiled `all`, 16 `browser`) and each has its
+own row. The other seven are covered by two rows: `HINT-2` (profile `server`) keeps a row of
+its own so the n/a stays visible as a claim about that rule's Profiles line, and `BIND-1..6`
+share one combined row because a binding profile is n/a for the same single reason six times
+over. So **61 physical rows covering 67 rules** — the row count and the rule count are
+deliberately different numbers, and neither is the other.
+
+Two kinds of n/a are kept apart. `HINT-2` and `BIND-1..6` are **profile-n/a**: the rule is
+real and simply addressed to somebody else. That is not the same as a rule being
+inapplicable to this architecture, which would need saying differently and does not currently
+occur here.
 
 **Grade vocabulary.** This file grades every row `implemented`, `partial`, `provisional`,
 `corroborated (cross-implementation)` or `n/a`. The verification gate's reports use `met`
@@ -298,10 +311,7 @@ that matters — the two halves must never ship apart.
    (WIRE-1 was the seventh and is now covered — the reviewer picked it as the cheapest and
    most load-bearing of the set.)
 6. **REG-11 — the permitted suppression half is not implemented.** The warning is in and nothing is skipped, which conforms. The optional second signal — suppress when a longer catalog entry shares the prefix — would need a prefix scan of the catalog on every miss, and buys only the pollution case the warning already surfaces. Recorded as a deliberate omission rather than a gap.
-7. **OBS-1 — nothing is surfaced above debug level.** Deliberate for HINT-9 (the customer
-   chose it), but an SDK that is inert because the server never returned `write_enabled`
-   currently says so only at debug. Arguably that one warrants a warning, since nobody
-   chose it.
+7. **OBS-1's notice covers capability, not every inert state.** The write-capability warning is now above debug on both channels. HINT-9's reporting-disabled case stays debug-only deliberately — the customer chose that setting, so it is a configuration, not a fault.
 8. **CONF-3 — runtime rules are not proven by mutation.** The `setWriteGrant` tests would
    have caught the original inert version, but I have not verified that by reverting the
    fix and watching them fail.

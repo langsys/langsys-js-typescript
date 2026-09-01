@@ -12,7 +12,7 @@
 
 - **`detectPreferredLocale` returns `false` when nothing in `supportedLocales` matches.** It previously returned the user's own first preference — a locale the caller had just said it does not support — so the documented `detectPreferredLocale(header, supported) || 'en-us'` idiom could never reach its default, and the app fetched a catalog that does not exist. Callers already using the `||` idiom get the behaviour it always described. Callers relying on the old return value need an explicit fallback.
 
-- **The persisted catalog moved from the `translations` storage key to `langsys:translations`.** A bare `translations` key in a host app's `localStorage` is a collision waiting to happen, and a collision corrupts a catalog rather than failing. The old key is read once on first load so existing caches migrate rather than being discarded, and is never written back — a downgrade still finds its cache where it left it.
+- **The persisted catalog moved from the `translations` storage key to `langsys:translations`.** A bare `translations` key in a host app's `localStorage` is a collision waiting to happen, and a collision corrupts a catalog rather than failing. **Superseded within this same release** by the project+locale keying above, which removes both unscoped keys rather than migrating them. Recorded rather than deleted because the rename is real and a reader tracing the key needs both steps; the migration it originally described no longer happens.
 
 ### Added
 
