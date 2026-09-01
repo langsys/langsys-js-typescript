@@ -2,7 +2,7 @@ import { LangsysAppAPI } from './api.js';
 import { recordMissForDiscovery } from './discovery.js';
 import { interpolate } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
-import { Logger } from './logger.js';
+import { Logger, logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
 import { batchLimit, currentlyLoadedLocale, scopeCatalogCache, sTranslations, setWriteEnabled, writeEnabled } from './stores.js';
 import type { ResponseObject } from './types/api.js';
@@ -64,11 +64,51 @@ function sameToken(a: iTokenUpdate, b: iTokenUpdate): boolean {
  *    every time translations or the loaded locale change) so reactive
  *    templates re-render automatically.
  */
+/**
+ * OBS-1 — say once, above debug level, when a key that is supposed to write
+ * cannot write from here.
+ *
+ * Module-scope so the ONE latch is shared by both channels that learn about
+ * capability: `authorize-project` at init, and the envelope on every catalog
+ * fetch. Two latches would let the same condition be announced twice, and a
+ * latch on only one channel is how the mid-session transition went silent.
+ *
+ * Only for a key type EXPECTED to write. A `read` key resolving read-only is
+ * correct, not a misconfiguration, and warning on every ordinary site is how
+ * this becomes the notice everyone silences — taking the `ip_write` case with
+ * it. Latched on the OUTCOME, so a change in the answer speaks again while a
+ * repeat of the same answer stays quiet.
+ */
+let capabilityNoticeSignature: string | null = null;
+
+export function noticeUnusableWriteCapability(enabled: boolean, keyType: string | undefined): void {
+    const signature = `${keyType ?? 'unknown'}:${enabled}`;
+    if (signature === capabilityNoticeSignature) return;
+    capabilityNoticeSignature = signature;
+
+    if (enabled || (keyType !== 'write' && keyType !== 'ip_write')) return;
+
+    logger.warn(
+        `Langsys: this session cannot write. The key is '${keyType}', but the server resolved ` +
+            `write_enabled=false for this request — so missing phrases will NOT be registered and nothing ` +
+            `will appear in the Translation Manager. For an 'ip_write' key this usually means the address ` +
+            `is not allow-listed; otherwise supply a write grant via LangsysApp.setWriteGrant(). Page URLs ` +
+            `may still be reported for discovery if auto_discovery is enabled for this key.`
+    );
+}
+
+/** Test seam — the latch is module state and must not leak between cases. */
+export function _resetCapabilityNotice(): void {
+    capabilityNoticeSignature = null;
+}
+
 export class Translations {
     private config: iLangsysConfig;
     private locale: string;
     private lastLoaded: Record<string, number> = {};
     private missingTokens: iTokenUpdate[] = [];
+    /** Phrases already reported under REG-11, so the warning fires once each. */
+    private warnedEllipsis = new Set<string>();
     private timer: ReturnType<typeof setInterval> | null = null;
     private flushScheduled = false;
     private updateInFlight = false;
@@ -296,7 +336,13 @@ export class Translations {
         // sharing the prefix); that is not implemented here, so nothing is
         // skipped. Note CSS truncation needs no handling: `text-overflow` and
         // `-webkit-line-clamp` clip visually and leave the DOM text complete.
-        if (/(?:…|\.\.\.)\s*$/.test(token)) {
+        // Deduped per phrase, and debug-level per the rule text. Undeduped it
+        // fires on every miss of the same string — and on a read-only session
+        // the phrase never becomes known, so `Loading…` warns on every render
+        // for the life of the page. A diagnostic that spams is a diagnostic
+        // people turn off.
+        if (this.debug.debugEnabled && !this.warnedEllipsis.has(token) && /(?:…|\.\.\.)\s*$/.test(token)) {
+            this.warnedEllipsis.add(token);
             this.debug.warn(
                 `Langsys: phrase ends in an ellipsis — "${token}". If this is upstream truncation, the ` +
                     `shortened form will be translated and stored, and the full text will later register as a ` +
@@ -354,6 +400,13 @@ export class Translations {
         if (typeof value !== 'boolean') return;
         setWriteEnabled(value);
         if (typeof window === 'undefined') this.ssrWriteEnabled = value;
+        // OBS-1 reaches BOTH capability channels. This one runs on every
+        // catalog fetch — which is why it exists: capability can change without
+        // a re-init, and an `ip_write` key whose address drops off the
+        // allow-list mid-session is exactly the silent failure OBS-1 names. The
+        // notice was previously wired only to `authorize-project`, so that
+        // transition said nothing at all.
+        noticeUnusableWriteCapability(value, this.config.key_type);
     }
 
     /**
@@ -854,7 +907,25 @@ export class Translations {
             } as iTranslations;
         }
 
+        // Drop anything in `data` that is not a category object before stamping
+        // it. On `/translations` the `data` member IS the category map, so a
+        // stray scalar sibling — a legacy envelope answering with
+        // `{key_type:'read', ...}`, an error shape, a future field — used to
+        // throw here (`Cannot create property '__category__' on string`). This
+        // runs inside an un-awaited `change()`, so the rejection was unhandled:
+        // it took down the caller's tick rather than degrading, and `npm test`
+        // exited non-zero while every test reported passing. `types/api.ts`
+        // already warns about exactly this shape.
         for (const cat of Object.keys(trans)) {
+            const value: unknown = trans[cat];
+            if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+                this.debug.warn(
+                    `Ignoring non-category member '${cat}' in the /translations payload — expected an object of ` +
+                        `phrases, got ${Array.isArray(value) ? 'an array' : typeof value}. The catalog is still usable.`
+                );
+                delete trans[cat];
+                continue;
+            }
             trans[cat]['__category__'] = cat;
         }
 
