@@ -110,6 +110,37 @@ describe('scoping adopts only the matching cache', () => {
 });
 
 describe('an SSR-seeded catalog survives the first scoping', () => {
+    it('beats a STORED catalog, not just an empty store', async () => {
+        // The regression the first version of this suite missed: it only
+        // covered the empty-store half, so the something-stored branch adopted
+        // the stale copy unopposed. The server just rendered this page with a
+        // fresh catalog, and markLoaded primes the 60s cache-hit so no
+        // corrective fetch fires — a returning visitor to an SSR app would see
+        // last session's strings for the whole session.
+        const data = installStorage({
+            'langsys:translations:proj-a:en-us': JSON.stringify(catalog('Hello', 'STALE-FROM-LAST-WEEK')),
+        });
+        const { sTranslations, scopeCatalogCache } = await freshLoad();
+
+        sTranslations.set(catalog('Hello', 'FRESH-SSR'));
+        scopeCatalogCache('proj-a:en-us');
+
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('FRESH-SSR');
+        // And the fresh value replaces the stale one, so the next load is right.
+        expect(JSON.parse(data['langsys:translations:proj-a:en-us']!).__uncategorized__.Hello).toBe('FRESH-SSR');
+    });
+
+    it('still adopts the store when the signal was NOT seeded', async () => {
+        // Control. Without it the fix above could be "never adopt anything",
+        // which would silently disable the warm start entirely.
+        installStorage({ 'langsys:translations:proj-a:en-us': JSON.stringify(catalog('Hello', 'FROM-CACHE')) });
+        const { sTranslations, scopeCatalogCache } = await freshLoad();
+
+        scopeCatalogCache('proj-a:en-us');
+
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('FROM-CACHE');
+    });
+
     it('is not cleared when nothing is stored for that scope', async () => {
         // The handoff path seeds the signal before init scopes the cache. A
         // blanket reset on scope would throw the server’s work away and

@@ -137,8 +137,18 @@ export function persistScoped<T>(
     const signal = createSignal<T>(initial);
     let currentKey: string | null = null;
     let everScoped = false;
+    // Did somebody write to this signal BEFORE any scope existed? That is the
+    // SSR handoff: `init()` seeds the catalog from the server payload, and only
+    // then does `change()` scope the cache. Such a value is authoritative — it
+    // came from this request, for this locale — and must beat anything stored.
+    let seededBeforeScope = false;
+    let emissions = 0;
 
     signal.subscribe((value) => {
+        emissions += 1;
+        // `subscribe` fires immediately with the current value, so emission 1
+        // is creation, not a write.
+        if (!everScoped && emissions > 1) seededBeforeScope = true;
         if (!currentKey) return;
         const target = activeStorage();
         if (!target) return;
@@ -160,13 +170,32 @@ export function persistScoped<T>(
         currentKey = key;
         if (key !== null) everScoped = true;
 
+        // An SSR handoff outranks the store on the FIRST scoping, whether or
+        // not something is stored. Adopting the stored copy here was a
+        // regression: the server just rendered this page with a fresh catalog,
+        // and `markLoaded` primes the 60s cache-hit so no corrective fetch
+        // fires — so a returning visitor to an SSR app would be served last
+        // session's strings for the whole session. Persist the fresh value
+        // instead, so the next load starts from it.
+        if (!hadScope && seededBeforeScope && key !== null) {
+            const target = activeStorage();
+            if (target) {
+                try {
+                    target.setItem(key, JSON.stringify(signal.get()));
+                } catch {
+                    // Quota — in-memory stays authoritative.
+                }
+            }
+            return;
+        }
+
         if (stored !== undefined) {
             signal.set(stored as T);
             return;
         }
         // Nothing stored for the new scope. Clear only if we are LEAVING a
-        // scope — otherwise this is the first scoping and the signal may hold
-        // an SSR handoff we must not discard.
+        // scope — otherwise this is the first scoping and there is nothing to
+        // discard.
         if (hadScope && key !== null) signal.set(structuredCloneShim(initial));
     };
 
