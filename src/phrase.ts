@@ -5,8 +5,12 @@ import type { Unsubscriber } from './signal.js';
 import { currentlyLoadedLocale, sTranslations } from './stores.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
 
-/** Attribute marker the `Translate` tokenizer uses to skip a `<Phrase>` subtree. */
-export const PHRASE_MARKER_ATTR = 'data-ls-phrase';
+/**
+ * Attribute marker the `Translate` tokenizer uses to skip a `<Phrase>` subtree.
+ * Re-exported, never restated: one definition lives in `content-block.ts`,
+ * where the tokenizer that has to recognise it also lives.
+ */
+export { PHRASE_MARKER_ATTR } from './content-block.js';
 
 export interface PhraseOptions {
     /** Category the phrase registers under (disambiguation for translators). */

@@ -1,6 +1,12 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { generateCustomId, tokenizeElement, TRANSLATABLE_ATTRIBUTES } from '../src/content-block.js';
+import {
+    generateCustomId,
+    PHRASE_MARKER_ATTR,
+    PHRASE_MARKER_ATTRS,
+    tokenizeElement,
+    TRANSLATABLE_ATTRIBUTES,
+} from '../src/content-block.js';
 import { encodeRichText } from '../src/richtext.js';
 
 /**
@@ -185,5 +191,19 @@ describe('Phrase path: coalescing is REQUIRED here, not forbidden', () => {
         };
         expect(tokenizeElement(span(build)).tokens).toEqual(['Hello', 'world']);
         expect(encodeRichText(span(build)).phrase).toBe('Hello world');
+    });
+});
+
+describe('the Phrase marker has exactly one definition', () => {
+    it('the tokenizer recognises the attribute Phrase actually emits', () => {
+        // These were two hand-written literals in two files, so a one-sided
+        // rename left the other stale — and the failure is invisible: the
+        // tokenizer stops recognising the marker and re-tokenizes a subtree
+        // that manages itself, producing a content block nobody asked for.
+        expect(PHRASE_MARKER_ATTRS).toContain(PHRASE_MARKER_ATTR);
+    });
+
+    it('still recognises PHP’s spelling, so a shared catalog round-trips', () => {
+        expect(PHRASE_MARKER_ATTRS).toContain('data-langsys-phrase');
     });
 });

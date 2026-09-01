@@ -79,7 +79,18 @@ export const TRANSLATABLE_ATTRIBUTES = [
  * re-tokenizes a subtree PHP deliberately kept whole. Recognising both is
  * additive — `data-langsys-phrase` never appears in DOM our components emit.
  */
-export const PHRASE_MARKER_ATTRS = ['data-ls-phrase', 'data-langsys-phrase'] as const;
+/**
+ * THE definition. `phrase.ts` re-exports this rather than restating it — the
+ * literal used to appear in both files, so renaming one side left the other
+ * silently stale: the tokenizer would stop recognising the marker `Phrase`
+ * emits and would re-tokenize a subtree that manages itself.
+ */
+export const PHRASE_MARKER_ATTR = 'data-ls-phrase';
+
+/** PHP's spelling. Recognised so a catalog shared with langsys-php round-trips. */
+export const PHRASE_MARKER_ATTR_LEGACY = 'data-langsys-phrase';
+
+export const PHRASE_MARKER_ATTRS = [PHRASE_MARKER_ATTR, PHRASE_MARKER_ATTR_LEGACY] as const;
 
 /**
  * True when an element opts out of translation entirely — it and its subtree
