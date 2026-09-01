@@ -7,7 +7,7 @@
 | **specVersion** | 7 (read at 7.0.1) |
 | **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `06ae105a0a1f7b5245ec32929f0b3885c63f0336` (specVersion 7, latest history entry 7.0.1). Every rule profiled `all` or `browser` is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 337 tests in 23 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 342 tests in 24 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -79,12 +79,37 @@ re-derived onto the reland line, so its SHAs no longer resolve in a fresh clone;
 that landed there are described and dated instead. Don't re-add a bare SHA for them: it
 reads as verifiable and isn't.
 
+**Commit-history correction.** Two commits on this branch misdescribe what they carry, and
+the end state is correct while the history is not. `7e48652` — titled for the non-object
+catalog guard — also contains the ENTIRE source implementation of the OBS-1 shared notice
+and the REG-11 dedup: the module-scope latch, `noticeUnusableWriteCapability`, the
+`applyWriteEnabled` call, `warnedEllipsis`, and the debug gate. `c1cf492`'s message says
+"the notice moves to module scope in translations.ts" while its diff touches only
+`langsys-app.ts` and tests. Earlier, `d3a8c8d` likewise carried the REG-11 warning and the
+mint-site comment attributed to `d5028c1`.
+
+Cause, since it is the same one all three times: the source edits were made across several
+files before anything was committed, then staged whole-file — so the first commit to touch a
+file swept up every unrelated change in it. Reconstructing this work from commit messages
+would mislead; reconstructing it from diffs would not. Recorded rather than rewritten,
+because the branch is pushed and a correction that stays visible is worth more than a
+tidy history that hides having needed one. The self-check that prevents a third instance is
+in CLAUDE.md's commit conventions.
+
+**Known corner — CACHE-1 write-through does not compare locales.** An SSR handoff seeded for
+locale A followed by a first scoping to locale B persists A's catalog under B's key. It heals
+on the next `change()`, which fetches B and overwrites — unless that fetch fails, in which
+case the stale entry survives to the next load. Not fixed: the seed carries no locale of its
+own to compare against, so closing it properly means threading
+`initialTranslationsLocale` into the cache layer, which is a wider change than the corner
+justifies. Filed rather than left to be discovered.
+
 **Coverage arithmetic**, so the counts reconcile rather than needing to be trusted. The spec
 carries **67 rules**. **60 bind this SDK** (44 profiled `all`, 16 `browser`) and each has its
 own row. The other seven are covered by two rows: `HINT-2` (profile `server`) keeps a row of
 its own so the n/a stays visible as a claim about that rule's Profiles line, and `BIND-1..6`
 share one combined row because a binding profile is n/a for the same single reason six times
-over. So **61 physical rows covering 67 rules** — the row count and the rule count are
+over. So **62 physical rows covering 67 rules** — the row count and the rule count are
 deliberately different numbers, and neither is the other.
 
 Two kinds of n/a are kept apart. `HINT-2` and `BIND-1..6` are **profile-n/a**: the rule is

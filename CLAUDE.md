@@ -140,6 +140,15 @@ Runs on every push to `main` and every PR. `npm ci` → `npm run typecheck` → 
 
 ## Commit conventions
 
+**Check the message against the diff before pushing.** Run `git show --stat` (or
+`git diff --cached --name-only`) and confirm every file the message claims is present, and
+that no file present is unexplained. This has been got wrong twice on one branch, the same
+way both times: edits made across several files before anything was committed, then staged
+whole-file, so the first commit to touch a file swept up every unrelated change in it. Stage
+by hunk (`git add -p`) when a file carries work belonging to more than one commit. The end
+state was correct both times and the history was not, which is the expensive kind of wrong —
+it only surfaces when somebody trusts a commit message.
+
 Commit messages carry **no trailers** — no `Co-Authored-By`, no `Claude-Session`, no agent
 attribution of any kind. Fleet convention across every Langsys SDK repo, and the operator's
 standing instruction here. Credit humans in the message body where they found something
@@ -179,7 +188,7 @@ Target: ES2021. Module resolution: bundler. Strict TypeScript with `verbatimModu
 
 ## Testing approach
 
-`npm test` runs vitest over `tests/` — 23 files, 337 tests (`api`, `api-reachability`, `content-block-identity`, `custom-id`, `custom-id-cross-impl`, `discovery`, `grant-lane`, `init-settle`, `interpolate`, `langsys-app`, `locale`, `logger`, `persist`, `richtext`, `translate`, `translations`, `write-lane`).
+`npm test` runs vitest over `tests/` — 24 files, 342 tests (`api-reachability`, `api`, `cache-scope`, `catalog-envelope`, `content-block-identity`, `custom-id-cross-impl`, `custom-id`, `discovery`, `ellipsis-warning`, `grant-lane`, `init-settle`, `interpolate`, `interpolation-cross-impl`, `langsys-app`, `locale`, `logger`, `obs-notice`, `persist`, `richtext`, `tfunction-identity`, `tokenizer-cross-impl`, `translate`, `translations`, `write-lane`).
 
 `content-block-identity` pins `custom_id` **identity** rather than output: text-node arity, comment skipping, and attribute emission order. Those are wire values shared with every other SDK. It is mutation-checked — adding `clone.normalize()` to `tokenizeElement` turns three of its tests red. It also pins the **opposite** rule on the `<Phrase>` path: `encodeRichText` coalesces adjacent text nodes by design, because the phrase string is the key and a sentence must survive whole. The two paths are not meant to agree — the realistic bug is someone applying the content-block contract to `richtext.ts`. A failure there is a breaking change, not a stale expectation; never repin a literal to make it green. `npm run test:watch` for watch mode.
 
