@@ -30,7 +30,9 @@ function removeBrowserShim() {
 }
 
 function newTranslations() {
-    return new Translations({ projectid: 'p', key: 'k', sUserLocale: createSignal('en-us'), baseLocale: 'en' });
+    // Debug on: REG-11 is a DEBUG warning per the rule text, so production is
+    // silent by design and the level is part of the contract.
+    return new Translations({ projectid: 'p', key: 'k', sUserLocale: createSignal('en-us'), baseLocale: 'en', debug: true });
 }
 
 const queueOf = (t: Translations) => (t as unknown as { missingTokens: unknown[] }).missingTokens;
@@ -75,6 +77,30 @@ describe('ellipsis-terminated phrases', () => {
 
     it('says nothing for an ellipsis in the MIDDLE, which is not truncation', () => {
         newTranslations().t('Wait… what?', 'UI');
+        expect(said()).not.toContain('ellipsis');
+    });
+
+    it('warns ONCE per phrase, not once per miss', () => {
+        // On a read-only session the phrase never becomes known, so an
+        // undeduped warning fires on every render for the life of the page. A
+        // diagnostic that spams is a diagnostic people turn off.
+        const tr = newTranslations();
+        tr.t('Loading…', 'UI');
+        tr.t('Loading…', 'UI');
+        tr.t('Loading…', 'UI');
+
+        expect(warn.mock.calls.filter((c) => c.map(String).join(' ').includes('ellipsis'))).toHaveLength(1);
+    });
+
+    it('is silent in production, because the rule says DEBUG warning', () => {
+        const quiet = new Translations({
+            projectid: 'p',
+            key: 'k',
+            sUserLocale: createSignal('en-us'),
+            baseLocale: 'en',
+        });
+        quiet.t('Truncated paragraph…', 'UI');
+
         expect(said()).not.toContain('ellipsis');
     });
 });

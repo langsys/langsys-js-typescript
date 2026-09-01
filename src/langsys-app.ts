@@ -8,7 +8,7 @@ import {
     currentlyLoadedLocale,
     sTranslations,
 } from './stores.js';
-import { Translations } from './translations.js';
+import { noticeUnusableWriteCapability, Translations } from './translations.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig, iLangsysInitConfig, WriteGrant } from './types/config.js';
 import type { iCountryDialCode, iCountryList } from './types/countries.js';
@@ -109,7 +109,7 @@ class LangsysAppClass {
         if (serverSpeaksCapability) {
             this.Translations.applyWriteEnabled(authData.write_enabled as boolean);
             this.debug.log(`Session write-enabled (${context}):`, authData.write_enabled);
-            this.noticeUnusableWriteCapability(authData.write_enabled as boolean, authData.key_type);
+            noticeUnusableWriteCapability(authData.write_enabled as boolean, authData.key_type);
         } else {
             // An ABSENT field is not `false`. It means the server predates
             // `write_enabled`, and treating absence as a refusal would leave
@@ -148,43 +148,6 @@ class LangsysAppClass {
             autoDiscovery.set(authData.auto_discovery);
             this.debug.log(`Discovery reporting permitted (${context}):`, authData.auto_discovery);
         }
-    }
-
-    /**
-     * OBS-1 — say once, above debug level, when a key that is supposed to write
-     * cannot write from here.
-     *
-     * REG-1 makes this failure completely silent otherwise: no request, no
-     * error, nothing in the catalog. The customer believes they are integrated
-     * and has nothing to report. One line is the cheapest signal there is.
-     *
-     * Only for a key type EXPECTED to write. A `read` key resolving read-only
-     * is the correct outcome, not a misconfiguration, and warning about it on
-     * every ordinary site would make this the notice everyone silences — taking
-     * the `ip_write` case with it.
-     *
-     * Latched on the OUTCOME rather than a plain once-per-session flag, so a
-     * re-authorization that changes the answer (a write grant arriving, an
-     * address moving off the allow-list) is reported, while a re-auth that
-     * changes nothing stays quiet.
-     */
-    private lastCapabilityNotice: string | null = null;
-
-    private noticeUnusableWriteCapability(writeEnabled: boolean, keyType: string | undefined): void {
-        const expectedToWrite = keyType === 'write' || keyType === 'ip_write';
-        const signature = `${keyType ?? 'unknown'}:${writeEnabled}`;
-        if (signature === this.lastCapabilityNotice) return;
-        this.lastCapabilityNotice = signature;
-
-        if (writeEnabled || !expectedToWrite) return;
-
-        this.debug.warn(
-            `Langsys: this session cannot write. The key is '${keyType}', but the server resolved ` +
-                `write_enabled=false for this request — so missing phrases will NOT be registered and ` +
-                `nothing will appear in the Translation Manager. For an 'ip_write' key this usually means ` +
-                `the address is not allow-listed; otherwise supply a write grant via LangsysApp.setWriteGrant(). ` +
-                `Page URLs may still be reported for discovery if auto_discovery is enabled for this key.`
-        );
     }
 
     public async refresh() {

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangsysApp } from '../src/langsys-app.js';
+import { _resetCapabilityNotice, Translations } from '../src/translations.js';
+import { createSignal } from '../src/signal.js';
 
 /**
  * OBS-1 — an unusable write capability is surfaced at least once.
@@ -18,7 +20,7 @@ function authorize(data: Auth) {
 }
 
 function resetLatch() {
-    (LangsysApp as unknown as { lastCapabilityNotice: string | null }).lastCapabilityNotice = null;
+    _resetCapabilityNotice();
 }
 
 let warn: ReturnType<typeof vi.spyOn>;
@@ -62,6 +64,45 @@ describe('a key that should write but cannot', () => {
         authorize({ key_type: 'ip_write', write_enabled: false });
 
         expect(said()).toContain('cannot write');
+    });
+});
+
+describe('the catalog-fetch channel reaches the notice too', () => {
+    it('warns when capability drops mid-session, without a re-init', () => {
+        // The channel exists so capability changes are picked up without
+        // re-initialising, and an `ip_write` key whose address leaves the
+        // allow-list mid-session is exactly the silent failure OBS-1 names.
+        // The notice was wired only to authorize-project, so this said nothing.
+        const tr = new Translations({
+            projectid: 'p',
+            key: 'k',
+            sUserLocale: createSignal('en-us'),
+            baseLocale: 'en',
+            key_type: 'ip_write',
+        });
+
+        tr.applyWriteEnabled(false);
+
+        expect(said()).toContain('cannot write');
+        expect(said()).toContain('ip_write');
+    });
+
+    it('shares ONE latch with the authorization channel', () => {
+        // Two latches would let the same condition be announced twice — once
+        // per channel — which is the noise the once-per-session rule forbids.
+        authorize({ key_type: 'ip_write', write_enabled: false });
+        const after = warn.mock.calls.length;
+
+        const tr = new Translations({
+            projectid: 'p',
+            key: 'k',
+            sUserLocale: createSignal('en-us'),
+            baseLocale: 'en',
+            key_type: 'ip_write',
+        });
+        tr.applyWriteEnabled(false);
+
+        expect(warn.mock.calls.length).toBe(after);
     });
 });
 
