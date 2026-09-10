@@ -205,6 +205,13 @@ describe('the Phrase marker has exactly one definition', () => {
     // divergence of any origin — a rename on one side, a re-declared literal,
     // a dropped legacy spelling — shows up as a subtree that gets tokenized
     // when it should have been left alone.
+    //
+    // One caveat on "the contract is that the two agree, not that the value is
+    // frozen": that is true of THIS file, but `richtext.test.ts` does freeze the
+    // literal `data-ls-phrase`, so a coordinated rename turns it red there. The
+    // value is in practice pinned somewhere — just not here, and not
+    // deliberately. Worth knowing before anyone renames it expecting a green
+    // suite.
     function tokenizeHost(html: string) {
         const host = document.createElement('div');
         host.innerHTML = html;
@@ -222,8 +229,12 @@ describe('the Phrase marker has exactly one definition', () => {
     });
 
     it('control: an unmarked subtree IS tokenized', () => {
-        // Without this, "skips" is satisfied by a tokenizer that returns
-        // nothing at all, and the two assertions above would prove nothing.
+        // Overstated in the first version of this comment, corrected: the two
+        // assertions above use `toEqual(['kept'])`, so a tokenizer returning
+        // nothing already fails them — measured, 11 failures without this
+        // control versus 12 with. What the control actually guards is a later
+        // WEAKENING of those assertions, e.g. someone rewriting them as
+        // `not.toContain('skipped')`, which an empty result would satisfy.
         expect(tokenizeHost('<span>taken</span><p>kept</p>')).toEqual(['taken', 'kept']);
     });
 

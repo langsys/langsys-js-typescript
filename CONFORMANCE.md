@@ -7,7 +7,7 @@
 | **specVersion** | 7 (read at 7.0.1) |
 | **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `45cdddf8e9136a85143dc5a5169d59b3355d7dc1`, re-derived at write time with `git -C ~/Documents/dev/langsys2 ls-tree origin/main docs/sdk-spec.mdx`. Every rule profiled `all` or `browser` is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 358 tests in 25 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 359 tests in 25 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -122,7 +122,7 @@ consumer is bound by the `browser` rules already carried here. Said explicitly b
 second would leave gaps.
 
 **Coverage arithmetic**, so the counts reconcile rather than needing to be trusted. The spec
-carries **67 rules**. **60 bind this SDK** (44 profiled `all`, 16 `browser`) and each has its
+carries **67 rules**. **60 bind this SDK** (40 profiled `all`, 20 `browser`) and each has its
 own row. The other seven are covered by two rows: `HINT-2` (profile `server`) keeps a row of
 its own so the n/a stays visible as a claim about that rule's Profiles line, and `BIND-1..6`
 share one combined row because a binding profile is n/a for the same single reason six times
@@ -192,7 +192,7 @@ is `provisional` regardless of how confident I am in the behaviour.
 | SSR-1 | provisional | mock | `write-lane` "'client' does not collect" + "'server' does" + "'auto' up to threshold" |
 | SSR-2 | provisional | mock | `write-lane` TS-1. **Was a warning only until the TS-1..TS-11 review pass** — the degradation is now real |
 | SSR-3 | provisional (no test) | none | Precondition documented; verified live once, not reproducible |
-| BIND-1..6 | n/a | n/a | Profile `binding`. This is the core, not a binding — **profile-n/a, not architecture-n/a**. One contract runs the other way and the core owes it: **bindings may forward core methods UNBOUND** (Vue and Solid forward through a `Proxy` and assert identity, so `proxy.method()` runs with `this` set to the proxy), and **the core guarantees it declares no ECMAScript `#private` fields** — `#` access is keyed to the real instance and throws through a proxy, while TypeScript's `private` is erased and is fine (13 of those today). Adopting a single `#private` field is a breaking change for every Proxy binding, at runtime, in whichever method touched it. Pinned by `no-private-fields`, which scans `src/**/*.ts` and the package build with its own positive control |
+| BIND-1..6 | n/a | n/a | Profile `binding`. This is the core, not a binding — **profile-n/a, not architecture-n/a**. One contract runs the other way and the core owes it: **bindings may forward core methods UNBOUND** (Vue and Solid forward through a `Proxy` and assert identity, so `proxy.method()` runs with `this` set to the proxy), and **the core guarantees it declares no ECMAScript `#private` fields** — `#` access is keyed to the real instance and throws through a proxy, while TypeScript's `private` is erased and is fine (13 of those today). Adopting a single `#private` field is a breaking change for every Proxy binding, at runtime, in whichever method touched it. Pinned by `no-private-fields`, which scans `src/**/*.{ts,mts,cts,tsx}` and the package build, with its own positive control. **The dist half checks esbuild's lowering helpers, not just a literal `#`**: at our `es2021` target a private field is downlevelled to `__privateAdd`/`__privateGet` over a WeakMap, so a literal scan of `dist` finds nothing while the lowered form still throws through a Proxy — measured by loading the built artifact. A missing `dist` fails hard rather than skipping, and CI builds before it tests; previously it did the reverse, which made the dist assertion a permanent no-op there. TypeScript `private` members, which are erased and harmless, number **77** (42 fields + 35 methods, computed over `src/`) — an earlier note said 13, which was `langsys-app.ts` alone |
 | GRANT-1 | implemented | mock | `grant-lane` "is attached when a grant is configured, and resolved per request" |
 | GRANT-2 | implemented | mock | same test — asserts the provider is re-resolved, not cached |
 | GRANT-3 | implemented | mock | `grant-lane` "issues a fresh authorization carrying the grant" |
