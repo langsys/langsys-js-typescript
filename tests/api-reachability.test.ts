@@ -76,6 +76,9 @@ describe('the API base is redirectable to a double', () => {
         LangsysAppAPI.setBaseUrl(`${DOUBLE}/`);
         await LangsysAppAPI.get('translations');
 
+        // Guarded so an unissued request fails as an assertion rather than as a
+        // TypeError on `undefined.toContain` — same verdict, legible reason.
+        expect(requested).toHaveLength(1);
         expect(requested[0]).not.toContain('//api//');
         expect(requested[0].startsWith(`${DOUBLE}/translations`)).toBe(true);
     });
@@ -116,6 +119,21 @@ describe('the ordering constraint, proven by redirecting too late', () => {
         // Inert: the locale change reaches a subscription that returns
         // immediately, so no catalog is ever fetched — from either host.
         expect(requested.filter((u) => u.includes('/translations'))).toEqual([]);
+
+        // POSITIVE CONTROL for that absence. "No /translations request" is also
+        // what a harness that cannot issue any request looks like, so prove this
+        // one can: a successful init in the same harness does reach /translations.
+        requested.length = 0;
+        const ok = await LangsysApp.init({
+            projectid: 'p',
+            key: 'k',
+            UserLocaleStore: createSignal('en-us'),
+            baseLocale: 'en',
+            apiUrl: DOUBLE,
+        });
+        expect(ok.status).toBe(true);
+        await new Promise((r) => setTimeout(r, 50));
+        expect(requested.filter((u) => u.includes('/translations')).length).toBeGreaterThan(0);
     });
 });
 
@@ -159,6 +177,12 @@ describe('the apiUrl init option removes the ordering constraint', () => {
             baseLocale: 'en',
         });
 
+        // The length guard is the whole assertion. `[].every(…)` is `true`, so
+        // without it this passes when NO request is issued at all — which is
+        // how the PHP lane's equivalent passed for months against a cache it
+        // did not know it had. Proven: with the fetch mock recording nothing,
+        // this test passed and the three around it failed.
+        expect(requested.length).toBeGreaterThan(0);
         expect(requested.every((u) => u.startsWith(DEFAULT_HOST))).toBe(true);
     });
 });
