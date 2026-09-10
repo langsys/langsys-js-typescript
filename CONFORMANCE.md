@@ -7,7 +7,7 @@
 | **specVersion** | 7 (read at 7.0.1) |
 | **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `06ae105a0a1f7b5245ec32929f0b3885c63f0336` (specVersion 7, latest history entry 7.0.1). Every rule profiled `all` or `browser` is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 342 tests in 24 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 358 tests in 25 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -175,7 +175,7 @@ is `provisional` regardless of how confident I am in the behaviour.
 | SSR-1 | provisional | mock | `write-lane` "'client' does not collect" + "'server' does" + "'auto' up to threshold" |
 | SSR-2 | provisional | mock | `write-lane` TS-1. **Was a warning only until the TS-1..TS-11 review pass** — the degradation is now real |
 | SSR-3 | provisional (no test) | none | Precondition documented; verified live once, not reproducible |
-| BIND-1..6 | n/a | n/a | Profile `binding`. This is the core, not a binding. |
+| BIND-1..6 | n/a | n/a | Profile `binding`. This is the core, not a binding — **profile-n/a, not architecture-n/a**. One contract runs the other way and the core owes it: **bindings may forward core methods UNBOUND** (Vue and Solid forward through a `Proxy` and assert identity, so `proxy.method()` runs with `this` set to the proxy), and **the core guarantees it declares no ECMAScript `#private` fields** — `#` access is keyed to the real instance and throws through a proxy, while TypeScript's `private` is erased and is fine (13 of those today). Adopting a single `#private` field is a breaking change for every Proxy binding, at runtime, in whichever method touched it. Pinned by `no-private-fields`, which scans `src/**/*.ts` and the package build with its own positive control |
 | GRANT-1 | implemented | mock | `grant-lane` "is attached when a grant is configured, and resolved per request" |
 | GRANT-2 | implemented | mock | same test — asserts the provider is re-resolved, not cached |
 | GRANT-3 | implemented | mock | `grant-lane` "issues a fresh authorization carrying the grant" |
