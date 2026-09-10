@@ -10,12 +10,24 @@ import { join } from 'node:path';
  * the instance. That is safe exactly while no method touches a `#private`
  * field: `#` access is keyed to the real instance, so reading one through a
  * proxy throws `TypeError: Cannot read private member`. TypeScript's `private`
- * is erased at build time and has no such restriction — the core has 13 of
- * those and they are fine.
+ * is erased at build time and has no such restriction — the core has **77** of
+ * those (42 fields + 35 methods, counted across `src/` with
+ * `grep -rhoE '(^|\s)private [A-Za-z_$][A-Za-z0-9_$]*\s*[:=;]'` and the same
+ * with `[(<]`) and every one is fine. An earlier version of this comment said
+ * 13, which is `langsys-app.ts` alone.
  *
  * Adopting a single `#private` field would therefore break every Proxy-based
  * binding, at runtime, in whichever method touched it. Nothing in the type
  * system or the build says so, which is why it is pinned here.
+ *
+ * THE BUILD DOES NOT KEEP `#`. At our `es2021` target esbuild LOWERS a private
+ * field to `__privateAdd` / `__privateGet` over a WeakMap, so a literal scan of
+ * `dist` finds nothing: measured, `grep -c '#secret' dist/index.mjs` is 0 after
+ * building a reachable `#secret`. The hazard survives the lowering completely —
+ * the lowered form still throws `TypeError: Cannot read from private field`
+ * through a Proxy, verified by loading the built artifact — so a literal-only
+ * dist scan reports a clean build of code that breaks every Proxy binding.
+ * The dist half therefore looks for esbuild's lowering signature as well.
  *
  * The scanner STRIPS comments, strings, template literals and regex literals
  * before looking, rather than trying to out-clever the false positives with an
@@ -116,11 +128,20 @@ function findPrivateFields(src: string): string[] {
     return [...code.matchAll(/#[A-Za-z_$][A-Za-z0-9_$]*/g)].map((m) => m[0]);
 }
 
-function tsFiles(dir: string): string[] {
+/**
+ * Every TypeScript source extension, not just `.ts`. A `src/evasion.mts`
+ * carrying `#x` and re-exported through `index.ts` typechecks, builds, and was
+ * invisible to a `.ts`-only walk — so the invariant had a hole the width of a
+ * file extension. `.tsx` is not reachable in this repo (TS6142 without `--jsx`)
+ * and is included anyway, since the cost is one array entry.
+ */
+const SOURCE_EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx'];
+
+function sourceFiles(dir: string): string[] {
     return readdirSync(dir).flatMap((entry) => {
         const full = join(dir, entry);
-        if (statSync(full).isDirectory()) return tsFiles(full);
-        return entry.endsWith('.ts') ? [full] : [];
+        if (statSync(full).isDirectory()) return sourceFiles(full);
+        return SOURCE_EXTENSIONS.some((ext) => entry.endsWith(ext)) ? [full] : [];
     });
 }
 
@@ -181,7 +202,7 @@ describe('the scanner does not fire on the places # is legal', () => {
 
 describe('INVARIANT: the core declares no #private fields', () => {
     it('holds across every file in src/', () => {
-        const offenders = tsFiles(SRC)
+        const offenders = sourceFiles(SRC)
             .map((file) => ({ file, found: findPrivateFields(readFileSync(file, 'utf8')) }))
             .filter((r) => r.found.length > 0)
             .map((r) => `${r.file.replace(process.cwd() + '/', '')}: ${r.found.join(', ')}`);
@@ -189,19 +210,31 @@ describe('INVARIANT: the core declares no #private fields', () => {
         expect(offenders).toEqual([]);
     });
 
-    it('holds in the built package, which is what bindings actually proxy', () => {
+    it.each(['dist/index.mjs', 'dist/index.js'])('holds in %s, which is what bindings proxy', (artifact) => {
         // The package build keeps dependencies external, so this is our code
         // only — a dependency's own #private fields are its business, since no
-        // binding proxies them. Skipped rather than failed when dist is absent,
-        // because a fresh clone has not run the build yet.
-        for (const artifact of ['dist/index.mjs', 'dist/index.js']) {
-            let built: string;
-            try {
-                built = readFileSync(join(process.cwd(), artifact), 'utf8');
-            } catch {
-                continue;
-            }
-            expect(findPrivateFields(built), `${artifact} must declare no #private fields`).toEqual([]);
+        // binding proxies them.
+        //
+        // A missing dist is a HARD FAILURE, not a skip. It used to `continue`
+        // silently, and CI ran `npm test` before `npm run build` — so this
+        // assertion was a permanent green no-op in the only place it was
+        // automated. An invariant that cannot fail where it runs is not an
+        // invariant.
+        let built: string;
+        try {
+            built = readFileSync(join(process.cwd(), artifact), 'utf8');
+        } catch {
+            throw new Error(`${artifact} is missing — run \`npm run build\` before \`npm test\`. ` +
+                `This check is not skippable: the built artifact is what bindings actually proxy.`);
         }
+
+        // Literal `#name` survives only at es2022+. At our es2021 target esbuild
+        // lowers it, so the lowering helpers are the signal that matters here.
+        expect(findPrivateFields(built), `${artifact} must contain no literal #private fields`).toEqual([]);
+        expect(
+            [...built.matchAll(/__private(?:Add|Get|Set|Method|Wrapper|In)\b/g)].map((m) => m[0]),
+            `${artifact} must contain no lowered #private fields — esbuild emits these helpers ` +
+                `only when it downlevels a real one, and the lowered form still throws through a Proxy`
+        ).toEqual([]);
     });
 });

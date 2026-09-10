@@ -20,6 +20,9 @@ jobs:
 
       - run: npm run typecheck
 
-      - run: npm test
-
+      # Build BEFORE test, deliberately: tests/no-private-fields.test.ts asserts
+      # on dist, which is what Proxy-based bindings actually consume. With the
+      # old order CI had no dist and that assertion was a permanent no-op.
       - run: npm run build
+
+      - run: npm test
