@@ -5,7 +5,7 @@
 | **SDK** | `langsys-js-typescript` (browser reference implementation) |
 | **Profiles** | `all`, `browser` |
 | **specVersion** | 7 (read at 7.0.1) |
-| **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `06ae105a0a1f7b5245ec32929f0b3885c63f0336` (specVersion 7, latest history entry 7.0.1). Every rule profiled `all` or `browser` is audited against this blob |
+| **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `45cdddf8e9136a85143dc5a5169d59b3355d7dc1`, re-derived at write time with `git -C ~/Documents/dev/langsys2 ls-tree origin/main docs/sdk-spec.mdx`. Every rule profiled `all` or `browser` is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
 | **Suite** | 358 tests in 25 files, `npm test`, counted at the tip of this branch |
 
@@ -103,6 +103,23 @@ case the stale entry survives to the next load. Not fixed: the seed carries no l
 own to compare against, so closing it properly means threading
 `initialTranslationsLocale` into the cache layer, which is a wider change than the corner
 justifies. Filed rather than left to be discovered.
+
+**Spec moved; counts re-derived, not carried over.** The previous filing cited blob
+`06ae105a`. At `45cdddf8` (history entry dated 2026-08-29) the rule total is unchanged at
+**67**, and so is the set binding this SDK at **60** — but the distribution shifted:
+`all` 44 → 40 and `browser` 16 → 20, which is **GRANT-1..4 re-profiled `all` → `browser`**
+and nothing else. Those four still bind here either way, since `browser` is one of this
+SDK's profiles, so no row was added, removed or re-graded by the move. The new server clause
+attached to that family — a server SDK MUST NOT send `X-Write-Grant` — is addressed to a
+profile this SDK is not.
+
+**React Native adds no rows, and that is a finding rather than an omission.** It is listed in
+the *membership* column of the **browser** profile with a footnote, not as a `Profiles:` value
+on any rule — `grep -E '^\*\*Profiles:\*\*.*react'` over that blob returns nothing, and all
+six mentions are prose. So there is no `react-native` profile to be unrowed against: an RN
+consumer is bound by the `browser` rules already carried here. Said explicitly because
+"a profile was added" and "rules were added" look the same from a distance, and only the
+second would leave gaps.
 
 **Coverage arithmetic**, so the counts reconcile rather than needing to be trusted. The spec
 carries **67 rules**. **60 bind this SDK** (44 profiled `all`, 16 `browser`) and each has its
