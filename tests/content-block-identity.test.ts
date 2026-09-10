@@ -1,12 +1,9 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import {
-    generateCustomId,
-    PHRASE_MARKER_ATTR,
-    PHRASE_MARKER_ATTRS,
-    tokenizeElement,
-    TRANSLATABLE_ATTRIBUTES,
-} from '../src/content-block.js';
+import { generateCustomId, tokenizeElement, TRANSLATABLE_ATTRIBUTES } from '../src/content-block.js';
+// Deliberately from phrase.js: the module that STAMPS the marker, so a
+// divergent re-declaration there is visible to this suite.
+import { PHRASE_MARKER_ATTR as PHRASE_MARKER_ATTR_FROM_PHRASE } from '../src/phrase.js';
 import { encodeRichText } from '../src/richtext.js';
 
 /**
@@ -195,15 +192,42 @@ describe('Phrase path: coalescing is REQUIRED here, not forbidden', () => {
 });
 
 describe('the Phrase marker has exactly one definition', () => {
-    it('the tokenizer recognises the attribute Phrase actually emits', () => {
-        // These were two hand-written literals in two files, so a one-sided
-        // rename left the other stale — and the failure is invisible: the
-        // tokenizer stops recognising the marker and re-tokenizes a subtree
-        // that manages itself, producing a content block nobody asked for.
-        expect(PHRASE_MARKER_ATTRS).toContain(PHRASE_MARKER_ATTR);
+    // The first version of this block asserted
+    // `PHRASE_MARKER_ATTRS).toContain(PHRASE_MARKER_ATTR)` with BOTH constants
+    // imported from content-block.ts — where the array is literally built from
+    // the scalar. It could not fail. Mutation proved it: renaming the marker
+    // moved both sides together (green), and re-declaring a divergent literal
+    // in phrase.ts was invisible to it (green), which is the exact split it was
+    // written to catch.
+    //
+    // So the assertion is now BEHAVIOURAL and crosses the module boundary: the
+    // attribute `Phrase` exports is the one the tokenizer must skip on. A
+    // divergence of any origin — a rename on one side, a re-declared literal,
+    // a dropped legacy spelling — shows up as a subtree that gets tokenized
+    // when it should have been left alone.
+    function tokenizeHost(html: string) {
+        const host = document.createElement('div');
+        host.innerHTML = html;
+        return tokenizeElement(host).tokens;
+    }
+
+    it('the tokenizer skips a subtree carrying the attribute Phrase exports', () => {
+        // PHRASE_MARKER_ATTR here comes from phrase.js — the module that stamps
+        // it — not from the module that lists it. That import is the test.
+        expect(tokenizeHost(`<span ${PHRASE_MARKER_ATTR_FROM_PHRASE}="1">skipped</span><p>kept</p>`)).toEqual(['kept']);
     });
 
-    it('still recognises PHP’s spelling, so a shared catalog round-trips', () => {
-        expect(PHRASE_MARKER_ATTRS).toContain('data-langsys-phrase');
+    it('still skips PHP’s spelling, so a shared catalog round-trips', () => {
+        expect(tokenizeHost('<span data-langsys-phrase="1">skipped</span><p>kept</p>')).toEqual(['kept']);
+    });
+
+    it('control: an unmarked subtree IS tokenized', () => {
+        // Without this, "skips" is satisfied by a tokenizer that returns
+        // nothing at all, and the two assertions above would prove nothing.
+        expect(tokenizeHost('<span>taken</span><p>kept</p>')).toEqual(['taken', 'kept']);
+    });
+
+    it('an explicit opt-out value is honoured rather than treated as marked', () => {
+        expect(tokenizeHost(`<span ${PHRASE_MARKER_ATTR_FROM_PHRASE}="false">taken</span>`)).toEqual(['taken']);
     });
 });
