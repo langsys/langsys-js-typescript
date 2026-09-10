@@ -1,3 +1,9 @@
+## 0.6.6 - unreleased
+
+### Added
+
+- **Debug warning when a `select` argument is defaulted to `other`.** 0.6.4 made a missing ICU argument recover instead of dumping message source to the page, and for `select` the recovery is silent by design: the `other` branch is a correct sentence. But that silence is also what makes the argument undiscoverable. langsys-ai's promoter adds `{name_gender, select, …}` only to the locales whose grammar needs it, so nothing in the source phrase or the codebase tells the developer the argument exists, and the gendered case is invisible rather than merely graceful. The warning names the argument and the values it takes. Deduped per template+locale so a list re-rendering on a locale switch emits one line, not one per row. Silent in production; `plural` is not reported because its recovery leaves `{argName}` visible in the sentence.
+
 ## 0.6.5 - 2026-08-16
 
 ### Added
