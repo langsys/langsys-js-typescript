@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
@@ -60,12 +61,40 @@ const MUST_BE_ESCAPED: Record<number, string> = {
  * Named individually, never as a directory glob — `tests/fixtures/` also holds
  * `canonicalization-reference.json`, which is AUTHORED here and is the file this
  * check exists for. A glob would have exempted exactly the wrong file.
+ *
+ * KEYED ON THE BLOB, NOT THE PATH. The refinement is the PHP lane's and it is
+ * strictly better than what this started as: a path-keyed exemption goes on
+ * protecting a vendored file after somebody edits it locally, which is precisely
+ * the moment you want to hear about it. Keyed on the content hash, the exemption
+ * EVAPORATES the instant the bytes change — the file stops being the thing that was
+ * exempted, and the scan runs on it.
+ *
+ * The hash is git's own blob id, `sha1("blob " + bytelength + NUL + bytes)`,
+ * computed here rather than shelled out so the check has no git dependency. It is
+ * therefore the same string `git hash-object` prints, which means the key doubles
+ * as the vendoring citation: `tokenizer-reference.json`'s `5689f3c1…` is exactly
+ * the blob recorded when it was last re-vendored.
  */
-const VENDORED = new Set([
-    'tests/fixtures/custom-id-reference.json',
-    'tests/fixtures/tokenizer-reference.json',
-    'tests/fixtures/interpolation-reference.json',
-]);
+const VENDORED: Record<string, string> = {
+    'tests/fixtures/custom-id-reference.json': '60dc9b33ecfd5fa3256fca7d36063ceb8ef1a00a',
+    'tests/fixtures/tokenizer-reference.json': '5689f3c1425502f3a2c4afd4b48e9bdbfc25a32d',
+    'tests/fixtures/interpolation-reference.json': 'd369bd185ca284ba75843431e4302c08628f2245',
+};
+
+/** Git's blob id for a file's exact bytes. Same value as `git hash-object`. */
+function gitBlobId(bytes: Buffer): string {
+    const header = Buffer.from(`blob ${bytes.length}${String.fromCodePoint(0)}`, 'utf8');
+    return createHash('sha1').update(Buffer.concat([header, bytes])).digest('hex');
+}
+
+/**
+ * A file is exempt only while it still IS the vendored blob. An edited vendored
+ * file is not a vendored file any more; it is a local fork wearing the name.
+ */
+function isExemptVendored(relPath: string, bytes: Buffer): boolean {
+    const expected = VENDORED[relPath];
+    return expected !== undefined && expected === gitBlobId(bytes);
+}
 
 const SCANNED_EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx', '.json'];
 
@@ -149,28 +178,53 @@ describe('INVARIANT: no raw invisible characters in our own sources', () => {
     it('holds across src/ and tests/', () => {
         const offenders = [...filesUnder('src'), ...filesUnder('tests')]
             .map((file) => relative(process.cwd(), file))
-            .filter((file) => !VENDORED.has(file))
+            .filter((file) => !isExemptVendored(file, readFileSync(file)))
             .flatMap((file) => scan(readFileSync(file, 'utf8'), file))
             .map((h) => `${h.file}:${h.line} has ${h.count}x raw ${h.codepoint} (${h.name}) — write it as an escape`);
 
         expect(offenders).toEqual([]);
     });
 
-    it('and the vendored exemptions still exist, so the list cannot rot silently', () => {
-        // An exemption naming a file that is gone is an exemption nobody notices is
-        // doing nothing — and if one were renamed, the scan would start failing on a
-        // file we are not allowed to edit, with no hint as to why it was exempt.
-        for (const file of VENDORED) {
-            expect(
-                () => readFileSync(join(process.cwd(), file), 'utf8'),
-                `${file} is exempted but missing`
-            ).not.toThrow();
+    it('every exemption still matches the blob it names', () => {
+        // An exemption naming a file that is gone, or a hash the file no longer has,
+        // is an exemption nobody notices has stopped meaning anything. This is also
+        // where a re-vendor announces itself: the new blob must be recorded here,
+        // which is the moment to check the new copy against its upstream citation.
+        for (const [file, expected] of Object.entries(VENDORED)) {
+            const full = join(process.cwd(), file);
+            expect(() => readFileSync(full), `${file} is exempted but missing`).not.toThrow();
+            expect(gitBlobId(readFileSync(full)), `${file} is no longer blob ${expected}`).toBe(expected);
         }
+    });
+
+    it('an EDITED vendored file loses its exemption — the point of keying on the blob', () => {
+        // The control for the refinement. A path-keyed exemption cannot fail this:
+        // it would keep protecting the file no matter what the bytes became.
+        const file = 'tests/fixtures/custom-id-reference.json';
+        const real = readFileSync(join(process.cwd(), file));
+        expect(isExemptVendored(file, real), 'the untouched vendored file is exempt').toBe(true);
+
+        const edited = Buffer.concat([real, Buffer.from(' ', 'utf8')]);
+        expect(isExemptVendored(file, edited), 'a one-byte edit must drop the exemption').toBe(false);
+
+        // And the scan then sees what it was hiding: this file carries raw
+        // U+2028/U+2029, which is exactly what an exemption should stop concealing
+        // the moment the file is no longer the vendored copy.
+        expect(scan(edited.toString('utf8'), file).length).toBeGreaterThan(0);
+    });
+
+    it('blob ids agree with git, so the key is a real citation', () => {
+        // If this drifted, the recorded hashes would stop being the values
+        // `git hash-object` prints and the exemption keys would no longer double as
+        // vendoring citations. Fixed vector rather than shelling out to git.
+        expect(gitBlobId(Buffer.from('hello' + String.fromCodePoint(10), 'utf8'))).toBe(
+            'ce013625030ba8dba906f756967f9e9ca394464a'
+        );
     });
 
     it('the authored vector file is NOT exempt, and is the reason this exists', () => {
         const path = 'tests/fixtures/canonicalization-reference.json';
-        expect(VENDORED.has(path)).toBe(false);
+        expect(VENDORED[path], 'the authored vector file must never be exempted').toBeUndefined();
         const text = readFileSync(join(process.cwd(), path), 'utf8');
         expect(scan(text, 'vector')).toEqual([]);
         // And it really does carry those characters, as escapes -- so "clean" cannot

@@ -60,6 +60,16 @@ import { encodeRichText } from '../src/richtext.js';
  * anything added later is that well-formed markup is portable — all seven vectors
  * agree once the source needs no repair — and the splits appear only on markup a
  * browser has to fix up.
+ *
+ * ONE LIMIT ON THIS FILE'S OWN HARNESS, because it bears on anything added here:
+ * happy-dom builds a raw-text body containing markup the LIBXML2 way, not the
+ * Chromium/parse5 way — measured, tokens `['a','b','Keep']` where the JS family
+ * produces `['Keep','a <b>b</b>']`, and the block id matches langsys-php's exactly.
+ * So a vector added here with a `<textarea>` or `<title>` in it would agree with
+ * PHP for the WRONG REASON and could never show the split. Same class as the
+ * `<noscript>` artefact: the environment's parser is part of the measurement, and
+ * happy-dom is not a model of Chromium on precisely the constructs where parse
+ * models differ. Found by the Reviewer.
  */
 
 function domPhrase(html: string) {

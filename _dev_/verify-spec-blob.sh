@@ -60,6 +60,23 @@ printf 'CONFORMANCE cites : %s @ %s\n' "$claimed_blob" "$claimed_commit"
 printf 'ls-tree reports   : %s\n' "$actual_blob"
 printf 'blob specVersion  : %s\n' "${spec_version:-<none found>}"
 
+# ADVISORY, never a failure: the cited commit agreeing is the contract, but a spec
+# that has moved on since is the thing worth surfacing. A later revision can change
+# the TEXT behind a rule while this check stays happily green, because it compares
+# against the commit the header names and nothing else. That is by design — being
+# behind is legitimate until somebody re-audits — but silently behind is how a
+# payload goes unnoticed. The Reviewer asked for this after 63df13c7..5c747e7d
+# removed two ids this repo had quoted as "the spec says".
+head_blob="$(git -C "$SPEC_REPO" ls-tree HEAD "$SPEC_PATH" 2>/dev/null | awk '{print $3}' || true)"
+if [ -n "$head_blob" ] && [ "$head_blob" != "$actual_blob" ]; then
+    printf '\nADVISORY: the spec has moved since %s.\n' "$claimed_commit"
+    printf '  spec HEAD blob : %s\n' "$head_blob"
+    printf '  cited blob     : %s\n' "$actual_blob"
+    printf '  diff           : git -C %s diff %s..HEAD -- %s\n' "$SPEC_REPO" "$claimed_commit" "$SPEC_PATH"
+    printf 'Not a failure. But re-deriving is a RE-AUDIT, not a hash swap: read the diff for\n'
+    printf 'sentences this repo quotes back, and check every claim of the form "the spec says".\n'
+fi
+
 if [ "$claimed_blob" = "$actual_blob" ]; then
     printf '\nAGREES. Header is re-derived against %s.\n' "$claimed_commit"
     exit 0

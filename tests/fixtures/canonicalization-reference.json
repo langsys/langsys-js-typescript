@@ -2358,7 +2358,7 @@
   },
   {
    "id": "brace-name-in-markup",
-   "why": "TOK-5's counterpart, and the half that makes the rule cross-lane DATA rather than one SDK's assertion. `%name%` normalising at capture only means something if the brace-authored form reaches the SAME id — otherwise both paths could drift together and agree about nothing useful. The spec quotes both ids: 1e4b462c… for the normalised form and bb74011a… for a path that tokenizes the raw markup.",
+   "why": "TOK-5's counterpart, and the half that makes the rule cross-lane DATA rather than one SDK's assertion. `%name%` normalising at capture only means something if the brace-authored form reaches the SAME id — otherwise both paths could drift together and agree about nothing useful. The spec AT BLOB 8e2527b9 quotes both ids — 1e4b462c… for the normalised form and bb74011a… for a path that tokenizes the raw markup. Scoped to that blob on purpose: the pending follow-up removes them from the prose, so an unscoped claim would quietly become false.",
    "html": "<p>Hello {name}</p>",
    "html_codepoints": [
     "U+003C",
