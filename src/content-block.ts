@@ -32,37 +32,33 @@ import { logger } from './logger.js';
 import { config as configStore, sTranslations, writeEnabled } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
-import { md5, md5Legacy } from './utils.js';
+import {
+    NON_TRANSLATABLE_ELEMENTS,
+    normalizeTokenText,
+    PHRASE_MARKER_ATTRS,
+    TRANSLATABLE_ATTRIBUTES,
+} from './identity.js';
 
 /**
- * HTML attributes whose values should be harvested for translation.
- *
- * `langsys-php` harvests a superset of this list. The overlap is deliberate,
- * the difference is not accidental: standard attributes carrying user-visible
- * text belong in both SDKs, because on SSR handoff an attribute only one side
- * harvests is translated by that side and left untranslated by the other — a
- * coverage hole rather than a conflict. Framework-convention attributes
- * (Bootstrap `data-bs-*`, Rails `data-confirm`, and similar) are deliberately
- * NOT mirrored: they're written by server-rendered templates, and a JS app
- * renders those strings through its own components instead.
+ * The identity contract now lives in `identity.ts`, which has no DOM and no
+ * module-scope side effects so a server can import it. Re-exported here because
+ * this was its address for several releases and every binding imports from it.
  */
-export const TRANSLATABLE_ATTRIBUTES = [
-    'placeholder',
-    'alt',
-    'title',
-    'label', // <option>, <optgroup>, <track> — the text a user reads in the picker
-    'aria-label',
-    'aria-placeholder',
-    'aria-description',
-    'aria-valuetext', // the spoken value of a slider/meter
-    'aria-roledescription',
-    'data-error',
-    'data-error-message',
-    'data-validation-message',
-    'data-invalid-message',
-    'data-required-message',
-    'data-pattern-message',
-];
+export {
+    canonicalContentBlockJson,
+    CONTENT_BLOCK_MARKER_ATTR,
+    CONTENT_BLOCK_MARKER_ATTR_LEGACY,
+    CONTENT_BLOCK_MARKER_ATTRS,
+    generateCustomId,
+    generateLegacyCustomId,
+    NON_TRANSLATABLE_ELEMENTS,
+    normalizeTokenText,
+    PHRASE_MARKER_ATTR,
+    PHRASE_MARKER_ATTR_LEGACY,
+    PHRASE_MARKER_ATTRS,
+    TRANSLATABLE_ATTRIBUTES,
+} from './identity.js';
+
 
 /**
  * Attributes that mark a subtree as a self-managed "keep-together" phrase,
@@ -79,18 +75,6 @@ export const TRANSLATABLE_ATTRIBUTES = [
  * re-tokenizes a subtree PHP deliberately kept whole. Recognising both is
  * additive — `data-langsys-phrase` never appears in DOM our components emit.
  */
-/**
- * THE definition. `phrase.ts` re-exports this rather than restating it — the
- * literal used to appear in both files, so renaming one side left the other
- * silently stale: the tokenizer would stop recognising the marker `Phrase`
- * emits and would re-tokenize a subtree that manages itself.
- */
-export const PHRASE_MARKER_ATTR = 'data-ls-phrase';
-
-/** PHP's spelling. Recognised so a catalog shared with langsys-php round-trips. */
-export const PHRASE_MARKER_ATTR_LEGACY = 'data-langsys-phrase';
-
-export const PHRASE_MARKER_ATTRS = [PHRASE_MARKER_ATTR, PHRASE_MARKER_ATTR_LEGACY] as const;
 
 /**
  * True when an element opts out of translation entirely — it and its subtree
@@ -160,66 +144,6 @@ export const SEMANTIC_STYLE_PROPERTIES = [
     'cursor',
 ];
 
-/**
- * Compute the deterministic content-block id from a `(category, tokens)` pair.
- *
- * JSON-stringifies the tuple so each token is unambiguously delimited
- * (the previous `tokens.join('-')` was collision-prone for tokens
- * containing a hyphen, e.g. `'e-mail'`).
- *
- * Pure function — same inputs always produce the same id. Exported so
- * framework wrappers can compute the id themselves before deciding
- * whether to call `registerContentBlock`.
- */
-export function generateCustomId(category: string, tokens: string[]): string {
-    // Coalesce at runtime, not just in the type. This is public API, so an
-    // untyped or plain-JS caller can pass `undefined` — which serializes to
-    // `[null, …]` and yields an id no wire path ever stores. Every shipping
-    // caller already coalesces; this enforces "no-category is '', never null"
-    // at the reference implementation rather than merely documenting it.
-    //
-    // `generateLegacyCustomId` deliberately does NOT do this: it must reproduce
-    // what was actually stored, including ids an untyped caller produced.
-    return md5(canonicalContentBlockJson(category, tokens));
-}
-
-/**
- * The exact string whose UTF-8 bytes are hashed to produce a `custom_id`.
- *
- * Extracted so the cross-implementation assertion can compare the SAME bytes
- * the id function hashes, rather than a second expression that happens to look
- * the same. The PHP lane found four separate sites re-deriving their
- * serialization, one of them inside the test that was supposed to be checking
- * it — a parallel reimplementation agrees with itself, and would keep agreeing
- * after this function changed.
- *
- * Deliberately NOT re-exported from `src/index.ts`: this is the reference
- * implementation's internals, not public API. `generateCustomId` is the
- * contract.
- */
-export function canonicalContentBlockJson(category: string, tokens: string[]): string {
-    return JSON.stringify([category || '', tokens]);
-}
-
-/**
- * The id this block would have had before the 0.6.0 MD5 fix.
- *
- * **Lookup only — never register under this.** Blocks registered by an older
- * SDK are keyed by it, so `Translate` falls back to it when the corrected id
- * misses, which keeps existing translations resolving instead of orphaning
- * them. Registering under it would keep minting ids from a hash that both
- * diverges across SDKs and can collide.
- *
- * Note the collision is a property of the FINAL hashed string, not the phrase:
- * `JSON.stringify` shifts every character's offset, so the same phrase pair can
- * collide standalone and not collide here — and changing `category` moves every
- * character into different lanes. Always reason at this level, not at `md5()`.
- *
- * @deprecated Migration aid; will be removed once catalogs have been rebased.
- */
-export function generateLegacyCustomId(category: string, tokens: string[]): string {
-    return md5Legacy(JSON.stringify([category, tokens]));
-}
 
 /**
  * True iff the local translations cache already has the content block
@@ -441,6 +365,13 @@ function _walkForTokens(
         if (node.nodeType === Node.ELEMENT_NODE) {
             const el = node as HTMLElement;
             if (isTranslationExcluded(el)) return;
+            // Code and markup, never prose. Measured before this guard existed:
+            // `<style>.plan{color:#fff}</style>` registered `.plan{color:#fff}`
+            // as a translatable phrase and `<script>window.dataLayer.push(1)`
+            // registered the statement — both then sent for machine translation.
+            // `<noscript>` is deliberately absent from that list: its content is
+            // prose a real reader sees, and must still be translated.
+            if (NON_TRANSLATABLE_ELEMENTS.includes(el.tagName.toLowerCase())) return;
             // A <Phrase> subtree is its own self-managed rich phrase — skip it
             // here so the content block doesn't tokenize its inner text.
             if (isPhraseMarked(el)) return;
@@ -454,7 +385,7 @@ function _walkForTokens(
             _tokenizeAttributes(node as HTMLElement, tokens, duplicateSelectOptions);
         }
 
-        const contentToken = node.nodeValue?.replace(/\s+/g, ' ').trim();
+        const contentToken = node.nodeValue ? normalizeTokenText(node.nodeValue) : undefined;
         if (node.nodeType === Node.TEXT_NODE && contentToken) {
             tokens.push(normalizeMarkupPlaceholders(contentToken));
             return;
@@ -473,20 +404,24 @@ function _tokenizeAttributes(element: HTMLElement, tokens: string[], duplicateSe
         if (img.src) element.setAttribute('src', img.src);
     }
 
+    // `normalizeTokenText`, not `.trim()`. Attributes used to keep their
+    // internal whitespace while text nodes collapsed theirs, so the same
+    // authored sentence produced two different ids depending on where it sat —
+    // and put this SDK on different ids from langsys-php for the same markup.
     for (const attr of TRANSLATABLE_ATTRIBUTES) {
-        const value = element.getAttribute(attr)?.trim();
+        const value = normalizeTokenText(element.getAttribute(attr) ?? '');
         if (value) tokens.push(normalizeMarkupPlaceholders(value));
     }
 
     if (VALUE_TRANSLATABLE_ELEMENTS.includes(tagName)) {
-        const value = element.getAttribute('value')?.trim();
+        const value = normalizeTokenText(element.getAttribute('value') ?? '');
         if (value) tokens.push(normalizeMarkupPlaceholders(value));
     }
 
     if (tagName === 'input') {
         const inputType = element.getAttribute('type')?.toLowerCase();
         if (inputType && VALUE_TRANSLATABLE_INPUT_TYPES.includes(inputType)) {
-            const value = element.getAttribute('value')?.trim();
+            const value = normalizeTokenText(element.getAttribute('value') ?? '');
             if (value) tokens.push(normalizeMarkupPlaceholders(value));
         }
     }
@@ -504,7 +439,7 @@ function _tokenizeAttributes(element: HTMLElement, tokens: string[], duplicateSe
     if (duplicateSelectOptions && tagName === 'select') {
         const options = element.querySelectorAll('option');
         options.forEach((option) => {
-            const optionText = option.textContent?.trim();
+            const optionText = normalizeTokenText(option.textContent ?? '');
             if (optionText) tokens.push(normalizeMarkupPlaceholders(optionText));
         });
     }

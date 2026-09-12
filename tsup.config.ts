@@ -4,7 +4,10 @@ export default defineConfig([
     // Package build — for bundlers and Node. Dependencies stay external so a
     // consumer's bundler dedupes `intl-messageformat` with its own copy.
     {
-        entry: ['src/index.ts'],
+        // `pure` is a SECOND entry, not a re-export of the first: the point is a
+        // module graph that never reaches the HTTP client or the persisted
+        // stores, and one bundle containing both would defeat that.
+        entry: ['src/index.ts', 'src/pure.ts'],
         format: ['esm', 'cjs'],
         dts: true,
         sourcemap: true,

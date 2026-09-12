@@ -1,7 +1,7 @@
 {
     "name": "langsys-js-typescript",
     "version": "0.6.5",
-    "description": "Framework-agnostic TypeScript SDK for Langsys translation management — realtime continuous translations with automatic token discovery.",
+    "description": "Framework-agnostic TypeScript SDK for Langsys translation management \u2014 realtime continuous translations with automatic token discovery.",
     "author": "Langsys",
     "license": "MIT",
     "homepage": "https://github.com/langsys/langsys-js-typescript",
@@ -23,6 +23,11 @@
             "types": "./dist/index.d.ts",
             "import": "./dist/index.mjs",
             "require": "./dist/index.js"
+        },
+        "./pure": {
+            "types": "./dist/pure.d.ts",
+            "import": "./dist/pure.mjs",
+            "require": "./dist/pure.js"
         },
         "./browser": {
             "types": "./dist/index.d.ts",

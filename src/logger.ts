@@ -23,8 +23,17 @@ const STYLES = {
  * which is how the browser branch would go unverified.
  */
 function supportsStyle(): boolean {
-    if (typeof window === 'undefined') return false;
-    return !(typeof navigator !== 'undefined' && navigator.product === 'ReactNative');
+    // Guarded because the probe itself can throw. A host that wraps `globalThis`
+    // in a Proxy to assert DOM-freeness — which is how the `/pure` subpath is
+    // tested, and how some sandboxes are built — makes `typeof window` raise
+    // rather than return 'undefined'. A logger that throws because it looked for
+    // a browser is worse than a logger that prints plainly.
+    try {
+        if (typeof window === 'undefined') return false;
+        return !(typeof navigator !== 'undefined' && navigator.product === 'ReactNative');
+    } catch {
+        return false;
+    }
 }
 
 function emit(level: 'log' | 'warn' | 'error', label: string, args: unknown[]) {
