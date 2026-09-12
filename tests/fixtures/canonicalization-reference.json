@@ -1,1773 +1,2133 @@
 {
-    "": "Canonicalization + identity agreement across Langsys SDKs. AUTHORED in langsys-js-typescript, not vendored from another lane.",
-    "purpose": "Proof that the SDKs mint the SAME custom_id for the same content, covering the canonicalization rules added in the TOK batch: U+00A0 collapse, attribute values collapsing internal whitespace like text nodes, and the fixed twenty-seven translatable attributes in their fixed order.",
-    "how_to_row_against_it": "Tokenize the html field, compare to expected_tokens, then hash (category, tokens) and compare to expected_custom_id. Compare CODEPOINTS, not display strings: several cases differ only by U+00A0 or U+2028, which render identically to a space — the html_codepoints and expected_tokens_codepoints fields exist so a mismatch is readable instead of looking like two identical strings with two different hashes.",
-    "expected_is": "What langsys-js-typescript produces, which matches the spec at blob 318b594173c7470fbcfcf1eaec19ff9e62bec517 for every row here. Where a lane diverges, the divergence field names which lane and why. It is not an invitation to change the expectation.",
-    "measured_at": {
-        "langsys-js-typescript": "this repo, tokenizeElement + generateCustomId",
-        "langsys-php-sdk": "HtmlParser::extractPhrases + HtmlParser::generateCustomId, PHP 8.3.19",
-        "langsys2 (server)": "NO MINTER EXISTS. Searched by hashing call and by canonical-serialization signature, with the same searches positive-controlled against langsys-php-sdk (4 hits there, 0 here). The backend stores ids clients send; it does not compute them."
-    },
-    "agreement": {
-        "rows": 19,
-        "agree": 13,
-        "diverge": 6
-    },
-    "cases": [
-        {
-            "id": "nbsp-in-text",
-            "why": "NBSP must collapse like any other whitespace (TOK-2)",
-            "html": "<p>A long   description</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0041",
-                "U+00A0",
-                "U+006C",
-                "U+006F",
-                "U+006E",
-                "U+0067",
-                "U+0020",
-                "U+0020",
-                "U+0020",
-                "U+0064",
-                "U+0065",
-                "U+0073",
-                "U+0063",
-                "U+0072",
-                "U+0069",
-                "U+0070",
-                "U+0074",
-                "U+0069",
-                "U+006F",
-                "U+006E",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "A long description"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0041",
-                    "U+0020",
-                    "U+006C",
-                    "U+006F",
-                    "U+006E",
-                    "U+0067",
-                    "U+0020",
-                    "U+0064",
-                    "U+0065",
-                    "U+0073",
-                    "U+0063",
-                    "U+0072",
-                    "U+0069",
-                    "U+0070",
-                    "U+0074",
-                    "U+0069",
-                    "U+006F",
-                    "U+006E"
-                ]
-            ],
-            "expected_custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "A long description"
-                    ],
-                    "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "A long description"
-                    ],
-                    "custom_id": "91ef40f770a57aa8cb373d5513eb39e3"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": false,
-            "divergence": "PHP does not collapse U+00A0. Its whitespace class is narrower than JavaScript's, which TOK-2 anticipates: a language whose class excludes it must add it."
-        },
-        {
-            "id": "nbsp-vs-plain-space",
-            "why": "NBSP and a plain space must produce the SAME id",
-            "html": "<p>A long description</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0041",
-                "U+0020",
-                "U+006C",
-                "U+006F",
-                "U+006E",
-                "U+0067",
-                "U+0020",
-                "U+0064",
-                "U+0065",
-                "U+0073",
-                "U+0063",
-                "U+0072",
-                "U+0069",
-                "U+0070",
-                "U+0074",
-                "U+0069",
-                "U+006F",
-                "U+006E",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "A long description"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0041",
-                    "U+0020",
-                    "U+006C",
-                    "U+006F",
-                    "U+006E",
-                    "U+0067",
-                    "U+0020",
-                    "U+0064",
-                    "U+0065",
-                    "U+0073",
-                    "U+0063",
-                    "U+0072",
-                    "U+0069",
-                    "U+0070",
-                    "U+0074",
-                    "U+0069",
-                    "U+006F",
-                    "U+006E"
-                ]
-            ],
-            "expected_custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "A long description"
-                    ],
-                    "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "A long description"
-                    ],
-                    "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "attr-multiline",
-            "why": "attribute values collapse internal whitespace (TOK-4)",
-            "html": "<img alt=\"A long\n     description\">",
-            "html_codepoints": [
-                "U+003C",
-                "U+0069",
-                "U+006D",
-                "U+0067",
-                "U+0020",
-                "U+0061",
-                "U+006C",
-                "U+0074",
-                "U+003D",
-                "U+0022",
-                "U+0041",
-                "U+0020",
-                "U+006C",
-                "U+006F",
-                "U+006E",
-                "U+0067",
-                "U+000A",
-                "U+0020",
-                "U+0020",
-                "U+0020",
-                "U+0020",
-                "U+0020",
-                "U+0064",
-                "U+0065",
-                "U+0073",
-                "U+0063",
-                "U+0072",
-                "U+0069",
-                "U+0070",
-                "U+0074",
-                "U+0069",
-                "U+006F",
-                "U+006E",
-                "U+0022",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "A long description"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0041",
-                    "U+0020",
-                    "U+006C",
-                    "U+006F",
-                    "U+006E",
-                    "U+0067",
-                    "U+0020",
-                    "U+0064",
-                    "U+0065",
-                    "U+0073",
-                    "U+0063",
-                    "U+0072",
-                    "U+0069",
-                    "U+0070",
-                    "U+0074",
-                    "U+0069",
-                    "U+006F",
-                    "U+006E"
-                ]
-            ],
-            "expected_custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "A long description"
-                    ],
-                    "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "A long description"
-                    ],
-                    "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "text-multiline",
-            "why": "same sentence in a text node — must match the attribute case",
-            "html": "<p>A long\n     description</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0041",
-                "U+0020",
-                "U+006C",
-                "U+006F",
-                "U+006E",
-                "U+0067",
-                "U+000A",
-                "U+0020",
-                "U+0020",
-                "U+0020",
-                "U+0020",
-                "U+0020",
-                "U+0064",
-                "U+0065",
-                "U+0073",
-                "U+0063",
-                "U+0072",
-                "U+0069",
-                "U+0070",
-                "U+0074",
-                "U+0069",
-                "U+006F",
-                "U+006E",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "A long description"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0041",
-                    "U+0020",
-                    "U+006C",
-                    "U+006F",
-                    "U+006E",
-                    "U+0067",
-                    "U+0020",
-                    "U+0064",
-                    "U+0065",
-                    "U+0073",
-                    "U+0063",
-                    "U+0072",
-                    "U+0069",
-                    "U+0070",
-                    "U+0074",
-                    "U+0069",
-                    "U+006F",
-                    "U+006E"
-                ]
-            ],
-            "expected_custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "A long description"
-                    ],
-                    "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "A long description"
-                    ],
-                    "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "attr-nbsp",
-            "why": "NBSP inside an attribute value",
-            "html": "<img alt=\"A long   description\">",
-            "html_codepoints": [
-                "U+003C",
-                "U+0069",
-                "U+006D",
-                "U+0067",
-                "U+0020",
-                "U+0061",
-                "U+006C",
-                "U+0074",
-                "U+003D",
-                "U+0022",
-                "U+0041",
-                "U+00A0",
-                "U+006C",
-                "U+006F",
-                "U+006E",
-                "U+0067",
-                "U+0020",
-                "U+0020",
-                "U+0020",
-                "U+0064",
-                "U+0065",
-                "U+0073",
-                "U+0063",
-                "U+0072",
-                "U+0069",
-                "U+0070",
-                "U+0074",
-                "U+0069",
-                "U+006F",
-                "U+006E",
-                "U+0022",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "A long description"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0041",
-                    "U+0020",
-                    "U+006C",
-                    "U+006F",
-                    "U+006E",
-                    "U+0067",
-                    "U+0020",
-                    "U+0064",
-                    "U+0065",
-                    "U+0073",
-                    "U+0063",
-                    "U+0072",
-                    "U+0069",
-                    "U+0070",
-                    "U+0074",
-                    "U+0069",
-                    "U+006F",
-                    "U+006E"
-                ]
-            ],
-            "expected_custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "A long description"
-                    ],
-                    "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "A long description"
-                    ],
-                    "custom_id": "91ef40f770a57aa8cb373d5513eb39e3"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": false,
-            "divergence": "Same cause as nbsp-in-text, reached through an attribute value."
-        },
-        {
-            "id": "attr-original-15",
-            "why": "one of the original fifteen",
-            "html": "<input placeholder=\"Your name\">",
-            "html_codepoints": [
-                "U+003C",
-                "U+0069",
-                "U+006E",
-                "U+0070",
-                "U+0075",
-                "U+0074",
-                "U+0020",
-                "U+0070",
-                "U+006C",
-                "U+0061",
-                "U+0063",
-                "U+0065",
-                "U+0068",
-                "U+006F",
-                "U+006C",
-                "U+0064",
-                "U+0065",
-                "U+0072",
-                "U+003D",
-                "U+0022",
-                "U+0059",
-                "U+006F",
-                "U+0075",
-                "U+0072",
-                "U+0020",
-                "U+006E",
-                "U+0061",
-                "U+006D",
-                "U+0065",
-                "U+0022",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "Your name"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0059",
-                    "U+006F",
-                    "U+0075",
-                    "U+0072",
-                    "U+0020",
-                    "U+006E",
-                    "U+0061",
-                    "U+006D",
-                    "U+0065"
-                ]
-            ],
-            "expected_custom_id": "97c452f1fa75063649cc5a24786d4d46",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "Your name"
-                    ],
-                    "custom_id": "97c452f1fa75063649cc5a24786d4d46"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "Your name"
-                    ],
-                    "custom_id": "97c452f1fa75063649cc5a24786d4d46"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "attr-new-data-confirm",
-            "why": "one of the twelve added (Rails)",
-            "html": "<button data-confirm=\"Are you sure?\">Go</button>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0062",
-                "U+0075",
-                "U+0074",
-                "U+0074",
-                "U+006F",
-                "U+006E",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0063",
-                "U+006F",
-                "U+006E",
-                "U+0066",
-                "U+0069",
-                "U+0072",
-                "U+006D",
-                "U+003D",
-                "U+0022",
-                "U+0041",
-                "U+0072",
-                "U+0065",
-                "U+0020",
-                "U+0079",
-                "U+006F",
-                "U+0075",
-                "U+0020",
-                "U+0073",
-                "U+0075",
-                "U+0072",
-                "U+0065",
-                "U+003F",
-                "U+0022",
-                "U+003E",
-                "U+0047",
-                "U+006F",
-                "U+003C",
-                "U+002F",
-                "U+0062",
-                "U+0075",
-                "U+0074",
-                "U+0074",
-                "U+006F",
-                "U+006E",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "Are you sure?",
-                "Go"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0041",
-                    "U+0072",
-                    "U+0065",
-                    "U+0020",
-                    "U+0079",
-                    "U+006F",
-                    "U+0075",
-                    "U+0020",
-                    "U+0073",
-                    "U+0075",
-                    "U+0072",
-                    "U+0065",
-                    "U+003F"
-                ],
-                [
-                    "U+0047",
-                    "U+006F"
-                ]
-            ],
-            "expected_custom_id": "f2b1c5eb49d534e6014e52ed1fb9d1b2",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "Are you sure?",
-                        "Go"
-                    ],
-                    "custom_id": "f2b1c5eb49d534e6014e52ed1fb9d1b2"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "Are you sure?",
-                        "Go"
-                    ],
-                    "custom_id": "f2b1c5eb49d534e6014e52ed1fb9d1b2"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "attr-new-data-bs-title",
-            "why": "one of the twelve added (Bootstrap 5)",
-            "html": "<span data-bs-title=\"Tip\">x</span>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0073",
-                "U+0070",
-                "U+0061",
-                "U+006E",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0062",
-                "U+0073",
-                "U+002D",
-                "U+0074",
-                "U+0069",
-                "U+0074",
-                "U+006C",
-                "U+0065",
-                "U+003D",
-                "U+0022",
-                "U+0054",
-                "U+0069",
-                "U+0070",
-                "U+0022",
-                "U+003E",
-                "U+0078",
-                "U+003C",
-                "U+002F",
-                "U+0073",
-                "U+0070",
-                "U+0061",
-                "U+006E",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "Tip",
-                "x"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0054",
-                    "U+0069",
-                    "U+0070"
-                ],
-                [
-                    "U+0078"
-                ]
-            ],
-            "expected_custom_id": "59fbd8e8a65e27005a9e921b72c0fae8",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "Tip",
-                        "x"
-                    ],
-                    "custom_id": "59fbd8e8a65e27005a9e921b72c0fae8"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "Tip",
-                        "x"
-                    ],
-                    "custom_id": "59fbd8e8a65e27005a9e921b72c0fae8"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "attr-order-two-on-one-element",
-            "why": "ORDER IS IDENTITY: list order, not document order",
-            "html": "<img data-tooltip=\"Tip\" alt=\"Alt\">",
-            "html_codepoints": [
-                "U+003C",
-                "U+0069",
-                "U+006D",
-                "U+0067",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0074",
-                "U+006F",
-                "U+006F",
-                "U+006C",
-                "U+0074",
-                "U+0069",
-                "U+0070",
-                "U+003D",
-                "U+0022",
-                "U+0054",
-                "U+0069",
-                "U+0070",
-                "U+0022",
-                "U+0020",
-                "U+0061",
-                "U+006C",
-                "U+0074",
-                "U+003D",
-                "U+0022",
-                "U+0041",
-                "U+006C",
-                "U+0074",
-                "U+0022",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "Alt",
-                "Tip"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0041",
-                    "U+006C",
-                    "U+0074"
-                ],
-                [
-                    "U+0054",
-                    "U+0069",
-                    "U+0070"
-                ]
-            ],
-            "expected_custom_id": "875696c76753c579e5f6c27f1b376412",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "Alt",
-                        "Tip"
-                    ],
-                    "custom_id": "875696c76753c579e5f6c27f1b376412"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "Alt",
-                        "Tip"
-                    ],
-                    "custom_id": "875696c76753c579e5f6c27f1b376412"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "attr-all-new-twelve",
-            "why": "all twelve added attributes on one element, reverse-authored",
-            "html": "<div data-placeholder=\"P\" data-empty-message=\"E\" data-warning-message=\"W\" data-success-message=\"S\" data-loading-text=\"L\" data-bs-content=\"BC\" data-bs-title=\"BT\" data-original-title=\"OT\" data-content=\"C\" data-title=\"T\" data-tooltip=\"TT\" data-confirm=\"CF\">x</div>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0064",
-                "U+0069",
-                "U+0076",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0070",
-                "U+006C",
-                "U+0061",
-                "U+0063",
-                "U+0065",
-                "U+0068",
-                "U+006F",
-                "U+006C",
-                "U+0064",
-                "U+0065",
-                "U+0072",
-                "U+003D",
-                "U+0022",
-                "U+0050",
-                "U+0022",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0065",
-                "U+006D",
-                "U+0070",
-                "U+0074",
-                "U+0079",
-                "U+002D",
-                "U+006D",
-                "U+0065",
-                "U+0073",
-                "U+0073",
-                "U+0061",
-                "U+0067",
-                "U+0065",
-                "U+003D",
-                "U+0022",
-                "U+0045",
-                "U+0022",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0077",
-                "U+0061",
-                "U+0072",
-                "U+006E",
-                "U+0069",
-                "U+006E",
-                "U+0067",
-                "U+002D",
-                "U+006D",
-                "U+0065",
-                "U+0073",
-                "U+0073",
-                "U+0061",
-                "U+0067",
-                "U+0065",
-                "U+003D",
-                "U+0022",
-                "U+0057",
-                "U+0022",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0073",
-                "U+0075",
-                "U+0063",
-                "U+0063",
-                "U+0065",
-                "U+0073",
-                "U+0073",
-                "U+002D",
-                "U+006D",
-                "U+0065",
-                "U+0073",
-                "U+0073",
-                "U+0061",
-                "U+0067",
-                "U+0065",
-                "U+003D",
-                "U+0022",
-                "U+0053",
-                "U+0022",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+006C",
-                "U+006F",
-                "U+0061",
-                "U+0064",
-                "U+0069",
-                "U+006E",
-                "U+0067",
-                "U+002D",
-                "U+0074",
-                "U+0065",
-                "U+0078",
-                "U+0074",
-                "U+003D",
-                "U+0022",
-                "U+004C",
-                "U+0022",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0062",
-                "U+0073",
-                "U+002D",
-                "U+0063",
-                "U+006F",
-                "U+006E",
-                "U+0074",
-                "U+0065",
-                "U+006E",
-                "U+0074",
-                "U+003D",
-                "U+0022",
-                "U+0042",
-                "U+0043",
-                "U+0022",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0062",
-                "U+0073",
-                "U+002D",
-                "U+0074",
-                "U+0069",
-                "U+0074",
-                "U+006C",
-                "U+0065",
-                "U+003D",
-                "U+0022",
-                "U+0042",
-                "U+0054",
-                "U+0022",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+006F",
-                "U+0072",
-                "U+0069",
-                "U+0067",
-                "U+0069",
-                "U+006E",
-                "U+0061",
-                "U+006C",
-                "U+002D",
-                "U+0074",
-                "U+0069",
-                "U+0074",
-                "U+006C",
-                "U+0065",
-                "U+003D",
-                "U+0022",
-                "U+004F",
-                "U+0054",
-                "U+0022",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0063",
-                "U+006F",
-                "U+006E",
-                "U+0074",
-                "U+0065",
-                "U+006E",
-                "U+0074",
-                "U+003D",
-                "U+0022",
-                "U+0043",
-                "U+0022",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0074",
-                "U+0069",
-                "U+0074",
-                "U+006C",
-                "U+0065",
-                "U+003D",
-                "U+0022",
-                "U+0054",
-                "U+0022",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0074",
-                "U+006F",
-                "U+006F",
-                "U+006C",
-                "U+0074",
-                "U+0069",
-                "U+0070",
-                "U+003D",
-                "U+0022",
-                "U+0054",
-                "U+0054",
-                "U+0022",
-                "U+0020",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+002D",
-                "U+0063",
-                "U+006F",
-                "U+006E",
-                "U+0066",
-                "U+0069",
-                "U+0072",
-                "U+006D",
-                "U+003D",
-                "U+0022",
-                "U+0043",
-                "U+0046",
-                "U+0022",
-                "U+003E",
-                "U+0078",
-                "U+003C",
-                "U+002F",
-                "U+0064",
-                "U+0069",
-                "U+0076",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "CF",
-                "TT",
-                "T",
-                "C",
-                "OT",
-                "BT",
-                "BC",
-                "L",
-                "S",
-                "W",
-                "E",
-                "P",
-                "x"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0043",
-                    "U+0046"
-                ],
-                [
-                    "U+0054",
-                    "U+0054"
-                ],
-                [
-                    "U+0054"
-                ],
-                [
-                    "U+0043"
-                ],
-                [
-                    "U+004F",
-                    "U+0054"
-                ],
-                [
-                    "U+0042",
-                    "U+0054"
-                ],
-                [
-                    "U+0042",
-                    "U+0043"
-                ],
-                [
-                    "U+004C"
-                ],
-                [
-                    "U+0053"
-                ],
-                [
-                    "U+0057"
-                ],
-                [
-                    "U+0045"
-                ],
-                [
-                    "U+0050"
-                ],
-                [
-                    "U+0078"
-                ]
-            ],
-            "expected_custom_id": "16bd1146a2eecb00b71c045751324e84",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "CF",
-                        "TT",
-                        "T",
-                        "C",
-                        "OT",
-                        "BT",
-                        "BC",
-                        "L",
-                        "S",
-                        "W",
-                        "E",
-                        "P",
-                        "x"
-                    ],
-                    "custom_id": "16bd1146a2eecb00b71c045751324e84"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "CF",
-                        "TT",
-                        "T",
-                        "C",
-                        "OT",
-                        "BT",
-                        "BC",
-                        "L",
-                        "S",
-                        "W",
-                        "E",
-                        "P",
-                        "x"
-                    ],
-                    "custom_id": "16bd1146a2eecb00b71c045751324e84"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "style-subtree",
-            "why": "CSS must not be harvested (TOK-1)",
-            "html": "<style>.plan{color:#fff}</style><p>Plans</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0073",
-                "U+0074",
-                "U+0079",
-                "U+006C",
-                "U+0065",
-                "U+003E",
-                "U+002E",
-                "U+0070",
-                "U+006C",
-                "U+0061",
-                "U+006E",
-                "U+007B",
-                "U+0063",
-                "U+006F",
-                "U+006C",
-                "U+006F",
-                "U+0072",
-                "U+003A",
-                "U+0023",
-                "U+0066",
-                "U+0066",
-                "U+0066",
-                "U+007D",
-                "U+003C",
-                "U+002F",
-                "U+0073",
-                "U+0074",
-                "U+0079",
-                "U+006C",
-                "U+0065",
-                "U+003E",
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0050",
-                "U+006C",
-                "U+0061",
-                "U+006E",
-                "U+0073",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "Plans"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0050",
-                    "U+006C",
-                    "U+0061",
-                    "U+006E",
-                    "U+0073"
-                ]
-            ],
-            "expected_custom_id": "039e0189da9b0a5e4870c6e7785b690c",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "Plans"
-                    ],
-                    "custom_id": "039e0189da9b0a5e4870c6e7785b690c"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        ".plan{color:#fff}",
-                        "Plans"
-                    ],
-                    "custom_id": "808d4be67824e6e13d3afccc432ae40b"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": false,
-            "divergence": "PHP still harvests style content; TOK-1 is not implemented there yet. Its own tokenizer-reference row encodes the old behaviour, which is the fixture defect already routed to that lane."
-        },
-        {
-            "id": "script-subtree",
-            "why": "JS must not be harvested (TOK-1)",
-            "html": "<script>window.dataLayer.push(1)</script><p>Plans</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0073",
-                "U+0063",
-                "U+0072",
-                "U+0069",
-                "U+0070",
-                "U+0074",
-                "U+003E",
-                "U+0077",
-                "U+0069",
-                "U+006E",
-                "U+0064",
-                "U+006F",
-                "U+0077",
-                "U+002E",
-                "U+0064",
-                "U+0061",
-                "U+0074",
-                "U+0061",
-                "U+004C",
-                "U+0061",
-                "U+0079",
-                "U+0065",
-                "U+0072",
-                "U+002E",
-                "U+0070",
-                "U+0075",
-                "U+0073",
-                "U+0068",
-                "U+0028",
-                "U+0031",
-                "U+0029",
-                "U+003C",
-                "U+002F",
-                "U+0073",
-                "U+0063",
-                "U+0072",
-                "U+0069",
-                "U+0070",
-                "U+0074",
-                "U+003E",
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0050",
-                "U+006C",
-                "U+0061",
-                "U+006E",
-                "U+0073",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "Plans"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0050",
-                    "U+006C",
-                    "U+0061",
-                    "U+006E",
-                    "U+0073"
-                ]
-            ],
-            "expected_custom_id": "039e0189da9b0a5e4870c6e7785b690c",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "Plans"
-                    ],
-                    "custom_id": "039e0189da9b0a5e4870c6e7785b690c"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "window.dataLayer.push(1)",
-                        "Plans"
-                    ],
-                    "custom_id": "0948ee5ef43dc1e2fe32a5d1a6e16680"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": false,
-            "divergence": "PHP still harvests script content. Same cause as style-subtree."
-        },
-        {
-            "id": "noscript-subtree",
-            "why": "noscript IS prose and must be harvested (TOK-1)",
-            "html": "<noscript><p>Enable JavaScript</p></noscript><p>Plans</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+006E",
-                "U+006F",
-                "U+0073",
-                "U+0063",
-                "U+0072",
-                "U+0069",
-                "U+0070",
-                "U+0074",
-                "U+003E",
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0045",
-                "U+006E",
-                "U+0061",
-                "U+0062",
-                "U+006C",
-                "U+0065",
-                "U+0020",
-                "U+004A",
-                "U+0061",
-                "U+0076",
-                "U+0061",
-                "U+0053",
-                "U+0063",
-                "U+0072",
-                "U+0069",
-                "U+0070",
-                "U+0074",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E",
-                "U+003C",
-                "U+002F",
-                "U+006E",
-                "U+006F",
-                "U+0073",
-                "U+0063",
-                "U+0072",
-                "U+0069",
-                "U+0070",
-                "U+0074",
-                "U+003E",
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0050",
-                "U+006C",
-                "U+0061",
-                "U+006E",
-                "U+0073",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "Plans"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0050",
-                    "U+006C",
-                    "U+0061",
-                    "U+006E",
-                    "U+0073"
-                ]
-            ],
-            "expected_custom_id": "039e0189da9b0a5e4870c6e7785b690c",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "Plans"
-                    ],
-                    "custom_id": "039e0189da9b0a5e4870c6e7785b690c"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "Enable JavaScript",
-                        "Plans"
-                    ],
-                    "custom_id": "32cb72c9aa51d19595746be43c80fb7d"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": false,
-            "divergence": "TOK-1 reversed and now EXCLUDES noscript, so this SDK contributes no token. PHP still harvests it: libxml2 has no scripting flag and parses the children as elements. Excluding it is what makes the two parser models agree, so this row should stop diverging once PHP adopts the reversal."
-        },
-        {
-            "id": "line-separators",
-            "why": "U+2028/U+2029 — the 3-flag json_encode case",
-            "html": "<p>line one line two para</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+006C",
-                "U+0069",
-                "U+006E",
-                "U+0065",
-                "U+0020",
-                "U+006F",
-                "U+006E",
-                "U+0065",
-                "U+2028",
-                "U+006C",
-                "U+0069",
-                "U+006E",
-                "U+0065",
-                "U+0020",
-                "U+0074",
-                "U+0077",
-                "U+006F",
-                "U+2029",
-                "U+0070",
-                "U+0061",
-                "U+0072",
-                "U+0061",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "Legal",
-            "expected_tokens": [
-                "line one line two para"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+006C",
-                    "U+0069",
-                    "U+006E",
-                    "U+0065",
-                    "U+0020",
-                    "U+006F",
-                    "U+006E",
-                    "U+0065",
-                    "U+0020",
-                    "U+006C",
-                    "U+0069",
-                    "U+006E",
-                    "U+0065",
-                    "U+0020",
-                    "U+0074",
-                    "U+0077",
-                    "U+006F",
-                    "U+0020",
-                    "U+0070",
-                    "U+0061",
-                    "U+0072",
-                    "U+0061"
-                ]
-            ],
-            "expected_custom_id": "f92e4c22ed4f05658dd5640c41fd58a8",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "line one line two para"
-                    ],
-                    "custom_id": "f92e4c22ed4f05658dd5640c41fd58a8"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "line one line two para"
-                    ],
-                    "custom_id": "36441b5c714067bdd3088a54b004f00e"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": false,
-            "divergence": "PHP does not collapse U+2028/U+2029 either. Same root cause as the NBSP rows. Worth noting the consequence for the three-flag json_encode work: in a DOM-tokenized path these never reach the serializer on the JS side because they collapse to spaces first, so the flags matter for a caller hashing its own token array, not for tokenized content."
-        },
-        {
-            "id": "non-bmp",
-            "why": "non-BMP codepoint (surrogate pair)",
-            "html": "<p>thumbs 😀</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0074",
-                "U+0068",
-                "U+0075",
-                "U+006D",
-                "U+0062",
-                "U+0073",
-                "U+0020",
-                "U+1F600",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "thumbs 😀"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0074",
-                    "U+0068",
-                    "U+0075",
-                    "U+006D",
-                    "U+0062",
-                    "U+0073",
-                    "U+0020",
-                    "U+1F600"
-                ]
-            ],
-            "expected_custom_id": "b33480b7fe7d5054812cebe44ed4a44d",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "thumbs 😀"
-                    ],
-                    "custom_id": "b33480b7fe7d5054812cebe44ed4a44d"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "thumbs 😀"
-                    ],
-                    "custom_id": "b33480b7fe7d5054812cebe44ed4a44d"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "slashes",
-            "why": "JS does not escape '/'",
-            "html": "<p>path/to/thing</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0070",
-                "U+0061",
-                "U+0074",
-                "U+0068",
-                "U+002F",
-                "U+0074",
-                "U+006F",
-                "U+002F",
-                "U+0074",
-                "U+0068",
-                "U+0069",
-                "U+006E",
-                "U+0067",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "a/b",
-            "expected_tokens": [
-                "path/to/thing"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0070",
-                    "U+0061",
-                    "U+0074",
-                    "U+0068",
-                    "U+002F",
-                    "U+0074",
-                    "U+006F",
-                    "U+002F",
-                    "U+0074",
-                    "U+0068",
-                    "U+0069",
-                    "U+006E",
-                    "U+0067"
-                ]
-            ],
-            "expected_custom_id": "e150ad0d7b2ede038ba37b5d432e1b58",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "path/to/thing"
-                    ],
-                    "custom_id": "e150ad0d7b2ede038ba37b5d432e1b58"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "path/to/thing"
-                    ],
-                    "custom_id": "e150ad0d7b2ede038ba37b5d432e1b58"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "category-empty",
-            "why": "no category",
-            "html": "<p>Hello</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0048",
-                "U+0065",
-                "U+006C",
-                "U+006C",
-                "U+006F",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "",
-            "expected_tokens": [
-                "Hello"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0048",
-                    "U+0065",
-                    "U+006C",
-                    "U+006C",
-                    "U+006F"
-                ]
-            ],
-            "expected_custom_id": "0ab6be3c04761e7643cb965ae2e9de2e",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "Hello"
-                    ],
-                    "custom_id": "0ab6be3c04761e7643cb965ae2e9de2e"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "Hello"
-                    ],
-                    "custom_id": "0ab6be3c04761e7643cb965ae2e9de2e"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "category-sentinel",
-            "why": "the reserved '__uncategorized__' sentinel passed AS a category",
-            "html": "<p>Hello</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0048",
-                "U+0065",
-                "U+006C",
-                "U+006C",
-                "U+006F",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "__uncategorized__",
-            "expected_tokens": [
-                "Hello"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+0048",
-                    "U+0065",
-                    "U+006C",
-                    "U+006C",
-                    "U+006F"
-                ]
-            ],
-            "expected_custom_id": "0ab6be3c04761e7643cb965ae2e9de2e",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "Hello"
-                    ],
-                    "custom_id": "0ab6be3c04761e7643cb965ae2e9de2e"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "Hello"
-                    ],
-                    "custom_id": "0ab6be3c04761e7643cb965ae2e9de2e"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        },
-        {
-            "id": "multi-token",
-            "why": "several text nodes — arity is identity",
-            "html": "<p>One</p><p>Two</p><p>Three</p>",
-            "html_codepoints": [
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+004F",
-                "U+006E",
-                "U+0065",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E",
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0054",
-                "U+0077",
-                "U+006F",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E",
-                "U+003C",
-                "U+0070",
-                "U+003E",
-                "U+0054",
-                "U+0068",
-                "U+0072",
-                "U+0065",
-                "U+0065",
-                "U+003C",
-                "U+002F",
-                "U+0070",
-                "U+003E"
-            ],
-            "category": "UI",
-            "expected_tokens": [
-                "One",
-                "Two",
-                "Three"
-            ],
-            "expected_tokens_codepoints": [
-                [
-                    "U+004F",
-                    "U+006E",
-                    "U+0065"
-                ],
-                [
-                    "U+0054",
-                    "U+0077",
-                    "U+006F"
-                ],
-                [
-                    "U+0054",
-                    "U+0068",
-                    "U+0072",
-                    "U+0065",
-                    "U+0065"
-                ]
-            ],
-            "expected_custom_id": "99fcd7e1cdbca769b85b34a802623c3a",
-            "measured": {
-                "langsys-js-typescript": {
-                    "tokens": [
-                        "One",
-                        "Two",
-                        "Three"
-                    ],
-                    "custom_id": "99fcd7e1cdbca769b85b34a802623c3a"
-                },
-                "langsys-php-sdk": {
-                    "tokens": [
-                        "One",
-                        "Two",
-                        "Three"
-                    ],
-                    "custom_id": "99fcd7e1cdbca769b85b34a802623c3a"
-                },
-                "langsys2 (server)": null
-            },
-            "agree": true
-        }
+ "": "Canonicalization + identity agreement across Langsys SDKs. AUTHORED in langsys-js-typescript, not vendored from another lane.",
+ "purpose": "Proof that the SDKs mint the SAME custom_id for the same content. Covers the TOK batch's canonicalization rules — the collapse set, attribute values collapsing like text nodes, the fixed twenty-seven attributes in order — and, from spec 8.0.1, the three collapse-set boundary characters and the %name%-at-capture rule.",
+ "how_to_row_against_it": "Tokenize the html field, compare to expected_tokens, then hash (category, tokens) and compare to expected_custom_id. Compare CODEPOINTS, not display strings: several cases differ only by U+00A0 or U+2028, which render identically to a space — the html_codepoints and expected_tokens_codepoints fields exist so a mismatch is readable instead of looking like two identical strings with two different hashes.",
+ "expected_is": "What langsys-js-typescript produces. Every row matches spec blob 8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c (specVersion 8.0.1), and as of this write every row is also matched by langsys-php-sdk. It is not an invitation to change the expectation: the JS core is the identity authority per TOK-2, so a lane that disagrees records a divergence here and fixes its own side.",
+ "spec_blob": "8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c (langsys 63df13c7, specVersion 8.0.1). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 63df13c7 docs/sdk-spec.mdx` at this write, not carried from the previous one — 8.0.1 requires the header revision to be re-derived every time.",
+ "measured_at": {
+  "langsys-js-typescript": "this repo, tokenizeElement + generateCustomId, re-measured at this write",
+  "langsys-php-sdk": "HtmlParser::extractPhrases + HtmlParser::generateCustomId at e28972c, PHP 8.3.19, re-measured at this write",
+  "langsys2 (server)": "NO MINTER EXISTS. Searched by hashing call and by canonical-serialization signature, with the same searches positive-controlled against langsys-php-sdk (4 hits there, 0 here). The backend stores ids clients send; it does not compute them."
+ },
+ "harness_control": {
+  "why": "23-of-23 agreement is exactly the shape a broken comparison produces, so the comparison was positive-controlled before the result was believed.",
+  "controls": [
+   {
+    "input": "<p>a U+000B b</p>",
+    "result": "DIVERGE",
+    "js_tokens_codepoints": [
+     "U+0061",
+     "U+0020",
+     "U+0062"
     ],
-    "spec_blob": "b657b490f07615b889081c0ac5244ec4bd73bf81 (langsys 483f98fb) — TOK-1 reversed to exclude noscript"
+    "php_tokens_codepoints": [
+     "U+0061",
+     "U+0062"
+    ],
+    "note": "libxml2 DROPS U+000B from DOM text where a JS DOM keeps it and collapses it to a space. Spec 8.0.1 names this as a parser-level split below the SDK that no tokenizer can close. Independently reproduced here, which is why it makes a good control: a real divergence the harness must see."
+   },
+   {
+    "input": "<p>a U+000C b</p>",
+    "result": "DIVERGE",
+    "note": "Same split, form feed."
+   },
+   {
+    "input": "JS fed <p>LEFT</p>, PHP fed <p>RIGHT</p>",
+    "result": "DIVERGE",
+    "note": "Proves the comparison is not structurally returning AGREE regardless of input."
+   }
+  ],
+  "not_rows": "The VT/FF cases are deliberately NOT fixture rows. They diverge in the parser, not the tokenizer, so no implementation can make them agree; a row whose expectation can never be met would sit here failing forever and teach a reader to ignore failures. Spec 8.0.1 records the split in prose and specified four rows, which are the four added here."
+ },
+ "agreement": {
+  "rows": 23,
+  "agree": 23,
+  "diverge": 0
+ },
+ "resolved_divergences": {
+  "note": "Six rows recorded a langsys-php-sdk divergence at the previous write and all six now agree, re-measured rather than assumed. PHP fixed the collapse set and the code-bearing-subtree exclusion. Kept as a record so the next reader does not have to wonder whether anyone checked.",
+  "rows": [
+   {
+    "row": "nbsp-in-text",
+    "was": "91ef40f770a57aa8cb373d5513eb39e3",
+    "now": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
+    "note": "PHP does not collapse U+00A0. Its whitespace class is narrower than JavaScript's, which TOK-2 anticipates: a language whose class excludes it must add it."
+   },
+   {
+    "row": "attr-nbsp",
+    "was": "91ef40f770a57aa8cb373d5513eb39e3",
+    "now": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
+    "note": "Same cause as nbsp-in-text, reached through an attribute value."
+   },
+   {
+    "row": "style-subtree",
+    "was": "808d4be67824e6e13d3afccc432ae40b",
+    "now": "039e0189da9b0a5e4870c6e7785b690c",
+    "note": "PHP still harvests style content; TOK-1 is not implemented there yet. Its own tokenizer-reference row encodes the old behaviour, which is the fixture defect already routed to that lane."
+   },
+   {
+    "row": "script-subtree",
+    "was": "0948ee5ef43dc1e2fe32a5d1a6e16680",
+    "now": "039e0189da9b0a5e4870c6e7785b690c",
+    "note": "PHP still harvests script content. Same cause as style-subtree."
+   },
+   {
+    "row": "noscript-subtree",
+    "was": "32cb72c9aa51d19595746be43c80fb7d",
+    "now": "039e0189da9b0a5e4870c6e7785b690c",
+    "note": "TOK-1 reversed and now EXCLUDES noscript, so this SDK contributes no token. PHP still harvests it: libxml2 has no scripting flag and parses the children as elements. Excluding it is what makes the two parser models agree, so this row should stop diverging once PHP adopts the reversal."
+   },
+   {
+    "row": "line-separators",
+    "was": "36441b5c714067bdd3088a54b004f00e",
+    "now": "f92e4c22ed4f05658dd5640c41fd58a8",
+    "note": "PHP does not collapse U+2028/U+2029 either. Same root cause as the NBSP rows. Worth noting the consequence for the three-flag json_encode work: in a DOM-tokenized path these never reach the serializer on the JS side because they collapse to spaces first, so the flags matter for a caller hashing its own token array, not for tokenized content."
+   }
+  ]
+ },
+ "cases": [
+  {
+   "id": "nbsp-in-text",
+   "why": "NBSP must collapse like any other whitespace (TOK-2)",
+   "html": "<p>A long   description</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0041",
+    "U+00A0",
+    "U+006C",
+    "U+006F",
+    "U+006E",
+    "U+0067",
+    "U+0020",
+    "U+0020",
+    "U+0020",
+    "U+0064",
+    "U+0065",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+0069",
+    "U+006F",
+    "U+006E",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "A long description"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0041",
+     "U+0020",
+     "U+006C",
+     "U+006F",
+     "U+006E",
+     "U+0067",
+     "U+0020",
+     "U+0064",
+     "U+0065",
+     "U+0073",
+     "U+0063",
+     "U+0072",
+     "U+0069",
+     "U+0070",
+     "U+0074",
+     "U+0069",
+     "U+006F",
+     "U+006E"
+    ]
+   ],
+   "expected_custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "nbsp-vs-plain-space",
+   "why": "NBSP and a plain space must produce the SAME id",
+   "html": "<p>A long description</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0041",
+    "U+0020",
+    "U+006C",
+    "U+006F",
+    "U+006E",
+    "U+0067",
+    "U+0020",
+    "U+0064",
+    "U+0065",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+0069",
+    "U+006F",
+    "U+006E",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "A long description"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0041",
+     "U+0020",
+     "U+006C",
+     "U+006F",
+     "U+006E",
+     "U+0067",
+     "U+0020",
+     "U+0064",
+     "U+0065",
+     "U+0073",
+     "U+0063",
+     "U+0072",
+     "U+0069",
+     "U+0070",
+     "U+0074",
+     "U+0069",
+     "U+006F",
+     "U+006E"
+    ]
+   ],
+   "expected_custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "attr-multiline",
+   "why": "attribute values collapse internal whitespace (TOK-4)",
+   "html": "<img alt=\"A long\n     description\">",
+   "html_codepoints": [
+    "U+003C",
+    "U+0069",
+    "U+006D",
+    "U+0067",
+    "U+0020",
+    "U+0061",
+    "U+006C",
+    "U+0074",
+    "U+003D",
+    "U+0022",
+    "U+0041",
+    "U+0020",
+    "U+006C",
+    "U+006F",
+    "U+006E",
+    "U+0067",
+    "U+000A",
+    "U+0020",
+    "U+0020",
+    "U+0020",
+    "U+0020",
+    "U+0020",
+    "U+0064",
+    "U+0065",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+0069",
+    "U+006F",
+    "U+006E",
+    "U+0022",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "A long description"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0041",
+     "U+0020",
+     "U+006C",
+     "U+006F",
+     "U+006E",
+     "U+0067",
+     "U+0020",
+     "U+0064",
+     "U+0065",
+     "U+0073",
+     "U+0063",
+     "U+0072",
+     "U+0069",
+     "U+0070",
+     "U+0074",
+     "U+0069",
+     "U+006F",
+     "U+006E"
+    ]
+   ],
+   "expected_custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "text-multiline",
+   "why": "same sentence in a text node — must match the attribute case",
+   "html": "<p>A long\n     description</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0041",
+    "U+0020",
+    "U+006C",
+    "U+006F",
+    "U+006E",
+    "U+0067",
+    "U+000A",
+    "U+0020",
+    "U+0020",
+    "U+0020",
+    "U+0020",
+    "U+0020",
+    "U+0064",
+    "U+0065",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+0069",
+    "U+006F",
+    "U+006E",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "A long description"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0041",
+     "U+0020",
+     "U+006C",
+     "U+006F",
+     "U+006E",
+     "U+0067",
+     "U+0020",
+     "U+0064",
+     "U+0065",
+     "U+0073",
+     "U+0063",
+     "U+0072",
+     "U+0069",
+     "U+0070",
+     "U+0074",
+     "U+0069",
+     "U+006F",
+     "U+006E"
+    ]
+   ],
+   "expected_custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "attr-nbsp",
+   "why": "NBSP inside an attribute value",
+   "html": "<img alt=\"A long   description\">",
+   "html_codepoints": [
+    "U+003C",
+    "U+0069",
+    "U+006D",
+    "U+0067",
+    "U+0020",
+    "U+0061",
+    "U+006C",
+    "U+0074",
+    "U+003D",
+    "U+0022",
+    "U+0041",
+    "U+00A0",
+    "U+006C",
+    "U+006F",
+    "U+006E",
+    "U+0067",
+    "U+0020",
+    "U+0020",
+    "U+0020",
+    "U+0064",
+    "U+0065",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+0069",
+    "U+006F",
+    "U+006E",
+    "U+0022",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "A long description"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0041",
+     "U+0020",
+     "U+006C",
+     "U+006F",
+     "U+006E",
+     "U+0067",
+     "U+0020",
+     "U+0064",
+     "U+0065",
+     "U+0073",
+     "U+0063",
+     "U+0072",
+     "U+0069",
+     "U+0070",
+     "U+0074",
+     "U+0069",
+     "U+006F",
+     "U+006E"
+    ]
+   ],
+   "expected_custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "attr-original-15",
+   "why": "one of the original fifteen",
+   "html": "<input placeholder=\"Your name\">",
+   "html_codepoints": [
+    "U+003C",
+    "U+0069",
+    "U+006E",
+    "U+0070",
+    "U+0075",
+    "U+0074",
+    "U+0020",
+    "U+0070",
+    "U+006C",
+    "U+0061",
+    "U+0063",
+    "U+0065",
+    "U+0068",
+    "U+006F",
+    "U+006C",
+    "U+0064",
+    "U+0065",
+    "U+0072",
+    "U+003D",
+    "U+0022",
+    "U+0059",
+    "U+006F",
+    "U+0075",
+    "U+0072",
+    "U+0020",
+    "U+006E",
+    "U+0061",
+    "U+006D",
+    "U+0065",
+    "U+0022",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Your name"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0059",
+     "U+006F",
+     "U+0075",
+     "U+0072",
+     "U+0020",
+     "U+006E",
+     "U+0061",
+     "U+006D",
+     "U+0065"
+    ]
+   ],
+   "expected_custom_id": "97c452f1fa75063649cc5a24786d4d46",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Your name"
+     ],
+     "custom_id": "97c452f1fa75063649cc5a24786d4d46"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Your name"
+     ],
+     "custom_id": "97c452f1fa75063649cc5a24786d4d46"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "attr-new-data-confirm",
+   "why": "one of the twelve added (Rails)",
+   "html": "<button data-confirm=\"Are you sure?\">Go</button>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0062",
+    "U+0075",
+    "U+0074",
+    "U+0074",
+    "U+006F",
+    "U+006E",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0063",
+    "U+006F",
+    "U+006E",
+    "U+0066",
+    "U+0069",
+    "U+0072",
+    "U+006D",
+    "U+003D",
+    "U+0022",
+    "U+0041",
+    "U+0072",
+    "U+0065",
+    "U+0020",
+    "U+0079",
+    "U+006F",
+    "U+0075",
+    "U+0020",
+    "U+0073",
+    "U+0075",
+    "U+0072",
+    "U+0065",
+    "U+003F",
+    "U+0022",
+    "U+003E",
+    "U+0047",
+    "U+006F",
+    "U+003C",
+    "U+002F",
+    "U+0062",
+    "U+0075",
+    "U+0074",
+    "U+0074",
+    "U+006F",
+    "U+006E",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Are you sure?",
+    "Go"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0041",
+     "U+0072",
+     "U+0065",
+     "U+0020",
+     "U+0079",
+     "U+006F",
+     "U+0075",
+     "U+0020",
+     "U+0073",
+     "U+0075",
+     "U+0072",
+     "U+0065",
+     "U+003F"
+    ],
+    [
+     "U+0047",
+     "U+006F"
+    ]
+   ],
+   "expected_custom_id": "f2b1c5eb49d534e6014e52ed1fb9d1b2",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Are you sure?",
+      "Go"
+     ],
+     "custom_id": "f2b1c5eb49d534e6014e52ed1fb9d1b2"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Are you sure?",
+      "Go"
+     ],
+     "custom_id": "f2b1c5eb49d534e6014e52ed1fb9d1b2"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "attr-new-data-bs-title",
+   "why": "one of the twelve added (Bootstrap 5)",
+   "html": "<span data-bs-title=\"Tip\">x</span>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0073",
+    "U+0070",
+    "U+0061",
+    "U+006E",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0062",
+    "U+0073",
+    "U+002D",
+    "U+0074",
+    "U+0069",
+    "U+0074",
+    "U+006C",
+    "U+0065",
+    "U+003D",
+    "U+0022",
+    "U+0054",
+    "U+0069",
+    "U+0070",
+    "U+0022",
+    "U+003E",
+    "U+0078",
+    "U+003C",
+    "U+002F",
+    "U+0073",
+    "U+0070",
+    "U+0061",
+    "U+006E",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Tip",
+    "x"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0054",
+     "U+0069",
+     "U+0070"
+    ],
+    [
+     "U+0078"
+    ]
+   ],
+   "expected_custom_id": "59fbd8e8a65e27005a9e921b72c0fae8",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Tip",
+      "x"
+     ],
+     "custom_id": "59fbd8e8a65e27005a9e921b72c0fae8"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Tip",
+      "x"
+     ],
+     "custom_id": "59fbd8e8a65e27005a9e921b72c0fae8"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "attr-order-two-on-one-element",
+   "why": "ORDER IS IDENTITY: list order, not document order",
+   "html": "<img data-tooltip=\"Tip\" alt=\"Alt\">",
+   "html_codepoints": [
+    "U+003C",
+    "U+0069",
+    "U+006D",
+    "U+0067",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0074",
+    "U+006F",
+    "U+006F",
+    "U+006C",
+    "U+0074",
+    "U+0069",
+    "U+0070",
+    "U+003D",
+    "U+0022",
+    "U+0054",
+    "U+0069",
+    "U+0070",
+    "U+0022",
+    "U+0020",
+    "U+0061",
+    "U+006C",
+    "U+0074",
+    "U+003D",
+    "U+0022",
+    "U+0041",
+    "U+006C",
+    "U+0074",
+    "U+0022",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Alt",
+    "Tip"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0041",
+     "U+006C",
+     "U+0074"
+    ],
+    [
+     "U+0054",
+     "U+0069",
+     "U+0070"
+    ]
+   ],
+   "expected_custom_id": "875696c76753c579e5f6c27f1b376412",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Alt",
+      "Tip"
+     ],
+     "custom_id": "875696c76753c579e5f6c27f1b376412"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Alt",
+      "Tip"
+     ],
+     "custom_id": "875696c76753c579e5f6c27f1b376412"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "attr-all-new-twelve",
+   "why": "all twelve added attributes on one element, reverse-authored",
+   "html": "<div data-placeholder=\"P\" data-empty-message=\"E\" data-warning-message=\"W\" data-success-message=\"S\" data-loading-text=\"L\" data-bs-content=\"BC\" data-bs-title=\"BT\" data-original-title=\"OT\" data-content=\"C\" data-title=\"T\" data-tooltip=\"TT\" data-confirm=\"CF\">x</div>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0064",
+    "U+0069",
+    "U+0076",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0070",
+    "U+006C",
+    "U+0061",
+    "U+0063",
+    "U+0065",
+    "U+0068",
+    "U+006F",
+    "U+006C",
+    "U+0064",
+    "U+0065",
+    "U+0072",
+    "U+003D",
+    "U+0022",
+    "U+0050",
+    "U+0022",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0065",
+    "U+006D",
+    "U+0070",
+    "U+0074",
+    "U+0079",
+    "U+002D",
+    "U+006D",
+    "U+0065",
+    "U+0073",
+    "U+0073",
+    "U+0061",
+    "U+0067",
+    "U+0065",
+    "U+003D",
+    "U+0022",
+    "U+0045",
+    "U+0022",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0077",
+    "U+0061",
+    "U+0072",
+    "U+006E",
+    "U+0069",
+    "U+006E",
+    "U+0067",
+    "U+002D",
+    "U+006D",
+    "U+0065",
+    "U+0073",
+    "U+0073",
+    "U+0061",
+    "U+0067",
+    "U+0065",
+    "U+003D",
+    "U+0022",
+    "U+0057",
+    "U+0022",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0073",
+    "U+0075",
+    "U+0063",
+    "U+0063",
+    "U+0065",
+    "U+0073",
+    "U+0073",
+    "U+002D",
+    "U+006D",
+    "U+0065",
+    "U+0073",
+    "U+0073",
+    "U+0061",
+    "U+0067",
+    "U+0065",
+    "U+003D",
+    "U+0022",
+    "U+0053",
+    "U+0022",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+006C",
+    "U+006F",
+    "U+0061",
+    "U+0064",
+    "U+0069",
+    "U+006E",
+    "U+0067",
+    "U+002D",
+    "U+0074",
+    "U+0065",
+    "U+0078",
+    "U+0074",
+    "U+003D",
+    "U+0022",
+    "U+004C",
+    "U+0022",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0062",
+    "U+0073",
+    "U+002D",
+    "U+0063",
+    "U+006F",
+    "U+006E",
+    "U+0074",
+    "U+0065",
+    "U+006E",
+    "U+0074",
+    "U+003D",
+    "U+0022",
+    "U+0042",
+    "U+0043",
+    "U+0022",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0062",
+    "U+0073",
+    "U+002D",
+    "U+0074",
+    "U+0069",
+    "U+0074",
+    "U+006C",
+    "U+0065",
+    "U+003D",
+    "U+0022",
+    "U+0042",
+    "U+0054",
+    "U+0022",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+006F",
+    "U+0072",
+    "U+0069",
+    "U+0067",
+    "U+0069",
+    "U+006E",
+    "U+0061",
+    "U+006C",
+    "U+002D",
+    "U+0074",
+    "U+0069",
+    "U+0074",
+    "U+006C",
+    "U+0065",
+    "U+003D",
+    "U+0022",
+    "U+004F",
+    "U+0054",
+    "U+0022",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0063",
+    "U+006F",
+    "U+006E",
+    "U+0074",
+    "U+0065",
+    "U+006E",
+    "U+0074",
+    "U+003D",
+    "U+0022",
+    "U+0043",
+    "U+0022",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0074",
+    "U+0069",
+    "U+0074",
+    "U+006C",
+    "U+0065",
+    "U+003D",
+    "U+0022",
+    "U+0054",
+    "U+0022",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0074",
+    "U+006F",
+    "U+006F",
+    "U+006C",
+    "U+0074",
+    "U+0069",
+    "U+0070",
+    "U+003D",
+    "U+0022",
+    "U+0054",
+    "U+0054",
+    "U+0022",
+    "U+0020",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+002D",
+    "U+0063",
+    "U+006F",
+    "U+006E",
+    "U+0066",
+    "U+0069",
+    "U+0072",
+    "U+006D",
+    "U+003D",
+    "U+0022",
+    "U+0043",
+    "U+0046",
+    "U+0022",
+    "U+003E",
+    "U+0078",
+    "U+003C",
+    "U+002F",
+    "U+0064",
+    "U+0069",
+    "U+0076",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "CF",
+    "TT",
+    "T",
+    "C",
+    "OT",
+    "BT",
+    "BC",
+    "L",
+    "S",
+    "W",
+    "E",
+    "P",
+    "x"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0043",
+     "U+0046"
+    ],
+    [
+     "U+0054",
+     "U+0054"
+    ],
+    [
+     "U+0054"
+    ],
+    [
+     "U+0043"
+    ],
+    [
+     "U+004F",
+     "U+0054"
+    ],
+    [
+     "U+0042",
+     "U+0054"
+    ],
+    [
+     "U+0042",
+     "U+0043"
+    ],
+    [
+     "U+004C"
+    ],
+    [
+     "U+0053"
+    ],
+    [
+     "U+0057"
+    ],
+    [
+     "U+0045"
+    ],
+    [
+     "U+0050"
+    ],
+    [
+     "U+0078"
+    ]
+   ],
+   "expected_custom_id": "16bd1146a2eecb00b71c045751324e84",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "CF",
+      "TT",
+      "T",
+      "C",
+      "OT",
+      "BT",
+      "BC",
+      "L",
+      "S",
+      "W",
+      "E",
+      "P",
+      "x"
+     ],
+     "custom_id": "16bd1146a2eecb00b71c045751324e84"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "CF",
+      "TT",
+      "T",
+      "C",
+      "OT",
+      "BT",
+      "BC",
+      "L",
+      "S",
+      "W",
+      "E",
+      "P",
+      "x"
+     ],
+     "custom_id": "16bd1146a2eecb00b71c045751324e84"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "style-subtree",
+   "why": "CSS must not be harvested (TOK-1)",
+   "html": "<style>.plan{color:#fff}</style><p>Plans</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0073",
+    "U+0074",
+    "U+0079",
+    "U+006C",
+    "U+0065",
+    "U+003E",
+    "U+002E",
+    "U+0070",
+    "U+006C",
+    "U+0061",
+    "U+006E",
+    "U+007B",
+    "U+0063",
+    "U+006F",
+    "U+006C",
+    "U+006F",
+    "U+0072",
+    "U+003A",
+    "U+0023",
+    "U+0066",
+    "U+0066",
+    "U+0066",
+    "U+007D",
+    "U+003C",
+    "U+002F",
+    "U+0073",
+    "U+0074",
+    "U+0079",
+    "U+006C",
+    "U+0065",
+    "U+003E",
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0050",
+    "U+006C",
+    "U+0061",
+    "U+006E",
+    "U+0073",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Plans"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0050",
+     "U+006C",
+     "U+0061",
+     "U+006E",
+     "U+0073"
+    ]
+   ],
+   "expected_custom_id": "039e0189da9b0a5e4870c6e7785b690c",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Plans"
+     ],
+     "custom_id": "039e0189da9b0a5e4870c6e7785b690c"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Plans"
+     ],
+     "custom_id": "039e0189da9b0a5e4870c6e7785b690c"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "script-subtree",
+   "why": "JS must not be harvested (TOK-1)",
+   "html": "<script>window.dataLayer.push(1)</script><p>Plans</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+003E",
+    "U+0077",
+    "U+0069",
+    "U+006E",
+    "U+0064",
+    "U+006F",
+    "U+0077",
+    "U+002E",
+    "U+0064",
+    "U+0061",
+    "U+0074",
+    "U+0061",
+    "U+004C",
+    "U+0061",
+    "U+0079",
+    "U+0065",
+    "U+0072",
+    "U+002E",
+    "U+0070",
+    "U+0075",
+    "U+0073",
+    "U+0068",
+    "U+0028",
+    "U+0031",
+    "U+0029",
+    "U+003C",
+    "U+002F",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+003E",
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0050",
+    "U+006C",
+    "U+0061",
+    "U+006E",
+    "U+0073",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Plans"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0050",
+     "U+006C",
+     "U+0061",
+     "U+006E",
+     "U+0073"
+    ]
+   ],
+   "expected_custom_id": "039e0189da9b0a5e4870c6e7785b690c",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Plans"
+     ],
+     "custom_id": "039e0189da9b0a5e4870c6e7785b690c"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Plans"
+     ],
+     "custom_id": "039e0189da9b0a5e4870c6e7785b690c"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "noscript-subtree",
+   "why": "noscript IS prose and must be harvested (TOK-1)",
+   "html": "<noscript><p>Enable JavaScript</p></noscript><p>Plans</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+006E",
+    "U+006F",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+003E",
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0045",
+    "U+006E",
+    "U+0061",
+    "U+0062",
+    "U+006C",
+    "U+0065",
+    "U+0020",
+    "U+004A",
+    "U+0061",
+    "U+0076",
+    "U+0061",
+    "U+0053",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E",
+    "U+003C",
+    "U+002F",
+    "U+006E",
+    "U+006F",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+003E",
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0050",
+    "U+006C",
+    "U+0061",
+    "U+006E",
+    "U+0073",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Plans"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0050",
+     "U+006C",
+     "U+0061",
+     "U+006E",
+     "U+0073"
+    ]
+   ],
+   "expected_custom_id": "039e0189da9b0a5e4870c6e7785b690c",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Plans"
+     ],
+     "custom_id": "039e0189da9b0a5e4870c6e7785b690c"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Plans"
+     ],
+     "custom_id": "039e0189da9b0a5e4870c6e7785b690c"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "line-separators",
+   "why": "U+2028/U+2029 — the 3-flag json_encode case",
+   "html": "<p>line one line two para</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+006C",
+    "U+0069",
+    "U+006E",
+    "U+0065",
+    "U+0020",
+    "U+006F",
+    "U+006E",
+    "U+0065",
+    "U+2028",
+    "U+006C",
+    "U+0069",
+    "U+006E",
+    "U+0065",
+    "U+0020",
+    "U+0074",
+    "U+0077",
+    "U+006F",
+    "U+2029",
+    "U+0070",
+    "U+0061",
+    "U+0072",
+    "U+0061",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "Legal",
+   "expected_tokens": [
+    "line one line two para"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+006C",
+     "U+0069",
+     "U+006E",
+     "U+0065",
+     "U+0020",
+     "U+006F",
+     "U+006E",
+     "U+0065",
+     "U+0020",
+     "U+006C",
+     "U+0069",
+     "U+006E",
+     "U+0065",
+     "U+0020",
+     "U+0074",
+     "U+0077",
+     "U+006F",
+     "U+0020",
+     "U+0070",
+     "U+0061",
+     "U+0072",
+     "U+0061"
+    ]
+   ],
+   "expected_custom_id": "f92e4c22ed4f05658dd5640c41fd58a8",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "line one line two para"
+     ],
+     "custom_id": "f92e4c22ed4f05658dd5640c41fd58a8"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "line one line two para"
+     ],
+     "custom_id": "f92e4c22ed4f05658dd5640c41fd58a8"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "non-bmp",
+   "why": "non-BMP codepoint (surrogate pair)",
+   "html": "<p>thumbs 😀</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0074",
+    "U+0068",
+    "U+0075",
+    "U+006D",
+    "U+0062",
+    "U+0073",
+    "U+0020",
+    "U+1F600",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "thumbs 😀"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0074",
+     "U+0068",
+     "U+0075",
+     "U+006D",
+     "U+0062",
+     "U+0073",
+     "U+0020",
+     "U+1F600"
+    ]
+   ],
+   "expected_custom_id": "b33480b7fe7d5054812cebe44ed4a44d",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "thumbs 😀"
+     ],
+     "custom_id": "b33480b7fe7d5054812cebe44ed4a44d"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "thumbs 😀"
+     ],
+     "custom_id": "b33480b7fe7d5054812cebe44ed4a44d"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "slashes",
+   "why": "JS does not escape '/'",
+   "html": "<p>path/to/thing</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0070",
+    "U+0061",
+    "U+0074",
+    "U+0068",
+    "U+002F",
+    "U+0074",
+    "U+006F",
+    "U+002F",
+    "U+0074",
+    "U+0068",
+    "U+0069",
+    "U+006E",
+    "U+0067",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "a/b",
+   "expected_tokens": [
+    "path/to/thing"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0070",
+     "U+0061",
+     "U+0074",
+     "U+0068",
+     "U+002F",
+     "U+0074",
+     "U+006F",
+     "U+002F",
+     "U+0074",
+     "U+0068",
+     "U+0069",
+     "U+006E",
+     "U+0067"
+    ]
+   ],
+   "expected_custom_id": "e150ad0d7b2ede038ba37b5d432e1b58",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "path/to/thing"
+     ],
+     "custom_id": "e150ad0d7b2ede038ba37b5d432e1b58"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "path/to/thing"
+     ],
+     "custom_id": "e150ad0d7b2ede038ba37b5d432e1b58"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "category-empty",
+   "why": "no category",
+   "html": "<p>Hello</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0048",
+    "U+0065",
+    "U+006C",
+    "U+006C",
+    "U+006F",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "",
+   "expected_tokens": [
+    "Hello"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0048",
+     "U+0065",
+     "U+006C",
+     "U+006C",
+     "U+006F"
+    ]
+   ],
+   "expected_custom_id": "0ab6be3c04761e7643cb965ae2e9de2e",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Hello"
+     ],
+     "custom_id": "0ab6be3c04761e7643cb965ae2e9de2e"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Hello"
+     ],
+     "custom_id": "0ab6be3c04761e7643cb965ae2e9de2e"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "category-sentinel",
+   "why": "the reserved '__uncategorized__' sentinel passed AS a category",
+   "html": "<p>Hello</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0048",
+    "U+0065",
+    "U+006C",
+    "U+006C",
+    "U+006F",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "__uncategorized__",
+   "expected_tokens": [
+    "Hello"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0048",
+     "U+0065",
+     "U+006C",
+     "U+006C",
+     "U+006F"
+    ]
+   ],
+   "expected_custom_id": "0ab6be3c04761e7643cb965ae2e9de2e",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Hello"
+     ],
+     "custom_id": "0ab6be3c04761e7643cb965ae2e9de2e"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Hello"
+     ],
+     "custom_id": "0ab6be3c04761e7643cb965ae2e9de2e"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "multi-token",
+   "why": "several text nodes — arity is identity",
+   "html": "<p>One</p><p>Two</p><p>Three</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+004F",
+    "U+006E",
+    "U+0065",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E",
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0054",
+    "U+0077",
+    "U+006F",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E",
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0054",
+    "U+0068",
+    "U+0072",
+    "U+0065",
+    "U+0065",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "One",
+    "Two",
+    "Three"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+004F",
+     "U+006E",
+     "U+0065"
+    ],
+    [
+     "U+0054",
+     "U+0077",
+     "U+006F"
+    ],
+    [
+     "U+0054",
+     "U+0068",
+     "U+0072",
+     "U+0065",
+     "U+0065"
+    ]
+   ],
+   "expected_custom_id": "99fcd7e1cdbca769b85b34a802623c3a",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "One",
+      "Two",
+      "Three"
+     ],
+     "custom_id": "99fcd7e1cdbca769b85b34a802623c3a"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "One",
+      "Two",
+      "Three"
+     ],
+     "custom_id": "99fcd7e1cdbca769b85b34a802623c3a"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true
+  },
+  {
+   "id": "feff-in-text",
+   "why": "U+FEFF IS a member of TOK-2's collapse set, so it collapses like a space and this yields the SAME id as the plain-space row. Specified by spec 8.0.1 as 'a member that POSIX classes miss' — Ruby's [[:space:]] and PCRE \\s with /u both reject it, so a POSIX-class implementation under-collapses and splits this id.",
+   "html": "<p>A﻿long   description</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0041",
+    "U+FEFF",
+    "U+006C",
+    "U+006F",
+    "U+006E",
+    "U+0067",
+    "U+0020",
+    "U+0020",
+    "U+0020",
+    "U+0064",
+    "U+0065",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+0069",
+    "U+006F",
+    "U+006E",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "A long description"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0041",
+     "U+0020",
+     "U+006C",
+     "U+006F",
+     "U+006E",
+     "U+0067",
+     "U+0020",
+     "U+0064",
+     "U+0065",
+     "U+0073",
+     "U+0063",
+     "U+0072",
+     "U+0069",
+     "U+0070",
+     "U+0074",
+     "U+0069",
+     "U+006F",
+     "U+006E"
+    ]
+   ],
+   "expected_custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "A long description"
+     ],
+     "custom_id": "5e91dc83aa1cb4c3d1146a7c0e00d1f4"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true,
+   "added_by": "spec 8.0.1, specified by Langsys, derived here as the fixture owner"
+  },
+  {
+   "id": "nel-in-text",
+   "why": "U+0085 (NEL) is NOT a member and must survive. Named in spec 8.0.1 as one of two characters implementations collapsed wrongly. Id therefore differs from the plain-space row, which is the point — an implementation that collapses it agrees with us here by accident and on nothing else.",
+   "html": "<p>Along   description</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0041",
+    "U+0085",
+    "U+006C",
+    "U+006F",
+    "U+006E",
+    "U+0067",
+    "U+0020",
+    "U+0020",
+    "U+0020",
+    "U+0064",
+    "U+0065",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+0069",
+    "U+006F",
+    "U+006E",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Along description"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0041",
+     "U+0085",
+     "U+006C",
+     "U+006F",
+     "U+006E",
+     "U+0067",
+     "U+0020",
+     "U+0064",
+     "U+0065",
+     "U+0073",
+     "U+0063",
+     "U+0072",
+     "U+0069",
+     "U+0070",
+     "U+0074",
+     "U+0069",
+     "U+006F",
+     "U+006E"
+    ]
+   ],
+   "expected_custom_id": "93aa3f46f06d15498823c09e3124eea0",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Along description"
+     ],
+     "custom_id": "93aa3f46f06d15498823c09e3124eea0"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Along description"
+     ],
+     "custom_id": "93aa3f46f06d15498823c09e3124eea0"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true,
+   "added_by": "spec 8.0.1, specified by Langsys, derived here as the fixture owner"
+  },
+  {
+   "id": "mvs-in-text",
+   "why": "U+180E (Mongolian vowel separator) is NOT a member and must survive. Unicode 6.3 removed it from White_Space, which is why CPython does not treat it as whitespace and Python's divergence from JS is two characters rather than three.",
+   "html": "<p>A᠎long   description</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0041",
+    "U+180E",
+    "U+006C",
+    "U+006F",
+    "U+006E",
+    "U+0067",
+    "U+0020",
+    "U+0020",
+    "U+0020",
+    "U+0064",
+    "U+0065",
+    "U+0073",
+    "U+0063",
+    "U+0072",
+    "U+0069",
+    "U+0070",
+    "U+0074",
+    "U+0069",
+    "U+006F",
+    "U+006E",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "A᠎long description"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0041",
+     "U+180E",
+     "U+006C",
+     "U+006F",
+     "U+006E",
+     "U+0067",
+     "U+0020",
+     "U+0064",
+     "U+0065",
+     "U+0073",
+     "U+0063",
+     "U+0072",
+     "U+0069",
+     "U+0070",
+     "U+0074",
+     "U+0069",
+     "U+006F",
+     "U+006E"
+    ]
+   ],
+   "expected_custom_id": "24f68cd8bb9eee4df9f7043de7629612",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "A᠎long description"
+     ],
+     "custom_id": "24f68cd8bb9eee4df9f7043de7629612"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "A᠎long description"
+     ],
+     "custom_id": "24f68cd8bb9eee4df9f7043de7629612"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true,
+   "added_by": "spec 8.0.1, specified by Langsys, derived here as the fixture owner"
+  },
+  {
+   "id": "percent-name-in-markup",
+   "why": "TOK-5: %name% seen in captured markup normalises to {name} BEFORE the id is derived, so this yields the same id as markup authored '<p>Hello {name}</p>'. Accepting both forms at interpolation time is not enough: a path that tokenizes the raw markup keeps %name% and mints a different id for identical content.",
+   "html": "<p>Hello %name%</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0048",
+    "U+0065",
+    "U+006C",
+    "U+006C",
+    "U+006F",
+    "U+0020",
+    "U+0025",
+    "U+006E",
+    "U+0061",
+    "U+006D",
+    "U+0065",
+    "U+0025",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Hello {name}"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0048",
+     "U+0065",
+     "U+006C",
+     "U+006C",
+     "U+006F",
+     "U+0020",
+     "U+007B",
+     "U+006E",
+     "U+0061",
+     "U+006D",
+     "U+0065",
+     "U+007D"
+    ]
+   ],
+   "expected_custom_id": "1e4b462c4bb74ea757c628548af57d97",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Hello {name}"
+     ],
+     "custom_id": "1e4b462c4bb74ea757c628548af57d97"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Hello {name}"
+     ],
+     "custom_id": "1e4b462c4bb74ea757c628548af57d97"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true,
+   "added_by": "spec 8.0.1, specified by Langsys, derived here as the fixture owner"
+  }
+ ]
 }

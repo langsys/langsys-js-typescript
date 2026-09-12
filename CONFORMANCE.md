@@ -4,10 +4,10 @@
 |---|---|
 | **SDK** | `langsys-js-typescript` (browser reference implementation) |
 | **Profiles** | `all`, `browser` |
-| **specVersion** | 8 (published) |
-| **Spec revision read** | langsys `c6b08d11`, `docs/sdk-spec.mdx` blob `042dedb5b533499a277b88fc9e2ee39ef30a0b89` (specVersion 8, published). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree c6b08d11 docs/sdk-spec.mdx`. Every rule profiled `all` or `browser`, plus SRV-4's browser-core clause, is audited against this blob |
+| **specVersion** | 8.0.1 (a correction to v8, not a new release) |
+| **Spec revision read** | langsys `63df13c7`, `docs/sdk-spec.mdx` blob `8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c` (specVersion 8.0.1). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 63df13c7 docs/sdk-spec.mdx` at this write — 8.0.1's conformance guidance requires the revision to be re-derived on every write rather than carried, which is how the previous header came to cite a four-revision-stale blob. Every rule profiled `all` or `browser`, plus SRV-4's browser-core clause, is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 507 tests in 30 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 517 tests in 30 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -299,12 +299,12 @@ bodies** rather than against the author's summary of them. TOK-1..5 and MARK-1/2
 | MARK-1 (content-block stamp) | implemented | `translate` — the stamp is compared against an id **re-derived by running the tokenizer over the same subtree**, not read back from the attribute just written, which is what MARK-1's test asks for and would otherwise prove only that a write happened. Mutations: dropping the stamp and stamping a constant each red four |
 | MARK-2 (phrase stamp, both spellings read) | implemented | `content-block-identity` — behavioural and cross-module: the attribute `Phrase` exports is the one the tokenizer skips on, and PHP's spelling is accepted alongside it |
 | TOK-3 (27 attributes, order normative) | implemented | `tokenizer-convergence` + `pure-subpath` — the 27 verified against `langsys-php/src/Html/HtmlParser.php` directly, appended never inserted, with a case asserting list order beats document order. Langsys's point is the sharp one: the same set in a different order agrees on every single-attribute element and diverges only where nobody looks |
-| TOK-1 (skip script/style/template **and noscript**) | implemented | Re-rowed against the published blob `042dedb5`. Exclusion set compared element-by-element with the rule: `['script','style','template','noscript']`, matching. TOK-1 REVERSED on `noscript` and now excludes it. `tokenizer-convergence` asserts exclusion under BOTH parser models — the markup shape happy-dom and libxml2 give, and the raw-text shape Chromium and parse5 give — plus **TOK-1's own specified test shape**: the same sentence inside `<script>`, `<style>` and `<noscript>` and once in ordinary markup, in ONE document, with exactly one phrase produced. That form is stronger than the per-element cases this file had first — separate cases with different content pass even if the walker skipped the ordinary copy and harvested a skipped one, because no single case sees both. Mutation-checked against over-exclusion (adding `p`/`div`/`span` reds five). Red-first: both noscript assertions failed against the previous list. `<template>` remains named as intent and is not a vector |
-| TOK-2 (U+00A0 collapses) | implemented | `tokenizer-convergence` — satisfied with no code: JavaScript's `\s` already matches U+00A0. Pinned anyway, because the rule now warns that a hand-written character class would silently drop it. Finding credited to this lane in the rule body |
+| TOK-1 (the exclusion set) | **PARTIAL at 8.0.1 — `<math>` is NOT excluded** | The v8 half holds: exclusion set compared element-by-element, `['script','style','template','noscript']`, and `tokenizer-convergence` asserts it under BOTH parser models — the markup shape happy-dom and libxml2 give and the raw-text shape Chromium and parse5 give — plus TOK-1's own specified shape, the same sentence inside `<script>`, `<style>` and `<noscript>` and once in ordinary markup in ONE document, with exactly one phrase produced. That form is stronger than per-element cases, which pass even if the walker skipped the ordinary copy and harvested a skipped one. Over-exclusion mutation-checked (adding `p`/`div`/`span` reds five). **8.0.1 adds `<math>` and this SDK does not implement it — measured, not inferred:** `<p>Area <math><mi>x</mi><mo>+</mo><mn>2</mn></math> units</p>` tokenizes to `['Area','x','+','2','units']` where the rule requires `['Area','units']`. So MathML notation is being registered as translatable phrases and sent for machine translation, which is the `<script>`/`<style>` failure mode in a new element, and translating an operator corrupts the notation rather than localising it. **Not fixed here: adding `math` to the set changes `custom_id` for every block containing one, so it is the operator's call, and it is reported rather than taken.** **`<svg>` is conformant on both of 8.0.1's behavioural clauses, measured:** an inline svg does not cause its parent's direct text to be dropped (`<p>Click <svg><path/></svg> here</p>` → `['Click','here']`) and svg `<text>` IS tokenized (`<p>Icon <svg><text>Label</text></svg> end</p>` → `['Icon','Label','end']`). No change needed, and worth recording as measured because the spec notes the structural reading of this rule regressed PHP |
+| TOK-2 (the collapse set) | implemented | `tokenizer-convergence` + `canonicalization-agreement` — satisfied with no code: JavaScript's `\s` IS the set 8.0.1 enumerates, this SDK being named the identity authority for it. Verified per codepoint rather than assumed: U+00A0, U+2028, U+000B, U+000C and **U+FEFF** match `\s` and collapse; **U+0085, U+180E**, U+200B and U+2060 do not match and survive — all nine agreeing with the enumeration. Narrowing the class to `[ \t\n\r]` reds 7; widening it to swallow U+0085/U+180E reds 2. Fixture rows `feff-in-text`, `nel-in-text`, `mvs-in-text` |
 | TOK-4 (attribute values collapse as text does) | implemented | `tokenizer-convergence` — one normaliser shared by both paths, so "same content, same id" holds by construction. Before: `<img alt="A long\n  description">` kept its newlines while the same sentence in a `<p>` collapsed |
-| TOK-5 (`{name}` with `%name%` accepted) | implemented | `tokenizer-convergence` + `interpolate` — `%name%` now resolves at RENDER, conditional on the key being supplied, so prose containing percent signs is untouched |
+| TOK-5 (`{name}` with `%name%` accepted) | implemented | `tokenizer-convergence` + `interpolate` + `canonicalization-agreement` — `%name%` resolves at RENDER, conditional on the key being supplied, so prose containing percent signs is untouched; and 8.0.1's capture clause holds, `<p>Hello %name%</p>` reaching the same id as `<p>Hello {name}</p>` (`1e4b462c…`). Removing the capture-time rewrite reds 3. Fixture row `percent-name-in-markup`. `findUnusedParamKeys` was corrected to accept both spellings for the same reason: the predicate and the renderer must agree on what a placeholder is |
 | Side-effect-free identity subpath | implemented | `pure-subpath` — bare Node under a trapping `globalThis`, import and every call clean for ESM and CJS, main entry as the positive control, export list pinned, and `/pure` proven to share function identity with the DOM path rather than re-implementing it. Now also carries `encodeRichPhrase` (the whole `<Phrase>` encoding, generic over the host's node type) and `findUnusedParamKeys`. No rule id was reported for this; it may be unruled |
-| `<Phrase>` key reproducible without a DOM | implemented | `rich-phrase-identity` — the encoder moved to `identity.ts` and `encodeRichText` is now a node-shape mapping over it, so there is one implementation of a string that IS the catalog key. Expectations are the PRE-REFACTOR values, measured on the old single-function encoder over 22 inputs and pasted as literals, so they can catch the refactor having moved a key. Mutants: post-order slot numbering reds 8, collapsing per text node instead of once over the assembled string reds 19. No rule id covers the `<Phrase>` encoding; `custom_id` rules do not apply to it, since it keys by string and never computes one |
+| `<Phrase>` key reproducible without a DOM | implemented | `rich-phrase-identity` — the encoder moved to `identity.ts` and `encodeRichText` is now a node-shape mapping over it, so there is one implementation of a string that IS the catalog key. Expectations are the PRE-REFACTOR values, measured on the old single-function encoder over 22 inputs and pasted as literals, so they can catch the refactor having moved a key. Mutants: post-order slot numbering reds 8, collapsing per text node instead of once over the assembled string reds 19 (a per-node collapse WITHOUT the trim is an equivalent mutant, 0 red, and is recorded as one — the final collapse runs over the whole assembly, so an earlier one cannot change its output). Expectations are measured under happy-dom and the server lane's under parse5, neither being Chromium; audited as immaterial for these 22 inputs, which contain no raw-text element, no foster-parenting context and no implied-close construct — the three families where parse models disagree. The JS-family half of that gap is now CLOSED by the JS Server lane (`8105faab`): Chromium 153 against parse5 over raw-text, foster-parenting and implied-close families, 9 agree / 0 diverge, with a control proving Chromium demonstrably transformed the input so the agreement is structural. libxml2 remains unmeasured and is the PHP lane's to answer. No rule id covers the `<Phrase>` encoding; `custom_id` rules do not apply to it, since it keys by string and never computes one |
 
 SSR-1..3 keep their ids and bodies; Langsys reports only their families-table row moved from
 `server (JS)` to `browser`, which does not change what this SDK owes.
@@ -386,21 +386,46 @@ its test were deleted. The fixture is re-vendored at the corrected blob and the 
 its own terms. A self-retiring exception is worth its extra test: the alternative is an override
 nobody revisits, quietly asserting a divergence that has stopped existing.
 
-### Two measured divergences not yet in the published rows
+### The two unruled divergences: ruled by 8.0.1, and now resolved on both sides
 
-Recorded so they are not lost while the spec rules on them. Both were measured by the Reviewer.
+Retained as a record rather than deleted, because the shape of the resolution is the useful part.
 
-- **The whitespace collapse set is not agreed.** U+FEFF: this SDK drops it, PHP keeps it.
-  U+0085 and U+180E: PHP collapses them, this SDK keeps them. Both agree on U+200B and U+2060
-  (kept) and U+2007 (collapsed). So "collapse whitespace" currently means two different sets,
-  and TOK-2's `\s` framing does not pin it — Langsys is defining the set explicitly.
-- **`%name%` inside markup.** This SDK normalises at capture, producing the token
-  `Hello {name}` (id `1e4b462c…`); PHP keeps `Hello %name%` (id `bb74011a…`). A cross-SDK id
-  divergence, and not one the canonicalization fixture covers. **No row added yet, deliberately:**
-  that file's expectations are "what this SDK produces, which the spec agrees with", and the
-  spec has not ruled which form is canonical. A row now would encode a guess as the expectation,
-  which is the one thing that file must not do.
+Both were recorded here as measured-but-unruled, with **no fixture row added deliberately** — that
+file's expectations are "what this SDK produces, which the spec agrees with", and with the spec
+silent a row would have encoded a guess as the expectation. 8.0.1 has now ruled, and in both cases
+it ruled for this SDK's behaviour:
 
+- **The whitespace collapse set** is enumerated as exactly what JavaScript's `\s` matches, this
+  SDK being named the identity authority. U+FEFF is a member (collapses); U+0085 and U+180E are
+  named as non-members that must survive. Previously: this SDK dropped U+FEFF and PHP kept it;
+  PHP collapsed U+0085 and U+180E and this SDK kept them. **This SDK was conformant on all three
+  before the rule existed** — `\s` already matched that set — and the rule now warns that a
+  hand-written character class would silently drop U+FEFF.
+- **`%name%` inside markup** normalises to `{name}` BEFORE the id is derived. Previously: this SDK
+  normalised at capture (`Hello {name}`, `1e4b462c…`) and PHP tokenized the raw markup
+  (`Hello %name%`, `bb74011a…`). The spec quotes both ids and rules for the normalising path.
+
+**Four rows were then specified by Langsys and derived here as the fixture's owner** — the CID-3
+precedent for who specifies versus who derives. Inputs and expected behaviour from the spec, ids
+from this SDK's tokenizer: `feff-in-text`, `nel-in-text`, `mvs-in-text`, `percent-name-in-markup`.
+
+**Re-measuring for those four found that all six previously-recorded divergences are also gone.**
+PHP fixed the collapse set and the code-bearing-subtree exclusion at `e28972c`, so the vector file
+now records **23 rows, 23 agree, 0 diverge** where it recorded 13 of 19. The stale half of that is
+worth naming: this file and the vector file had both been asserting divergences that had stopped
+existing, and nothing in either would have noticed — the vector file's self-cleaning test checks
+that a divergence carries a *note*, not that it is still true. Re-measuring is the only thing that
+catches it, which is why the lane measurements are now re-derived on every write alongside the
+spec revision.
+
+**The all-agree result was positive-controlled before being believed**, because 23-of-23 is exactly
+what a broken comparison produces. Three controls, recorded in the vector file under
+`harness_control`: `<p>a\u000Bb</p>` and `<p>a\u000Cb</p>` both DIVERGE — libxml2 drops VT and FF
+from DOM text where a JS DOM keeps them and collapses them to a space, independently reproducing
+the parser-level split 8.0.1 names — and feeding the two sides different input DIVERGES, proving the
+comparison is not structurally returning agreement. Those two characters are **not** fixture rows:
+they diverge below the tokenizer, so no implementation can make them agree, and a row whose
+expectation can never be met would sit here failing forever and teach a reader to ignore failures.
 
 ## Declared carve-out (GATE-3)
 

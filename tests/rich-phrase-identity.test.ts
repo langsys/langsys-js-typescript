@@ -24,6 +24,33 @@ import { encodeRichText } from '../src/richtext.js';
  * old implementation and the new one, so they can catch the refactor having
  * changed a key. Asserting the new code against the new code would have proved
  * only that it agrees with itself.
+ *
+ * PROVENANCE, and the limit of it: these were measured under happy-dom, and the
+ * JS Server lane's matching assertions are measured under parse5. Neither is
+ * Chromium, and the two models demonstrably disagree — `<noscript>` parses as raw
+ * text under Chromium and parse5 and as markup under happy-dom and PHP's
+ * libxml2, which produced different ids for identical source until the element
+ * was excluded outright.
+ *
+ * Audited rather than assumed: every input below is text, comments, or inline
+ * elements (`p`, `br`, `span`, `a`, `b`, `i`, `u`, `em`, `strong`), and none
+ * exercises a family where parse models actually differ — no raw-text element, no
+ * foster-parenting context inside `table`, no implied-close construct. So the
+ * happy-dom provenance is immaterial for THIS set.
+ *
+ * It is not immaterial in general, and this file does not cover it. That gap has
+ * since been CLOSED by the JS Server lane (`8105faab`), which had a browser left
+ * over from the noscript measurement: Chromium 153.0.8010.12 against parse5 over
+ * the three families — raw-text (`textarea`, `title`), foster parenting
+ * (non-table content inside `<table>`), implied close (`<p>` after `<p>`, bare
+ * `<li>`, bare `<option>`) — 9 agree, 0 diverge, with a control proving Chromium
+ * demonstrably transformed the input so the agreement is structural rather than
+ * two parsers both declining to act.
+ *
+ * What remains open is libxml2, which is the PHP lane's to answer: PHP has no
+ * scripting flag and already diverges on U+2028, and whether it foster-parents
+ * identically is unmeasured. If it does not, every `<Phrase>` containing a stray
+ * element inside a table splits, and nothing errors.
  */
 
 function domPhrase(html: string) {

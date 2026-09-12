@@ -400,6 +400,15 @@ describe('findUnusedParamKeys agrees with what interpolate actually resolves', (
         expect(findUnusedParamKeys(['Hi %a.b%'], { 'a.b': 'x' })).toEqual(['a.b']);
     });
 
+    it('but a dotted key in BRACE form is still accepted', () => {
+        // The control on the other side of the gate, from the JS Server lane.
+        // Restricting the PERCENT spelling to identifiers must not turn into
+        // "reject every dotted key" — that is the same error pointing the other
+        // way, and it would report a key that resolves perfectly as unused.
+        expect(interpolate('Hi {a.b}', { 'a.b': 'X' }, 'en')).toBe('Hi X');
+        expect(findUnusedParamKeys(['Hi {a.b}'], { 'a.b': 'X' })).toEqual([]);
+    });
+
     it('does not treat a percent run in prose as a placeholder', () => {
         expect(findUnusedParamKeys(['Save 20% to 30%'], { off: 1 })).toEqual(['off']);
     });
