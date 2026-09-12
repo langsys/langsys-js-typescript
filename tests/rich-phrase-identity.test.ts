@@ -63,8 +63,9 @@ import { encodeRichText } from '../src/richtext.js';
  *
  * ONE LIMIT ON THIS FILE'S OWN HARNESS, because it bears on anything added here:
  * happy-dom builds a raw-text body containing markup the LIBXML2 way, not the
- * Chromium/parse5 way — measured, tokens `['a','b','Keep']` where the JS family
- * produces `['Keep','a <b>b</b>']`, and the block id matches langsys-php's exactly.
+ * Chromium/parse5 way — measured on `<title>a <b>b</b></title><p>Keep</p>`, tokens
+ * `['a','b','Keep']` where the JS family produces `['a <b>b</b>','Keep']` for that same
+ * input, and the block id matches langsys-php's exactly.
  * So a vector added here with a `<textarea>` or `<title>` in it would agree with
  * PHP for the WRONG REASON and could never show the split. Same class as the
  * `<noscript>` artefact: the environment's parser is part of the measurement, and
