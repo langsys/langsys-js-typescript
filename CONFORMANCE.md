@@ -4,10 +4,10 @@
 |---|---|
 | **SDK** | `langsys-js-typescript` (browser reference implementation) |
 | **Profiles** | `all`, `browser` |
-| **specVersion** | 7 (read at 7.0.1) |
+| **specVersion** | 8 (published) |
 | **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `45cdddf8e9136a85143dc5a5169d59b3355d7dc1`, re-derived at write time with `git -C ~/Documents/dev/langsys2 ls-tree origin/main docs/sdk-spec.mdx`. Every rule profiled `all` or `browser` is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 424 tests in 29 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 425 tests in 29 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -250,11 +250,15 @@ the two answers differ.
 
 ## New spec families — read at the pushed blob
 
-Read at langsys `1493dea0`, `docs/sdk-spec.mdx` blob
-`318b594173c7470fbcfcf1eaec19ff9e62bec517` — **verified reachable and matching before use**
-(`git ls-tree 1493dea0 docs/sdk-spec.mdx`), not taken from the report. Supersedes `593abecd`
-read earlier this round, which itself superseded the `57c8a498` draft carried as
-reported-and-unread. Three blobs in one round: re-derive, never carry forward.
+Read at langsys `c6b08d11`, `docs/sdk-spec.mdx` blob
+`042dedb5b533499a277b88fc9e2ee39ef30a0b89` — **specVersion 8, PUBLISHED**, verified reachable
+and matching before use (`git ls-tree c6b08d11 docs/sdk-spec.mdx`), not taken from the report.
+
+Fifth blob this round (`57c8a498` draft → `593abecd` → `318b5941` → `b657b490` → `042dedb5`).
+Rather than assume only the rules named in the hand-off had moved, the rule titles and the
+Profiles lines for every TOK/MARK/SRV/CID family were diffed between `b657b490` and the
+published blob: titles identical, profiles unchanged. Re-derive, never carry forward — and
+diff rather than trust the summary of what changed.
 
 Carrying that one as unread rather than asserting it turned out to matter. Langsys has since
 said they once sent the Reviewer a blob hash they had not derived, and were caught. A hash
@@ -271,7 +275,7 @@ bodies** rather than against the author's summary of them. TOK-1..5 and MARK-1/2
 | MARK-1 (content-block stamp) | implemented | `translate` — the stamp is compared against an id **re-derived by running the tokenizer over the same subtree**, not read back from the attribute just written, which is what MARK-1's test asks for and would otherwise prove only that a write happened. Mutations: dropping the stamp and stamping a constant each red four |
 | MARK-2 (phrase stamp, both spellings read) | implemented | `content-block-identity` — behavioural and cross-module: the attribute `Phrase` exports is the one the tokenizer skips on, and PHP's spelling is accepted alongside it |
 | TOK-3 (27 attributes, order normative) | implemented | `tokenizer-convergence` + `pure-subpath` — the 27 verified against `langsys-php/src/Html/HtmlParser.php` directly, appended never inserted, with a case asserting list order beats document order. Langsys's point is the sharp one: the same set in a different order agrees on every single-attribute element and diverges only where nobody looks |
-| TOK-1 (skip script/style/template **and noscript**) | implemented | Re-rowed against blob `b657b490` (langsys `483f98fb`), verified with `ls-tree`. TOK-1 REVERSED on `noscript` and now excludes it. `tokenizer-convergence` asserts exclusion under BOTH parser models — the markup shape happy-dom and libxml2 give, and the raw-text shape Chromium and parse5 give — plus an ordinary-markup control, which the rule names as the whole test because over-excluding fails identically from outside. Red-first: both noscript assertions failed against the previous list. `<template>` remains named as intent and is not a vector |
+| TOK-1 (skip script/style/template **and noscript**) | implemented | Re-rowed against the published blob `042dedb5`. Exclusion set compared element-by-element with the rule: `['script','style','template','noscript']`, matching. TOK-1 REVERSED on `noscript` and now excludes it. `tokenizer-convergence` asserts exclusion under BOTH parser models — the markup shape happy-dom and libxml2 give, and the raw-text shape Chromium and parse5 give — plus **TOK-1's own specified test shape**: the same sentence inside `<script>`, `<style>` and `<noscript>` and once in ordinary markup, in ONE document, with exactly one phrase produced. That form is stronger than the per-element cases this file had first — separate cases with different content pass even if the walker skipped the ordinary copy and harvested a skipped one, because no single case sees both. Mutation-checked against over-exclusion (adding `p`/`div`/`span` reds five). Red-first: both noscript assertions failed against the previous list. `<template>` remains named as intent and is not a vector |
 | TOK-2 (U+00A0 collapses) | implemented, free in this runtime | `tokenizer-convergence` — satisfied with no code: JavaScript's `\s` already matches U+00A0. Pinned anyway, because the rule now warns that a hand-written character class would silently drop it. Finding credited to this lane in the rule body |
 | TOK-4 (attribute values collapse as text does) | implemented, text unread | `tokenizer-convergence` — one normaliser shared by both paths, so "same content, same id" holds by construction. Before: `<img alt="A long\n  description">` kept its newlines while the same sentence in a `<p>` collapsed |
 | TOK-5 (`{name}` with `%name%` accepted) | implemented, text unread | `tokenizer-convergence` + `interpolate` — `%name%` now resolves at RENDER, conditional on the key being supplied, so prose containing percent signs is untouched |

@@ -92,6 +92,30 @@ describe('(a) code-bearing subtrees are not prose', () => {
         );
     });
 
+    it('TOK-1\u2019s own test shape: one sentence in all four positions yields exactly one phrase', () => {
+        // The published rule specifies this form, and it is stronger than the
+        // per-element tests above. THE SAME SENTENCE sits inside <script>,
+        // <style> and <noscript> and once in ordinary markup, in ONE document,
+        // and exactly one phrase must come out — the ordinary one.
+        //
+        // Why that beats testing each element separately, which is what this
+        // file did first: separate cases with different content pass even if the
+        // walker skipped the ordinary copy and harvested a skipped one, because
+        // no single case ever sees both. Identical content in one document makes
+        // the count itself the assertion, so "exactly one" can only be satisfied
+        // by skipping the right three and keeping the right one.
+        const SENTENCE = 'Enable JavaScript';
+        const tokens = tokensOf(
+            `<script>${SENTENCE}</script>` +
+                `<style>${SENTENCE}</style>` +
+                `<noscript>${SENTENCE}</noscript>` +
+                `<p>${SENTENCE}</p>`
+        );
+
+        expect(tokens).toEqual([SENTENCE]);
+        expect(tokens).toHaveLength(1);
+    });
+
     it('control: ordinary markup is still tokenized — the exclusion is four tags, not a mood', () => {
         // The rule names this as the whole test. Excluding too much is the
         // failure mode on the other side of TOK-1, and it looks identical from
