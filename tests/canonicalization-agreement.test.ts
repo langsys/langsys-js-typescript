@@ -105,8 +105,12 @@ describe('the file is internally consistent about who agrees', () => {
             }
         }
         // Guard: if the rows or their measurements vanish, the loop above passes
-        // silently. Two lanes x 23 rows, minus the server which has no minter.
-        expect(checked).toBeGreaterThanOrEqual(doc.agreement.rows * 2);
+        // silently. Anchored to the ROWS, not to `doc.agreement.rows` — a header
+        // the file supplies cannot be the guard on a loop over that same file, and
+        // `cases: []` with `rows: 0` satisfied the header form while asserting
+        // nothing. Two measuring lanes per row; the server has no minter.
+        expect(doc.cases.length).toBeGreaterThanOrEqual(20);
+        expect(checked).toBe(doc.cases.length * 2);
     });
 
     it('a row that does NOT agree carries a note naming the lane', () => {
@@ -137,6 +141,16 @@ describe('the file is internally consistent about who agrees', () => {
             expect(row!.agree, `${entry.row} is listed as resolved yet marked divergent`).toBe(true);
             // A "resolution" where the id did not move is a bookkeeping error.
             expect(entry.was, `${entry.row} records a resolution with no change`).not.toBe(entry.now);
+            // And `now` has to be the id the row actually expects, or the record
+            // is a stale number that agrees with nothing. Without this the block
+            // checked only that a resolution EXISTED: setting `now` to all zeroes
+            // left the suite green, which is the bookkeeping it claims to catch.
+            expect(entry.now, `${entry.row}: resolved 'now' must be the row's expected id`).toBe(
+                row!.expected_custom_id
+            );
+            expect(entry.was, `${entry.row}: resolved 'was' must differ from the expected id`).not.toBe(
+                row!.expected_custom_id
+            );
         }
     });
 });

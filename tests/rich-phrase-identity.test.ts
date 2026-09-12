@@ -47,10 +47,19 @@ import { encodeRichText } from '../src/richtext.js';
  * demonstrably transformed the input so the agreement is structural rather than
  * two parsers both declining to act.
  *
- * What remains open is libxml2, which is the PHP lane's to answer: PHP has no
- * scripting flag and already diverges on U+2028, and whether it foster-parents
- * identically is unmeasured. If it does not, every `<Phrase>` containing a stray
- * element inside a table splits, and nothing errors.
+ * libxml2 is now measured too, by the PHP lane (`db4941a`): 3 of 7 against the JS
+ * family's values. Implied close agrees; raw text and foster parenting do not,
+ * because the tokenizer faithfully encodes a different tree and no canonicalization
+ * rule reaches that. So every `<Phrase>` containing a stray element or loose text
+ * inside a `<table>`, or markup inside a `<textarea>`/`<title>`, carries a different
+ * key in a libxml2 SDK — and nothing errors.
+ *
+ * The audit above still holds: none of the 22 inputs contains a raw-text element, a
+ * foster-parenting context or an implied-close construct, so the provenance is
+ * immaterial for THEM under all three models rather than just two. The rule for
+ * anything added later is that well-formed markup is portable — all seven vectors
+ * agree once the source needs no repair — and the splits appear only on markup a
+ * browser has to fix up.
  */
 
 function domPhrase(html: string) {
@@ -74,14 +83,14 @@ describe('the refactor did not move a single key', () => {
         ['Hello %name%, you have <b>%count%</b> left', 'Hello {name}, you have {m0o}{count}{m0c} left', 1],
         ['Hello {name} and <b>{count}</b>', 'Hello {name} and {m0o}{count}{m0c}', 1],
         ['A long\n     description <b>with\n\tmarkup</b>', 'A long description {m0o}with markup{m0c}', 1],
-        ['A long   description', 'A long description', 0],
+        ['A\u00a0long   description', 'A long description', 0],
         ['a<span></span>b', 'a{m0o}{m0c}b', 1],
         ['   \n  ', '', 0],
         ['   <b>  x  </b>   ', '{m0o} x {m0c}', 1],
         ['<strong>Only</strong>', '{m0o}Only{m0c}', 1],
         ['line<br>break', 'line{m0o}{m0c}break', 1],
         ['<span class="svelte-a1b2c3">Scoped</span> text', '{m0o}Scoped{m0c} text', 1],
-        ['a b <b>c d</b>', 'a b {m0o}c d{m0c}', 1],
+        ['a\u2028b <b>c\u2029d</b>', 'a b {m0o}c d{m0c}', 1],
         ['<b>1<i>2</i>3</b><u>4</u>', '{m0o}1{m1o}2{m1c}3{m0c}{m2o}4{m2c}', 3],
         ['<a href="/p" title="T">link</a>', '{m0o}link{m0c}', 1],
     ])('%j', (html, phrase, slotCount) => {

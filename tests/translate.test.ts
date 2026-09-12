@@ -327,11 +327,19 @@ describe('TOK-1 at 8.0.1 — svg text translates in place, geometry survives', (
      * geometry survives."
      *
      * This is the render half, and it needs a real render rather than a token
-     * comparison — the failure it guards against is a writer that sets
-     * `textContent` or `innerHTML` on the nearest element, which produces correct
-     * TOKENS and a destroyed drawing. The same defect class as the single-token
-     * `innerText` path above, which flattened the subtree while agreeing about
-     * every string in it.
+     * comparison — the failure it guards against is a writer that flattens a
+     * subtree while producing correct TOKENS. Same defect class as the
+     * single-token `innerText` path above, which destroyed markup while agreeing
+     * about every string in it.
+     *
+     * BE PRECISE ABOUT WHICH MUTANT EACH HALF CATCHES, measured by the Reviewer:
+     * a walker writing `textContent` on the NEAREST element reds the inline-icon
+     * test but NOT the standalone one — `<path>` is a sibling of `<text>`, so
+     * writing on `<text>` is not destructive there. The standalone assertion is
+     * pinned against a HOST-level write (the single-token fast path writing the
+     * whole element), which reds 5. So "nearest element" is the right description
+     * of the walker mutant only; don't strengthen the standalone test against a
+     * mutant it was never the control for.
      */
     function withBlock(tokens: string[], translations: Record<string, string>, category = '') {
         const customId = generateCustomId(category, tokens);

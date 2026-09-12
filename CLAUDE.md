@@ -96,6 +96,7 @@ If templates aren't re-rendering after a locale change, the issue is almost alwa
 - `npm run dev` — tsup in watch mode.
 - `npm run typecheck` — `tsc --noEmit`. Should always be clean.
 - `npm run prepublishOnly` — runs build (called automatically by `npm publish`).
+- `npm run verify:spec` — checks that CONFORMANCE.md's **Spec revision read** row names the blob the commit it cites actually carries, by `git ls-tree` against a sibling `langsys2` checkout. Run it **before** writing that row: spec 8.0.1 requires the revision to be re-derived on every write rather than carried, and the header once shipped citing a four-revision-stale blob. Not in CI and not a vitest case — it needs the sibling repo, so there it could only skip, and a check that skips where it is automated is an assertion that cannot fail. Exits 2 rather than 0 when it cannot verify.
 - `npm run release` — interactive version bump + tag + GitHub release. **Does not publish to npm directly.** See "Releasing" below.
 
 The vanilla `example/index.html` can be opened directly in a browser after a build — it imports from `../dist/index.mjs`. Edit the placeholder `projectid` / `key` to hit the live API.
@@ -190,7 +191,7 @@ Target: ES2021. Module resolution: bundler. Strict TypeScript with `verbatimModu
 
 ## Testing approach
 
-`npm test` runs vitest over `tests/` — 30 files, 526 tests (`api`, `api-reachability`, `cache-scope`, `canonicalization-agreement`, `catalog-envelope`, `content-block-identity`, `custom-id`, `custom-id-cross-impl`, `discovery`, `ellipsis-warning`, `grant-lane`, `init-settle`, `interpolate`, `interpolation-cross-impl`, `langsys-app`, `locale`, `logger`, `no-private-fields`, `obs-notice`, `persist`, `pure-subpath`, `rich-phrase-identity`, `richtext`, `seed-catalog`, `tfunction-identity`, `tokenizer-convergence`, `tokenizer-cross-impl`, `translate`, `translations`, `write-lane`).
+`npm test` runs vitest over `tests/` — 31 files, 533 tests (`api`, `api-reachability`, `cache-scope`, `canonicalization-agreement`, `catalog-envelope`, `content-block-identity`, `custom-id`, `custom-id-cross-impl`, `discovery`, `ellipsis-warning`, `grant-lane`, `init-settle`, `interpolate`, `interpolation-cross-impl`, `langsys-app`, `locale`, `logger`, `no-private-fields`, `no-raw-invisibles`, `obs-notice`, `persist`, `pure-subpath`, `rich-phrase-identity`, `richtext`, `seed-catalog`, `tfunction-identity`, `tokenizer-convergence`, `tokenizer-cross-impl`, `translate`, `translations`, `write-lane`).
 
 `content-block-identity` pins `custom_id` **identity** rather than output: text-node arity, comment skipping, and attribute emission order. Those are wire values shared with every other SDK. It is mutation-checked — adding `clone.normalize()` to `tokenizeElement` turns three of its tests red. It also pins the **opposite** rule on the `<Phrase>` path: `encodeRichText` coalesces adjacent text nodes by design, because the phrase string is the key and a sentence must survive whole. The two paths are not meant to agree — the realistic bug is someone applying the content-block contract to `richtext.ts`. A failure there is a breaking change, not a stale expectation; never repin a literal to make it green. `npm run test:watch` for watch mode.
 

@@ -3,10 +3,10 @@
  "purpose": "Proof that the SDKs mint the SAME custom_id for the same content. Covers the TOK batch's canonicalization rules — the collapse set, attribute values collapsing like text nodes, the fixed twenty-seven attributes in order — and, from spec 8.0.1, the three collapse-set boundary characters and the %name%-at-capture rule, plus TOK-1's <math> exclusion and the <svg> behavioural clause it is paired with.",
  "how_to_row_against_it": "Tokenize the html field, compare to expected_tokens, then hash (category, tokens) and compare to expected_custom_id. Compare CODEPOINTS, not display strings: several cases differ only by U+00A0 or U+2028, which render identically to a space — the html_codepoints and expected_tokens_codepoints fields exist so a mismatch is readable instead of looking like two identical strings with two different hashes.",
  "expected_is": "What langsys-js-typescript produces. Every row matches spec blob 8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c (specVersion 8.0.1), and as of this write every row is also matched by langsys-php-sdk. It is not an invitation to change the expectation: the JS core is the identity authority per TOK-2, so a lane that disagrees records a divergence here and fixes its own side.",
- "spec_blob": "8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c (langsys 63df13c7, specVersion 8.0.1). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 63df13c7 docs/sdk-spec.mdx` at this write, not carried from the previous one — 8.0.1 requires the header revision to be re-derived every time.",
+ "spec_blob": "8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c (langsys 63df13c7, specVersion 8.0.1). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 63df13c7 docs/sdk-spec.mdx` at this write, not carried from the previous one — 8.0.1 requires the header revision to be re-derived every time. NOTE on what the spec supplies: it specifies the three collapse-set rows by CODEPOINT and expected BEHAVIOUR (member / non-member), and quotes ids only for TOK-5 (1e4b462c… normalised, bb74011a… raw). Its own sentence says 'specified by codepoint and expected id here', which overstates what it lists; the ids for U+FEFF, U+0085 and U+180E were DERIVED here with the core tokenizer, per the CID-3 split between who specifies and who derives.",
  "measured_at": {
   "langsys-js-typescript": "this repo, tokenizeElement + generateCustomId, re-measured at this write",
-  "langsys-php-sdk": "HtmlParser::extractPhrases + HtmlParser::generateCustomId at e28972c, PHP 8.3.19, re-measured at this write",
+  "langsys-php-sdk": "HtmlParser::extractPhrases + HtmlParser::generateCustomId, PHP 8.3.19, re-measured at this write. MEASURED AT TIP e28972c; the change that made it agree is 717673d (`git log -S`), which adds src/Html/Canonical.php — e28972c touches only CHANGELOG and CONFORMANCE. An earlier version of this field said PHP 'fixed' it at e28972c, conflating the tip a measurement was taken at with the commit that changed the behaviour; the Reviewer caught it.",
   "langsys2 (server)": "NO MINTER EXISTS. Searched by hashing call and by canonical-serialization signature, with the same searches positive-controlled against langsys-php-sdk (4 hits there, 0 here). The backend stores ids clients send; it does not compute them."
  },
  "harness_control": {
@@ -40,12 +40,12 @@
   "not_rows": "The VT/FF cases are deliberately NOT fixture rows. They diverge in the parser, not the tokenizer, so no implementation can make them agree; a row whose expectation can never be met would sit here failing forever and teach a reader to ignore failures. Spec 8.0.1 records the split in prose and specified four rows, which are the four added here."
  },
  "agreement": {
-  "rows": 25,
-  "agree": 25,
+  "rows": 26,
+  "agree": 26,
   "diverge": 0
  },
  "resolved_divergences": {
-  "note": "Six rows recorded a langsys-php-sdk divergence at the previous write and all six now agree, re-measured rather than assumed. PHP fixed the collapse set and the code-bearing-subtree exclusion. Kept as a record so the next reader does not have to wonder whether anyone checked.",
+  "note": "Six rows recorded a langsys-php-sdk divergence at the previous write and all six now agree, re-measured rather than assumed. The PHP fix is 717673d (collapse set and the code-bearing-subtree exclusion); the measurement was taken at tip e28972c. Kept as a record so the next reader does not have to wonder whether anyone checked.",
   "rows": [
    {
     "row": "nbsp-in-text",
@@ -89,7 +89,7 @@
   {
    "id": "nbsp-in-text",
    "why": "NBSP must collapse like any other whitespace (TOK-2)",
-   "html": "<p>A long   description</p>",
+   "html": "<p>A\u00a0long   description</p>",
    "html_codepoints": [
     "U+003C",
     "U+0070",
@@ -406,7 +406,7 @@
   {
    "id": "attr-nbsp",
    "why": "NBSP inside an attribute value",
-   "html": "<img alt=\"A long   description\">",
+   "html": "<img alt=\"A\u00a0long   description\">",
    "html_codepoints": [
     "U+003C",
     "U+0069",
@@ -1675,7 +1675,7 @@
   {
    "id": "line-separators",
    "why": "U+2028/U+2029 — the 3-flag json_encode case",
-   "html": "<p>line one line two para</p>",
+   "html": "<p>line one\u2028line two\u2029para</p>",
    "html_codepoints": [
     "U+003C",
     "U+0070",
@@ -2061,7 +2061,7 @@
   {
    "id": "feff-in-text",
    "why": "U+FEFF IS a member of TOK-2's collapse set, so it collapses like a space and this yields the SAME id as the plain-space row. Specified by spec 8.0.1 as 'a member that POSIX classes miss' — Ruby's [[:space:]] and PCRE \\s with /u both reject it, so a POSIX-class implementation under-collapses and splits this id.",
-   "html": "<p>A﻿long   description</p>",
+   "html": "<p>A\ufefflong   description</p>",
    "html_codepoints": [
     "U+003C",
     "U+0070",
@@ -2134,12 +2134,12 @@
     "langsys2 (server)": null
    },
    "agree": true,
-   "added_by": "spec 8.0.1, specified by Langsys, derived here as the fixture owner"
+   "added_by": "spec 8.0.1: input and expected behaviour specified by Langsys, id derived here as the fixture owner"
   },
   {
    "id": "nel-in-text",
    "why": "U+0085 (NEL) is NOT a member and must survive. Named in spec 8.0.1 as one of two characters implementations collapsed wrongly. Id therefore differs from the plain-space row, which is the point — an implementation that collapses it agrees with us here by accident and on nothing else.",
-   "html": "<p>Along   description</p>",
+   "html": "<p>A\u0085long   description</p>",
    "html_codepoints": [
     "U+003C",
     "U+0070",
@@ -2171,7 +2171,7 @@
    ],
    "category": "UI",
    "expected_tokens": [
-    "Along description"
+    "A\u0085long description"
    ],
    "expected_tokens_codepoints": [
     [
@@ -2199,25 +2199,25 @@
    "measured": {
     "langsys-js-typescript": {
      "tokens": [
-      "Along description"
+      "A\u0085long description"
      ],
      "custom_id": "93aa3f46f06d15498823c09e3124eea0"
     },
     "langsys-php-sdk": {
      "tokens": [
-      "Along description"
+      "A\u0085long description"
      ],
      "custom_id": "93aa3f46f06d15498823c09e3124eea0"
     },
     "langsys2 (server)": null
    },
    "agree": true,
-   "added_by": "spec 8.0.1, specified by Langsys, derived here as the fixture owner"
+   "added_by": "spec 8.0.1: input and expected behaviour specified by Langsys, id derived here as the fixture owner"
   },
   {
    "id": "mvs-in-text",
    "why": "U+180E (Mongolian vowel separator) is NOT a member and must survive. Unicode 6.3 removed it from White_Space, which is why CPython does not treat it as whitespace and Python's divergence from JS is two characters rather than three.",
-   "html": "<p>A᠎long   description</p>",
+   "html": "<p>A\u180elong   description</p>",
    "html_codepoints": [
     "U+003C",
     "U+0070",
@@ -2249,7 +2249,7 @@
    ],
    "category": "UI",
    "expected_tokens": [
-    "A᠎long description"
+    "A\u180elong description"
    ],
    "expected_tokens_codepoints": [
     [
@@ -2277,20 +2277,20 @@
    "measured": {
     "langsys-js-typescript": {
      "tokens": [
-      "A᠎long description"
+      "A\u180elong description"
      ],
      "custom_id": "24f68cd8bb9eee4df9f7043de7629612"
     },
     "langsys-php-sdk": {
      "tokens": [
-      "A᠎long description"
+      "A\u180elong description"
      ],
      "custom_id": "24f68cd8bb9eee4df9f7043de7629612"
     },
     "langsys2 (server)": null
    },
    "agree": true,
-   "added_by": "spec 8.0.1, specified by Langsys, derived here as the fixture owner"
+   "added_by": "spec 8.0.1: input and expected behaviour specified by Langsys, id derived here as the fixture owner"
   },
   {
    "id": "percent-name-in-markup",
@@ -2354,7 +2354,71 @@
     "langsys2 (server)": null
    },
    "agree": true,
-   "added_by": "spec 8.0.1, specified by Langsys, derived here as the fixture owner"
+   "added_by": "spec 8.0.1: input and expected behaviour specified by Langsys, id derived here as the fixture owner"
+  },
+  {
+   "id": "brace-name-in-markup",
+   "why": "TOK-5's counterpart, and the half that makes the rule cross-lane DATA rather than one SDK's assertion. `%name%` normalising at capture only means something if the brace-authored form reaches the SAME id — otherwise both paths could drift together and agree about nothing useful. The spec quotes both ids: 1e4b462c… for the normalised form and bb74011a… for a path that tokenizes the raw markup.",
+   "html": "<p>Hello {name}</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0048",
+    "U+0065",
+    "U+006C",
+    "U+006C",
+    "U+006F",
+    "U+0020",
+    "U+007B",
+    "U+006E",
+    "U+0061",
+    "U+006D",
+    "U+0065",
+    "U+007D",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Hello {name}"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0048",
+     "U+0065",
+     "U+006C",
+     "U+006C",
+     "U+006F",
+     "U+0020",
+     "U+007B",
+     "U+006E",
+     "U+0061",
+     "U+006D",
+     "U+0065",
+     "U+007D"
+    ]
+   ],
+   "expected_custom_id": "1e4b462c4bb74ea757c628548af57d97",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Hello {name}"
+     ],
+     "custom_id": "1e4b462c4bb74ea757c628548af57d97"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Hello {name}"
+     ],
+     "custom_id": "1e4b462c4bb74ea757c628548af57d97"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true,
+   "added_by": "spec 8.0.1 TOK-5 counterpart, added on the Reviewer’s suggestion so the equality is cross-lane"
   }
  ]
 }

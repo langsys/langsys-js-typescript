@@ -49,6 +49,7 @@
         "test:watch": "vitest",
         "prepublishOnly": "npm run build",
         "release": "./_dev_/publish.sh",
+        "verify:spec": "./_dev_/verify-spec-blob.sh",
         "pretest": "npm run build"
     },
     "keywords": [
