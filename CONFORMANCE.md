@@ -7,7 +7,7 @@
 | **specVersion** | 7 (read at 7.0.1) |
 | **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `45cdddf8e9136a85143dc5a5169d59b3355d7dc1`, re-derived at write time with `git -C ~/Documents/dev/langsys2 ls-tree origin/main docs/sdk-spec.mdx`. Every rule profiled `all` or `browser` is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 398 tests in 28 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 424 tests in 29 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -271,7 +271,7 @@ bodies** rather than against the author's summary of them. TOK-1..5 and MARK-1/2
 | MARK-1 (content-block stamp) | implemented | `translate` — the stamp is compared against an id **re-derived by running the tokenizer over the same subtree**, not read back from the attribute just written, which is what MARK-1's test asks for and would otherwise prove only that a write happened. Mutations: dropping the stamp and stamping a constant each red four |
 | MARK-2 (phrase stamp, both spellings read) | implemented | `content-block-identity` — behavioural and cross-module: the attribute `Phrase` exports is the one the tokenizer skips on, and PHP's spelling is accepted alongside it |
 | TOK-3 (27 attributes, order normative) | implemented | `tokenizer-convergence` + `pure-subpath` — the 27 verified against `langsys-php/src/Html/HtmlParser.php` directly, appended never inserted, with a case asserting list order beats document order. Langsys's point is the sharp one: the same set in a different order agrees on every single-attribute element and diverges only where nobody looks |
-| TOK-1 (skip script/style/template, keep `noscript`) | implemented, text unread | `tokenizer-convergence` — measured before/after; `<style>` used to register `.plan{color:#fff}` as a phrase and `<script>` the statement, both then sent for paid machine translation. `noscript` still harvested, deliberately. **Langsys confirmed TOK-1 does NOT cite the contradictory fixture**, checked on their side before telling me, so this row is not held pending that fix |
+| TOK-1 (skip script/style/template **and noscript**) | implemented | Re-rowed against blob `b657b490` (langsys `483f98fb`), verified with `ls-tree`. TOK-1 REVERSED on `noscript` and now excludes it. `tokenizer-convergence` asserts exclusion under BOTH parser models — the markup shape happy-dom and libxml2 give, and the raw-text shape Chromium and parse5 give — plus an ordinary-markup control, which the rule names as the whole test because over-excluding fails identically from outside. Red-first: both noscript assertions failed against the previous list. `<template>` remains named as intent and is not a vector |
 | TOK-2 (U+00A0 collapses) | implemented, free in this runtime | `tokenizer-convergence` — satisfied with no code: JavaScript's `\s` already matches U+00A0. Pinned anyway, because the rule now warns that a hand-written character class would silently drop it. Finding credited to this lane in the rule body |
 | TOK-4 (attribute values collapse as text does) | implemented, text unread | `tokenizer-convergence` — one normaliser shared by both paths, so "same content, same id" holds by construction. Before: `<img alt="A long\n  description">` kept its newlines while the same sentence in a `<p>` collapsed |
 | TOK-5 (`{name}` with `%name%` accepted) | implemented, text unread | `tokenizer-convergence` + `interpolate` — `%name%` now resolves at RENDER, conditional on the key being supplied, so prose containing percent signs is untouched |
@@ -308,7 +308,7 @@ operational test settles it — a core CAN fail SRV-4, by shipping a seed that m
 so the profile was wrong, not the body. Corrected at `1493dea0`; the rule body now records the
 class in both directions, since the fleet has hit it each way.
 
-### TOK-1's noscript half is parser-dependent, and the id diverges
+### TOK-1's noscript half: reversed, and my framing of it was half wrong
 
 `tokenizer-convergence` covers noscript under a scripting-DISABLED parser, which is what
 happy-dom and PHP's server-side parser both give. The HTML Standard makes a noscript body RAW
@@ -321,15 +321,22 @@ scripting off / PHP   ["Keep", "Enable JavaScript"]
 scripting on  / browser   ["Keep", "<p>Enable JavaScript</p>"]
 ```
 
-The consequence is not cosmetic. The token is the markup string, so the **same source HTML
-yields a different `custom_id` depending on where it was tokenized** — one id on the server,
-another in the browser — which breaks the SSR hand-off for any block containing `<noscript>`,
-and registers markup as a translatable phrase, which is what TOK-1 exists to prevent.
+**The browser half was right and the server half was an assumption.** JS Server measured real
+Chromium (one raw-text token, as predicted) and then parse5 — which defaults to
+`scriptingEnabled: true` and produces the SAME raw-text token. So a JS server AGREES with a
+browser, and the JS-to-JS hand-off was never broken. I had reported it as a server-versus-browser
+divergence; the real axis is the parser's scripting flag, which puts the whole JS family on one
+side and PHP's libxml2 on the other.
 
-Not patched here. Any fix belongs in the rule, and implementing a guess would encode the guess
-as conformance. Reported to Langsys with the measurement; the divergence is pinned so it stays
-visible. **A real-browser measurement is still owed and this repo cannot make one** — there is
-no browser in the test environment, only happy-dom.
+Worse for my original report: **happy-dom and jsdom sit on PHP's side**, so the test environment
+is the odd one out. A lane measuring there reproduces a browser-versus-server fork that does not
+exist. My measurement was sound; my attribution of the two sides was not, and it took another
+lane running a real browser to show it.
+
+TOK-1 then reversed and now EXCLUDES `noscript` — the obvious reading (its text shows to a
+visitor with scripting off) does not survive asking who could translate it: with scripting off a
+browser SDK is not running. Excluding it is also what makes the two parser models agree, which
+removes the divergence rather than documenting it. Implemented and pinned under both models.
 
 ### The shared tokenizer fixture contradicted itself
 

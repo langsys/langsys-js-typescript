@@ -53,35 +53,28 @@ describe('(a) code-bearing subtrees are not prose', () => {
         expect(tokensOf('<template><p>hidden</p></template><p>Plans</p>')).toEqual(['Plans']);
     });
 
-    it('DOES harvest <noscript> — under a scripting-DISABLED parser', () => {
-        // True, and narrower than it reads. happy-dom has no scripting flag and
-        // so takes the scripting-disabled branch, parsing the noscript body as
-        // markup. A server-side parser (PHP's) does the same. This assertion
-        // covers that model only.
-        expect(tokensOf('<noscript><p>Enable JavaScript</p></noscript><p>Plans</p>')).toEqual([
-            'Enable JavaScript',
-            'Plans',
-        ]);
+    it('does not harvest <noscript> either, under EITHER parser model', () => {
+        // TOK-1 reversed on noscript, and the reasoning is worth keeping because
+        // the obvious answer was the wrong one. Its text does render to a real
+        // visitor when scripting is off — true, and it does not survive asking
+        // who could act on it: with scripting off a browser SDK is not running,
+        // so it can translate nothing on that page including this.
+        //
+        // And with scripting ENABLED, which is the spec's default, a parser makes
+        // the body RAW TEXT. Chromium and parse5 both produce the single token
+        // '<p>Enable JavaScript</p>' — markup sent to machine translation, which
+        // is this family's own failure mode arriving through the rule meant to
+        // prevent it.
+        //
+        // Model A — scripting disabled, which is what happy-dom and PHP's
+        // libxml2 give. The body parses as markup.
+        expect(tokensOf('<noscript><p>Enable JavaScript</p></noscript><p>Plans</p>')).toEqual(['Plans']);
     });
 
-    it('but a scripting-ENABLED parser yields the literal markup, and the id diverges', () => {
-        // The HTML Standard says a noscript body is RAW TEXT when scripting is
-        // enabled, so a real browser produces ONE text node holding the literal
-        // markup. happy-dom cannot produce that shape, so it is constructed by
-        // hand — this asserts what OUR tokenizer does given that input, which is
-        // the half this repo owns. It is not a measurement of a browser.
-        //
-        // The consequence is not a cosmetic mechanism difference: the token is
-        // the markup string, so the SAME source HTML yields a DIFFERENT
-        // custom_id depending on where it was tokenized. A content block
-        // containing <noscript> therefore has one id on the server and another
-        // in the browser, which breaks the SSR hand-off for that block — and it
-        // registers markup as a translatable phrase, which is what TOK-1 exists
-        // to prevent.
-        //
-        // Reported to Langsys as a spec question rather than patched here: any
-        // fix belongs in the rule, and guessing at one would encode a guess as
-        // conformance. Pinned so the divergence is visible and measured.
+    it('…and under the raw-text shape a scripting-enabled parser produces', () => {
+        // Model B, constructed by hand because happy-dom cannot produce it. This
+        // is the shape Chromium and parse5 actually emit; excluding the element
+        // means neither model contributes a token, so the two stop disagreeing.
         const host = document.createElement('div');
         const keep = document.createElement('p');
         keep.textContent = 'Keep';
@@ -90,10 +83,21 @@ describe('(a) code-bearing subtrees are not prose', () => {
         host.appendChild(keep);
         host.appendChild(ns);
 
-        expect(tokenizeElement(host).tokens).toEqual(['Keep', '<p>Enable JavaScript</p>']);
+        expect(tokenizeElement(host).tokens).toEqual(['Keep']);
 
-        // Stated as the divergence it is, not as an incidental difference.
-        expect(tokenizeElement(host).tokens).not.toEqual(tokensOf('<p>Keep</p><noscript><p>Enable JavaScript</p></noscript>'));
+        // The point of the reversal: the two parser models now AGREE, where
+        // before they produced different ids for the same source.
+        expect(tokenizeElement(host).tokens).toEqual(
+            tokensOf('<p>Keep</p><noscript><p>Enable JavaScript</p></noscript>')
+        );
+    });
+
+    it('control: ordinary markup is still tokenized — the exclusion is four tags, not a mood', () => {
+        // The rule names this as the whole test. Excluding too much is the
+        // failure mode on the other side of TOK-1, and it looks identical from
+        // the outside: content that is simply never translated.
+        expect(tokensOf('<div><p>Keep</p><span>Also keep</span></div>')).toEqual(['Keep', 'Also keep']);
+        expect(tokensOf('<p>Plans</p>')).toEqual(['Plans']);
     });
 
     it('skipping changes the id, which is the accepted cost', () => {

@@ -76,16 +76,39 @@ export const TRANSLATABLE_ATTRIBUTES = [
 ];
 
 /**
- * Elements whose text content is CODE OR MARKUP, never prose, and must not be
- * tokenized. Measured before this existed: `<style>.plan{color:#fff}</style>`
+ * Elements holding code, inert content, or content no implementation can agree
+ * on. Measured before this existed: `<style>.plan{color:#fff}</style>`
  * registered `.plan{color:#fff}` as a translatable phrase, and
  * `<script>window.dataLayer.push(1)</script>` registered the statement. Both
  * were then sent for machine translation.
  *
- * `<noscript>` is deliberately NOT here: its content is prose shown to a real
- * reader, and it is the one case in this family that must still be translated.
+ * `<noscript>` IS HERE ON A REVERSAL, and the reasoning is worth keeping because
+ * the obvious answer is the wrong one. An earlier reading excluded it from this
+ * list: its text renders to a real visitor whenever scripting is off, so
+ * skipping it would leave a visitor-visible sentence permanently untranslated.
+ * That premise is true, and it does not survive two questions.
+ *
+ *  - WHO COULD TRANSLATE IT. With scripting off, a browser SDK is not running,
+ *    so it can translate nothing on that page — including this.
+ *  - WHAT THE TOKEN ACTUALLY IS. With scripting ENABLED, the spec's default, a
+ *    parser makes a `noscript` body RAW TEXT rather than markup. Chromium and
+ *    parse5 both yield the single token `<p>Enable JavaScript</p>`. Registering
+ *    that sends MARKUP to machine translation, which is this family's own
+ *    failure mode arriving through the rule meant to prevent it.
+ *
+ * And the implementations could not be made to agree cheaply. The axis is the
+ * parser's scripting flag, not browser-versus-server: Chromium and parse5 agree
+ * because parse5 defaults to scripting enabled, while PHP's libxml2 has no such
+ * flag and parses the children as elements. `happy-dom` and `jsdom` behave like
+ * libxml2, so a lane measuring in a test environment reproduces a
+ * browser-versus-server split that does not exist.
+ *
+ * `<template>` is named as intent and is NOT a vector: its content lives on
+ * `HTMLTemplateElement.content`, so a walker over `childNodes` never reaches it
+ * and omitting it from this list changes nothing. Two lanes measured that
+ * independently, in a DOM and in parse5.
  */
-export const NON_TRANSLATABLE_ELEMENTS = ['script', 'style', 'template'];
+export const NON_TRANSLATABLE_ELEMENTS = ['script', 'style', 'template', 'noscript'];
 
 /**
  * THE definition. `phrase.ts` re-exports this rather than restating it — the
@@ -178,8 +201,28 @@ export function generateCustomId(category: string, tokens: string[]): string {
  * implementation's internals, not public API. `generateCustomId` is the
  * contract.
  */
+/**
+ * CID-2's input prohibition, applied where the value enters the hash.
+ *
+ * No-category is `''` — never `null`, never `undefined`, and never the
+ * `'__uncategorized__'` sentinel. That sentinel is a CACHE-LOOKUP namespace: it
+ * names the bucket an uncategorised phrase lives in inside `sTranslations`, and
+ * it is a natural thing for a caller to have in hand. Hashing it produces an id
+ * no wire path stores.
+ *
+ * Found by comparing ids against `langsys-php` over a shared fixture: tokens
+ * byte-identical, ids different, because PHP normalised the sentinel and this
+ * SDK did not. PHP was conformant and this side was not. No internal caller ever
+ * passed it — `Translate` destructures `const { category = '' }` — so no stored
+ * id changes; the hole was in the public export, and `/pure` had just widened
+ * the audience for it.
+ */
+function hashableCategory(category: string): string {
+    return !category || category === '__uncategorized__' ? '' : category;
+}
+
 export function canonicalContentBlockJson(category: string, tokens: string[]): string {
-    return JSON.stringify([category || '', tokens]);
+    return JSON.stringify([hashableCategory(category), tokens]);
 }
 
 /**
