@@ -36,6 +36,29 @@ const ICU_PATTERN = /\{[^{}]+,\s*(plural|select|selectordinal|number|date|time)\
  * prose ("20% off", "50% to 60%") can't match. `t()` phrases are JS strings
  * with no compiler collision and stay `{name}`-only.
  */
+/**
+ * Accept `%name%` at RENDER time, not only at capture time.
+ *
+ * `normalizeMarkupPlaceholders` has always converted `%name%` to `{name}` where
+ * content is captured, because Svelte and JSX consume a bare `{name}` in markup
+ * and `%name%` is what an author can actually type there. But nothing applied it
+ * on the way out, so a translation stored with `%name%` rendered the percent
+ * signs to the reader verbatim: `interpolate('Hi %name%', { name: 'Ada' })`
+ * returned `'Hi %name%'`.
+ *
+ * Conversion is CONDITIONAL on the key being supplied, which matters: a blanket
+ * rewrite would treat any `%word%` as a placeholder, so `'Save 20% %off%'` or
+ * prose containing `%s` patterns could be mangled into a `{…}` that then renders
+ * as a literal brace expression. Requiring a matching param means a string is
+ * only reinterpreted when the caller demonstrably meant it as a placeholder.
+ */
+function adoptPercentPlaceholders(template: string, params: Record<string, unknown>): string {
+    if (!template.includes('%') || !params) return template;
+    return template.replace(/%([A-Za-z_][A-Za-z0-9_]*)%/g, (whole, name: string) =>
+        Object.prototype.hasOwnProperty.call(params, name) ? `{${name}}` : whole
+    );
+}
+
 export function normalizeMarkupPlaceholders(text: string): string {
     return text.replace(/%([A-Za-z_][A-Za-z0-9_]*)%/g, '{$1}');
 }
@@ -130,6 +153,8 @@ export function interpolate(
     params: Record<string, unknown>,
     locale?: string,
 ): string {
+    template = adoptPercentPlaceholders(template, params);
+
     if (isICU(template)) {
         const resolved = locale || 'en';
         // A null value does NOT throw — `intl-messageformat` coerces it (null

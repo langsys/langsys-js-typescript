@@ -1,0 +1,142 @@
+// @vitest-environment happy-dom
+import { describe, expect, it } from 'vitest';
+import { generateCustomId, tokenizeElement } from '../src/content-block.js';
+import { interpolate } from '../src/interpolate.js';
+import { normalizeTokenText, TRANSLATABLE_ATTRIBUTES } from '../src/identity.js';
+
+/**
+ * TOKENIZER CONVERGENCE with langsys-php — the identity contract.
+ *
+ * These change `custom_id` for affected blocks, which re-register under the new
+ * id and show source text until re-translated. That cost was accepted
+ * deliberately; legacy-id tolerance was considered and declined, so there is no
+ * migration path and none is implied here.
+ *
+ * Each case below was MEASURED on the pre-convergence tokenizer, and the old
+ * value is recorded beside it — the point of these tests is not that the new
+ * output looks right, it is that it differs from a known prior value in a stated
+ * way.
+ */
+
+function tokensOf(html: string): string[] {
+    const host = document.createElement('div');
+    host.innerHTML = html;
+    return tokenizeElement(host).tokens;
+}
+
+const idOf = (html: string) => generateCustomId('', tokensOf(html));
+
+describe('(a) code-bearing subtrees are not prose', () => {
+    it('does not harvest <style> content', () => {
+        // Measured before: tokens were ['.plan{color:#fff}', 'Plans'], id
+        // b67f733af1… — the CSS was registered as a translatable phrase and
+        // sent for machine translation.
+        expect(tokensOf('<style>.plan{color:#fff}</style><p>Plans</p>')).toEqual(['Plans']);
+    });
+
+    it('does not harvest <script> content', () => {
+        // Measured before: ['window.dataLayer.push(1)', 'Plans'], id 7cd0a69f33…
+        expect(tokensOf('<script>window.dataLayer.push(1)</script><p>Plans</p>')).toEqual(['Plans']);
+    });
+
+    it('does not harvest <template> content', () => {
+        expect(tokensOf('<template><p>hidden</p></template><p>Plans</p>')).toEqual(['Plans']);
+    });
+
+    it('DOES harvest <noscript>, which is prose a reader sees', () => {
+        // The one member of this family that must still be translated, and the
+        // reason the list is an allow-list of three rather than "hidden things".
+        expect(tokensOf('<noscript><p>Enable JavaScript</p></noscript><p>Plans</p>')).toEqual([
+            'Enable JavaScript',
+            'Plans',
+        ]);
+    });
+
+    it('skipping changes the id, which is the accepted cost', () => {
+        expect(idOf('<style>.plan{color:#fff}</style><p>Plans</p>')).toBe(idOf('<p>Plans</p>'));
+    });
+});
+
+describe('(b) U+00A0 collapses like any other whitespace', () => {
+    it('already held — JavaScript \\s covers NBSP', () => {
+        // Recorded rather than implemented: `\s` matches U+00A0 in JS, so the
+        // existing collapse already handled it. Pinned so a future hand-rolled
+        // character class cannot quietly drop it.
+        expect(normalizeTokenText('A long   description')).toBe('A long description');
+        expect(idOf('<p>A long   description</p>')).toBe(idOf('<p>A long description</p>'));
+    });
+});
+
+describe('(c) the attribute list is PHP’s 27, in PHP’s order', () => {
+    it('harvests the twelve newly added attributes', () => {
+        expect(tokensOf('<button data-confirm="Are you sure?">Go</button>')).toEqual(['Are you sure?', 'Go']);
+        expect(tokensOf('<span data-bs-title="Tip">x</span>')).toEqual(['Tip', 'x']);
+    });
+
+    it('keeps the original fifteen unchanged and first', () => {
+        // Order is identity. Appending was safe; inserting would have re-keyed
+        // every block using one of the original fifteen.
+        expect(TRANSLATABLE_ATTRIBUTES.slice(0, 15)).toEqual([
+            'placeholder',
+            'alt',
+            'title',
+            'label',
+            'aria-label',
+            'aria-placeholder',
+            'aria-description',
+            'aria-valuetext',
+            'aria-roledescription',
+            'data-error',
+            'data-error-message',
+            'data-validation-message',
+            'data-invalid-message',
+            'data-required-message',
+            'data-pattern-message',
+        ]);
+    });
+
+    it('emits attributes in list order, not document order', () => {
+        // Two attributes on one element, authored in the reverse of list order.
+        expect(tokensOf('<img data-tooltip="Tip" alt="Alt">')).toEqual(['Alt', 'Tip']);
+    });
+});
+
+describe('(d) an attribute and a text node normalise identically', () => {
+    it('the same authored content yields the same token either way', () => {
+        // Measured before: the attribute kept "A long\n     description"
+        // (id 67a902ad01…) while the text node collapsed to "A long
+        // description" (id 4ccbaabb0b…) — the same sentence, two ids.
+        const multiline = 'A long\n     description';
+        expect(tokensOf(`<img alt="${multiline}">`)).toEqual(['A long description']);
+        expect(tokensOf(`<p>${multiline}</p>`)).toEqual(['A long description']);
+    });
+
+    it('so the ids agree, which is the property that was broken', () => {
+        expect(idOf('<img alt="A long\n     description">')).toBe(idOf('<p>A long description</p>'));
+    });
+
+    it('and a <button value> collapses too, not just the listed attributes', () => {
+        expect(tokensOf('<button value="Send\n  it">x</button>')).toEqual(['Send it', 'x']);
+    });
+});
+
+describe('(e) %name% resolves at render, not only at capture', () => {
+    it('resolves a percent placeholder', () => {
+        // Measured before: 'Hi %name%' — the percent signs reached the reader.
+        expect(interpolate('Hi %name%', { name: 'Ada' }, 'en')).toBe('Hi Ada');
+    });
+
+    it('resolves it inside an ICU branch too', () => {
+        expect(interpolate('{n, plural, one {# for %who%} other {# for %who%}}', { n: 1, who: 'Ada' }, 'en')).toBe(
+            '1 for Ada'
+        );
+    });
+
+    it('leaves an UNSUPPLIED %word% alone, so prose is not mangled', () => {
+        // Conversion is conditional on the key being supplied. A blanket rewrite
+        // would turn any %word% into a {…} that then renders as a literal brace
+        // expression — worse than the bug being fixed.
+        expect(interpolate('Save 20% %off%', { x: 1 }, 'en')).toBe('Save 20% %off%');
+        expect(interpolate('50% to 70% off', {}, 'en')).toBe('50% to 70% off');
+    });
+});
