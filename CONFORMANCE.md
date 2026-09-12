@@ -250,30 +250,38 @@ the two answers differ.
 
 ## New spec families — rule ids known, spec text NOT YET VERIFIABLE HERE
 
-Langsys reports the spec batch committed as `2a9cc2586e7f2826c6951a48b9b78b4fe067c284`,
-blob `57c8a4982d6a5a24d4bf5f044c31e4285f4e6b70`, with the families below. **That commit is
-not pushed** — their GitLab is refusing connections — so the SHA and blob are recorded AS
-REPORTED and I have not read the rule bodies. Rows are filed against the ids, which are
-stable, and graded on evidence I actually hold; re-derive against the blob once it pushes,
-and promote the grades then.
+Langsys reports the spec batch as `2a9cc2586e7f2826c6951a48b9b78b4fe067c284`, blob
+`57c8a4982d6a5a24d4bf5f044c31e4285f4e6b70`, plus a follow-up `0ce14605` that took two
+findings from this lane (see below). **Neither commit is pushed** — their GitLab is refusing
+connections on port 8888 — so every SHA, blob and rule body here is **recorded as reported
+and UNREAD**. Rows are filed against the ids, which are stable, and graded only on evidence
+held in this repo; re-derive against the blob once it pushes and promote the grades then.
 
 Saying that plainly matters: a row citing a blob nobody here can open would read as
 conformance against text that was never seen, which is the error this file exists to catch.
 
+**The rule-to-behaviour mapping below is the spec author's summary, not the spec.** Langsys
+supplied it rather than leave this lane guessing, and labelled it as a summary on the same
+reported-and-unread terms. It is used here to stop the rows being arbitrary, not as grounds
+to call anything verified.
+
 | Rule | Status | Evidence |
 |---|---|---|
-| SRV-4 (synchronous seed) | implemented, spec text unread | `seed-catalog` — `t()` resolves on the line after `seedCatalog()`; returns `undefined`, not a promise. Making it `async` reds 4 of 9. **Synchronicity is the normative part**, per Langsys: an entry point that must be awaited cannot satisfy SRV-4 however it is named. The exported name is ours and the spec deliberately does not fix it |
+| SRV-4 (synchronous seed) | **core half implemented; binding half not ours** | `seed-catalog` — `t()` resolves on the line after `seedCatalog()`; returns `undefined`, not a promise; making it `async` reds 4 of 9. Synchronicity is the normative part — an entry point that must be awaited cannot satisfy SRV-4 however it is named — and the exported name is deliberately left to the implementation. **`0ce14605` rewrote the body to state the split this lane reported**: exposing the seed is the core's half and provable here, calling it before hydration and demonstrating the absence of a hydration-mismatch warning are the binding's. Profile line left as-is by the author; whether it should be re-profiled is the Reviewer's to rule |
 | SRV-1..3, SRV-5 | n/a or server-side | Serving translated HTML is the server's half of the hand-off. This SDK's obligation is the seed (SRV-4); re-derive the rest when the text is readable rather than guessing which bind |
 | MARK-1 (content-block stamp) | implemented | `translate` — the stamp is compared against an id **re-derived by running the tokenizer over the same subtree**, not read back from the attribute just written, which is what MARK-1's test asks for and would otherwise prove only that a write happened. Mutations: dropping the stamp and stamping a constant each red four |
 | MARK-2 (phrase stamp, both spellings read) | implemented | `content-block-identity` — behavioural and cross-module: the attribute `Phrase` exports is the one the tokenizer skips on, and PHP's spelling is accepted alongside it |
 | TOK-3 (27 attributes, order normative) | implemented | `tokenizer-convergence` + `pure-subpath` — the 27 verified against `langsys-php/src/Html/HtmlParser.php` directly, appended never inserted, with a case asserting list order beats document order. Langsys's point is the sharp one: the same set in a different order agrees on every single-attribute element and diverges only where nobody looks |
-| TOK-1/2/4/5 (canonicalization) | implemented, mapping unconfirmed | `tokenizer-convergence` covers script/style/template skipping with `noscript` kept, U+00A0 collapse, and attribute/text normalisation through one function. **Which rule number covers which is a guess until the text is readable** — recorded as unconfirmed rather than asserted |
+| TOK-1 (skip script/style/template, keep `noscript`) | implemented, text unread | `tokenizer-convergence` — measured before/after; `<style>` used to register `.plan{color:#fff}` as a phrase and `<script>` the statement, both then sent for paid machine translation. `noscript` still harvested, deliberately. **Langsys confirmed TOK-1 does NOT cite the contradictory fixture**, checked on their side before telling me, so this row is not held pending that fix |
+| TOK-2 (U+00A0 collapses) | implemented, free in this runtime | `tokenizer-convergence` — satisfied with no code: JavaScript's `\s` already matches U+00A0. Pinned anyway, because the rule now warns that a hand-written character class would silently drop it. Finding credited to this lane in the rule body |
+| TOK-4 (attribute values collapse as text does) | implemented, text unread | `tokenizer-convergence` — one normaliser shared by both paths, so "same content, same id" holds by construction. Before: `<img alt="A long\n  description">` kept its newlines while the same sentence in a `<p>` collapsed |
+| TOK-5 (`{name}` with `%name%` accepted) | implemented, text unread | `tokenizer-convergence` + `interpolate` — `%name%` now resolves at RENDER, conditional on the key being supplied, so prose containing percent signs is untouched |
 | Side-effect-free identity subpath | implemented | `pure-subpath` — bare Node under a trapping `globalThis`, import and every call clean for ESM and CJS, main entry as the positive control, export list pinned, and `/pure` proven to share function identity with the DOM path rather than re-implementing it. No rule id was reported for this; it may be unruled |
 
 SSR-1..3 keep their ids and bodies; Langsys reports only their families-table row moved from
 `server (JS)` to `browser`, which does not change what this SDK owes.
 
-### A control this SDK structurally cannot carry
+### A control this SDK structurally cannot carry — now in the spec
 
 SRV-4's test as specified pairs "seeded renders the translation" with "unseeded produces a
 hydration-mismatch warning". The second half is framework-level: the core has no renderer to
@@ -282,6 +290,11 @@ demonstrably returns source text with no seed, and the seed is what changes it o
 phrase — and the warning half belongs to the bindings. Flagged rather than quietly treated as
 satisfied, because a core reporting SRV-4 green without it would be claiming a binding's
 evidence as its own.
+
+Langsys adopted this into SRV-4's body at `0ce14605` — a core records the half it holds and
+names the half it does not. Worth noting which direction that went: filing the row as
+*unsatisfiable here* rather than green is what surfaced the gap in the rule. A green row
+would have hidden it, and the rule would have stayed unfulfillable by any core.
 
 ### The shared tokenizer fixture contradicted itself
 
