@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Translate } from '../src/translate.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { sTranslations, currentlyLoadedLocale } from '../src/stores.js';
-import { generateCustomId } from '../src/content-block.js';
+import { generateCustomId, tokenizeElement } from '../src/content-block.js';
 import type { iCategories } from '../src/types/translations.js';
 
 /**
@@ -265,3 +265,57 @@ describe('a single-token block keeps its markup', () => {
         expect(el.textContent).toBe('Bentornato dal blocco.');
     });
 });
+
+describe('the host element publishes its content-block id', () => {
+    // A server-rendered page is otherwise unreadable: the id is derivable only
+    // by re-running the tokenizer over the same subtree, which a reader holding
+    // just the HTML cannot do identically. Mirrors how a Phrase host carries
+    // PHRASE_MARKER_ATTR.
+    it('stamps the id the tokenizer derives for that subtree', async () => {
+        sTranslations.set(bare());
+        const { el } = make('<p>First</p><p>Second</p>');
+        await new Promise((r) => setTimeout(r, 10));
+
+        const expected = generateCustomId('', tokenizeElement(elClone('<p>First</p><p>Second</p>')).tokens);
+        expect(el.getAttribute('data-ls-contentblock')).toBe(expected);
+    });
+
+    it('stamps a single-token block too', async () => {
+        sTranslations.set(bare());
+        const { el } = make('<p>Only</p>');
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(el.getAttribute('data-ls-contentblock')).toBe(
+            generateCustomId('', tokenizeElement(elClone('<p>Only</p>')).tokens)
+        );
+    });
+
+    it('honours a caller-supplied custom_id rather than inventing one', async () => {
+        sTranslations.set(bare());
+        const { el } = make('<p>First</p><p>Second</p>', { custom_id: 'caller-chose-this' });
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(el.getAttribute('data-ls-contentblock')).toBe('caller-chose-this');
+    });
+
+    it('control: the id is not a constant — different content, different stamp', async () => {
+        // Without this, "equals the derived id" is satisfied by stamping any
+        // fixed string, since the expectation is computed the same way.
+        sTranslations.set(bare());
+        const a = make('<p>Alpha</p>');
+        const b = make('<p>Beta</p>');
+        await new Promise((r) => setTimeout(r, 10));
+
+        const idA = a.el.getAttribute('data-ls-contentblock');
+        const idB = b.el.getAttribute('data-ls-contentblock');
+        expect(idA).toBeTruthy();
+        expect(idA).not.toBe(idB);
+    });
+});
+
+/** A detached host carrying the same markup, for deriving the expected id. */
+function elClone(html: string): HTMLElement {
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    return d;
+}

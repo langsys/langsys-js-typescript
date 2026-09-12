@@ -1,4 +1,5 @@
 import {
+    CONTENT_BLOCK_MARKER_ATTR,
     generateCustomId,
     isContentBlockKnown,
     isPhraseMarked,
@@ -195,6 +196,24 @@ export class Translate {
      * none or more than one — in which case the caller falls back to a flat
      * text render, since there is no single place to put the result.
      */
+    /**
+     * Publish the resolved `custom_id` on the host element.
+     *
+     * A server-rendered page is otherwise unreadable: the id is derivable only
+     * by re-running the tokenizer over the same subtree, which a reader holding
+     * just the HTML cannot do identically — and the tokenizer's own rules are
+     * what decide it. Stamping it makes the block self-describing, the same way
+     * a `Phrase` host already carries `PHRASE_MARKER_ATTR`.
+     *
+     * Written on every resolution, including when the migration fallback adopts
+     * a legacy id, so the attribute always names the id actually in use rather
+     * than the one first derived.
+     */
+    private stampContentBlockMarker(): void {
+        if (!this.element || !this.custom_id) return;
+        this.element.setAttribute(CONTENT_BLOCK_MARKER_ATTR, this.custom_id);
+    }
+
     private findSingleTextNode(root: Node): Node | null {
         const TEXT_NODE = 3;
         let found: Node | null = null;
@@ -242,6 +261,7 @@ export class Translate {
             if (isEmpty(this.custom_id)) {
                 this.custom_id = generateCustomId(category, this.tokens);
             }
+            this.stampContentBlockMarker();
             this.renderSingleToken(category);
         } else {
             const contentBlock: iContentBlock = {
@@ -265,6 +285,7 @@ export class Translate {
             this.custom_id = generateCustomId(contentBlock.category, contentBlock.tokens);
         }
         contentBlock.custom_id = this.custom_id;
+        this.stampContentBlockMarker();
 
         // Wait for the first GET /translations to settle before deciding whether
         // to POST — otherwise on a cold cache the lookup misses and we'd POST
@@ -302,6 +323,9 @@ export class Translate {
                 if (candidate === this.custom_id) continue;
                 if (!isContentBlockKnown(contentBlock.category, candidate)) continue;
                 this.custom_id = candidate;
+                // The fallback just changed which id is in use; the attribute
+                // must follow, or it names an id nothing resolves under.
+                this.stampContentBlockMarker();
                 if (!this.usesSingleTextNodeFastPath() && this.element) {
                     this.translate(Array.from(this.element.childNodes));
                     this.lastTranslatedLocale = currentlyLoadedLocale.get();
