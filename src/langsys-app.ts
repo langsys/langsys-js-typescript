@@ -15,7 +15,7 @@ import type { iCountryDialCode, iCountryList } from './types/countries.js';
 import type { iCurrencyList } from './types/currencies.js';
 import type { iLocaleData, iLocaleDefault, iLocaleFlat } from './types/locales.js';
 import type { TFunction } from './types/translation-fn.js';
-import type { iTranslations } from './types/translations.js';
+import type { iCategories, iTranslations } from './types/translations.js';
 
 class LangsysAppClass {
     private config: iLangsysConfig;
@@ -150,6 +150,56 @@ class LangsysAppClass {
         }
     }
 
+    /**
+     * Put a catalog in place SYNCHRONOUSLY, with no network and no await.
+     *
+     * The hydration hand-off primitive: a framework's client entry calls this
+     * with the catalog the server already rendered from, before mount, so the
+     * first paint has translations instead of source text. `t()` returns the
+     * translation on the very next line — there is nothing to await, which is
+     * the whole point. `init()` can run afterwards, at its own pace, to
+     * authorize and take over refreshes.
+     *
+     * Does exactly what the `initialTranslations` hand-off inside `init()` does
+     * — injects `__uncategorized__`, stamps every `__category__`, publishes the
+     * catalog and the locale — because it IS that code now. Two
+     * implementations of "seed a catalog" would be two sets of rules about what
+     * a seeded catalog looks like.
+     *
+     * Safe to call before `init()`, after it, or both: `init()` will not
+     * re-seed a locale that is already seeded, so an SSR payload passed through
+     * config cannot clobber a catalog a client entry put there first.
+     */
+    public seedCatalog(catalog: iCategories, locale: string): void {
+        const normalizedLocale = canonicalizeLocale(locale);
+
+        if (!catalog['__uncategorized__']) {
+            catalog['__uncategorized__'] = {
+                __category__: '__uncategorized__',
+                __symbol__: '__uncategorized__',
+            } as iTranslations;
+        }
+        for (const cat of Object.keys(catalog)) {
+            catalog[cat]['__category__'] = cat;
+        }
+
+        sTranslations.set(catalog);
+        currentlyLoadedLocale.set(normalizedLocale);
+        // So a later `change()` for this locale is a cache hit rather than a
+        // fetch that overwrites what the server already sent, and so
+        // `ready()` resolves for consumers that await it before `init`.
+        this.Translations.markLoaded(normalizedLocale);
+        this.debug.log('Seeded catalog for locale', normalizedLocale);
+    }
+
+    /** Whether a catalog is already published for this locale. */
+    private isAlreadySeeded(locale: string): boolean {
+        if (currentlyLoadedLocale.get() !== canonicalizeLocale(locale)) return false;
+        const current = sTranslations.get();
+        // The empty skeleton is not a seeded catalog — it is the initial value.
+        return Object.keys(current).some((cat) => cat !== '__uncategorized__' || Object.keys(current[cat]!).length > 2);
+    }
+
     public async refresh() {
         const locale = this.config.sUserLocale.get();
         this.locales = {};
@@ -267,19 +317,15 @@ class LangsysAppClass {
         }
 
         // Seed the translations store if initial data is provided (SSR handoff).
+        // Same primitive a client entry can call directly before init — see
+        // `seedCatalog`. `init` does NOT re-seed a catalog already seeded for
+        // this locale, so calling both is safe and order-independent.
         if (initialTranslations && initialTranslationsLocale) {
-            if (!initialTranslations['__uncategorized__']) {
-                initialTranslations['__uncategorized__'] = {
-                    __category__: '__uncategorized__',
-                    __symbol__: '__uncategorized__',
-                } as iTranslations;
+            if (!this.isAlreadySeeded(initialTranslationsLocale)) {
+                this.seedCatalog(initialTranslations, initialTranslationsLocale);
+            } else {
+                this.debug.log('Catalog already seeded for locale; leaving it', initialTranslationsLocale);
             }
-            for (const cat of Object.keys(initialTranslations)) {
-                initialTranslations[cat]['__category__'] = cat;
-            }
-            sTranslations.set(initialTranslations);
-            currentlyLoadedLocale.set(initialTranslationsLocale);
-            this.debug.log('Populated sTranslations with initial data for locale:', initialTranslationsLocale);
         }
 
         this.Translations.setup(this.config);
