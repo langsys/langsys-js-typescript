@@ -29,7 +29,7 @@
 // never registered, never sent over the wire (the wire form uses {mNo}/{mNc}).
 //   open(i)  = U+E000  <i>  U+E001
 //   close(i) = U+E002  <i>  U+E003
-import { normalizeMarkupPlaceholders } from './interpolate.js';
+import { encodeRichPhrase, type RichTextNode } from './identity.js';
 
 const SENT_OPEN_START = String.fromCharCode(0xe000);
 const SENT_OPEN_END = String.fromCharCode(0xe001);
@@ -81,28 +81,42 @@ export interface EncodedRichText {
  * fails if this coalescing is removed.
  */
 export function encodeRichText(root: HTMLElement): EncodedRichText {
-    const slots: RichSlot[] = [];
-    const phrase = _encodeNodes(Array.from(root.childNodes), slots);
-    // `%key%` → `{key}` so the registered phrase carries the canonical
-    // placeholder form (framework compilers eat bare `{key}` in markup).
-    // The `{mNo}`/`{mNc}` markup tokens are generated brace-form and are
-    // untouched by the normalization.
-    return { phrase: normalizeMarkupPlaceholders(phrase.replace(/\s+/g, ' ').trim()), slots };
+    // The encoding itself — slot numbering, whitespace collapse, `%name%`
+    // normalization — is `encodeRichPhrase` in `identity.ts`, shared with every
+    // host that renders `<Phrase>`. What is left here is the only DOM-shaped
+    // part: turning child nodes into the host-neutral shape it walks.
+    //
+    // Split because the phrase string IS the catalog key. `langsys-js-server`
+    // renders `<Phrase>` from parse5 nodes and had no way to import this, so the
+    // alternative was a second encoder, and two encoders of one key drift into a
+    // silent re-registration rather than an error.
+    const { phrase, slots } = encodeRichPhrase(_toRichNodes(Array.from(root.childNodes)));
+    return { phrase, slots: slots.map((template) => ({ template })) };
 }
 
-function _encodeNodes(nodes: ChildNode[], slots: RichSlot[]): string {
-    let out = '';
+/**
+ * Map DOM child nodes onto `RichTextNode`s.
+ *
+ * Text nodes pass their value through UNCOLLAPSED — collapse happens once over
+ * the assembled string, inside `encodeRichPhrase`. Anything that is neither text
+ * nor element (comments, CDATA) is DROPPED rather than mapped to empty text; see
+ * the `RichTextNode` docstring for why the distinction is identity.
+ */
+function _toRichNodes(nodes: ChildNode[]): RichTextNode<HTMLElement>[] {
+    const out: RichTextNode<HTMLElement>[] = [];
     for (const node of nodes) {
         if (node.nodeType === Node.TEXT_NODE) {
-            out += node.nodeValue ?? '';
+            out.push({ text: node.nodeValue ?? '' });
             continue;
         }
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
         const element = node as HTMLElement;
-        const index = slots.length;
-        slots.push({ template: element.cloneNode(false) as HTMLElement });
-        out += `{m${index}o}` + _encodeNodes(Array.from(element.childNodes), slots) + `{m${index}c}`;
+        // Shallow clone: tag + attributes, no children. Preserves the
+        // framework's scoped-CSS class, which is the whole point of reusing the
+        // real element at reconstitution.
+        const payload = element.cloneNode(false) as HTMLElement;
+        out.push({ children: _toRichNodes(Array.from(element.childNodes)), payload });
     }
     return out;
 }

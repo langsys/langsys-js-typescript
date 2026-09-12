@@ -1,5 +1,13 @@
 import { IntlMessageFormat } from 'intl-messageformat';
+import { normalizeMarkupPlaceholders } from './identity.js';
 import { logger } from './logger.js';
+
+/**
+ * Re-exported, not defined here: the CAPTURE-time rewrite is an identity rule
+ * and lives in `identity.ts` with the other one. Kept on this module's surface
+ * because eight call sites and both entry points import it from here.
+ */
+export { normalizeMarkupPlaceholders };
 
 /**
  * Detects ICU MessageFormat syntax in a translation string.
@@ -21,21 +29,6 @@ export function isICU(template: string): boolean {
 // or the argument may close immediately (`{n, number}` — locale-default style).
 const ICU_PATTERN = /\{[^{}]+,\s*(plural|select|selectordinal|number|date|time)\s*[,}]/;
 
-/**
- * Normalize `%name%` markup placeholders to canonical `{name}`.
- *
- * Framework compilers consume bare `{name}` written in markup before the DOM
- * walker ever sees it (Svelte compiles it to an expression; JSX evaluates it),
- * so DOM content accepts `%name%` as a collision-free authoring escape.
- * Normalization runs at every markup capture boundary (content-block
- * tokenizer, `Translate` original-value snapshots, `Phrase` encoding), so the
- * catalog, the wire, and translators only ever see the canonical `{name}`
- * form — and plain `{name}` keeps working for vanilla-HTML authors.
- *
- * Keys must be identifiers (`[A-Za-z_][A-Za-z0-9_]*`), so literal `%` in
- * prose ("20% off", "50% to 60%") can't match. `t()` phrases are JS strings
- * with no compiler collision and stay `{name}`-only.
- */
 /**
  * Accept `%name%` at RENDER time, not only at capture time.
  *
@@ -59,9 +52,9 @@ function adoptPercentPlaceholders(template: string, params: Record<string, unkno
     );
 }
 
-export function normalizeMarkupPlaceholders(text: string): string {
-    return text.replace(/%([A-Za-z_][A-Za-z0-9_]*)%/g, '{$1}');
-}
+
+/** Keys `%name%` can carry — the same shape `adoptPercentPlaceholders` matches. */
+const IDENTIFIER_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Escape a params key for literal use inside a RegExp. */
 function escapeForRegExp(key: string): string {
@@ -71,9 +64,25 @@ function escapeForRegExp(key: string): string {
 /**
  * Params keys that have NO matching placeholder in `texts`.
  *
- * Texts are expected in canonical form (post-`normalizeMarkupPlaceholders`),
- * so a key counts as used when it appears as `{key}` or as the argument of an
- * ICU slot (`{key, plural, …}`). Surrounding whitespace is tolerated.
+ * A key counts as used when it appears as `{key}`, as the argument of an ICU
+ * slot (`{key, plural, …}`), or as `%key%`. Surrounding whitespace is tolerated
+ * in the brace forms.
+ *
+ * BOTH SPELLINGS, because `interpolate` resolves both. It used to accept the
+ * brace forms only, on the stated assumption that texts arrive canonical
+ * (post-`normalizeMarkupPlaceholders`). That held for the two internal callers
+ * and still does — `<Translate>` normalizes its tokens at capture and
+ * `<Phrase>`'s string comes out of `encodeRichText` already rewritten — but it
+ * stopped being true of the function itself once `interpolate` began adopting
+ * `%name%` at render time. A caller passing a raw stored translation then got
+ * `name` reported unused for a param that renders perfectly, and
+ * `warnUnmatchedParams` told them to "write %name% instead" — which is what they
+ * had written. This predicate and `adoptPercentPlaceholders` have to agree about
+ * what a placeholder is; they are two halves of one rule.
+ *
+ * The percent spelling is accepted only for keys that are IDENTIFIERS, matching
+ * `adoptPercentPlaceholders` exactly. A key like `a.b` never resolves from
+ * `%a.b%` — accepting it here would suppress a warning that is correct.
  */
 export function findUnusedParamKeys(texts: string[], params: Record<string, unknown> | undefined): string[] {
     if (!params) return [];
@@ -85,7 +94,11 @@ export function findUnusedParamKeys(texts: string[], params: Record<string, unkn
     // diff, no blame, no 3-way merge, and every change to this file becomes
     // invisible to review while still shipping. It hid here once already.
     const haystack = texts.join('\0');
-    return keys.filter((key) => !new RegExp(`\\{\\s*${escapeForRegExp(key)}\\s*[,}]`).test(haystack));
+    return keys.filter((key) => {
+        const escaped = escapeForRegExp(key);
+        const percent = IDENTIFIER_KEY.test(key) ? `|%${escaped}%` : '';
+        return !new RegExp(`\\{\\s*${escaped}\\s*[,}]${percent}`).test(haystack);
+    });
 }
 
 /**

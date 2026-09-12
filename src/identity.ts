@@ -165,6 +165,32 @@ export function normalizeTokenText(value: string): string {
 }
 
 /**
+ * Normalize `%name%` markup placeholders to canonical `{name}`.
+ *
+ * Framework compilers consume bare `{name}` written in markup before the DOM
+ * walker ever sees it (Svelte compiles it to an expression; JSX evaluates it),
+ * so DOM content accepts `%name%` as a collision-free authoring escape.
+ * Normalization runs at every markup capture boundary (content-block
+ * tokenizer, `Translate` original-value snapshots, `Phrase` encoding), so the
+ * catalog, the wire, and translators only ever see the canonical `{name}`
+ * form — and plain `{name}` keeps working for vanilla-HTML authors.
+ *
+ * Keys must be identifiers (`[A-Za-z_][A-Za-z0-9_]*`), so literal `%` in
+ * prose ("20% off", "50% to 60%") can't match. `t()` phrases are JS strings
+ * with no compiler collision and stay `{name}`-only.
+ *
+ * It lives HERE, beside `normalizeTokenText`, because it decides a stored key:
+ * every capture boundary runs it, so the same authored content must pass through
+ * the same rewrite in every SDK or the key splits. It was in `interpolate.ts`,
+ * which is where the RENDER-time counterpart belongs, and where its docstring
+ * had drifted onto `adoptPercentPlaceholders` — two functions with one doc
+ * between them. `interpolate.ts` re-exports it, so no importer moves.
+ */
+export function normalizeMarkupPlaceholders(text: string): string {
+    return text.replace(/%([A-Za-z_][A-Za-z0-9_]*)%/g, '{$1}');
+}
+
+/**
  * Compute the deterministic content-block id from a `(category, tokens)` pair.
  *
  * JSON-stringifies the tuple so each token is unambiguously delimited
@@ -243,4 +269,93 @@ export function canonicalContentBlockJson(category: string, tokens: string[]): s
  */
 export function generateLegacyCustomId(category: string, tokens: string[]): string {
     return md5Legacy(JSON.stringify([category, tokens]));
+}
+
+/**
+ * One node of a rich-phrase tree, in the host-neutral shape `encodeRichPhrase`
+ * walks.
+ *
+ * `{ text }` carries a text node's value VERBATIM — uncollapsed, untrimmed,
+ * because collapse runs once over the assembled string and not per node (see
+ * `encodeRichPhrase`). An element contributes its `children` plus an opaque
+ * `payload` handed straight back in `slots`, so a host keeps its own node handle
+ * without this module knowing what one is.
+ *
+ * Anything that is NEITHER text nor element — a comment, a CDATA section, a
+ * processing instruction — must contribute NO text and NO slot. The DOM adapter
+ * drops them outright.
+ *
+ * Measured, because the obvious wording here was wrong: mapping one to
+ * `{ text: '' }` is HARMLESS (`'a' + '' + 'b'` is still `'ab'`), so an adapter may
+ * do that freely. What splits the key is mapping it to its own DATA
+ * (`a<!-- note -->b` becoming `'a note b'`) or giving it a slot (`'a{m0o}{m0c}b'`,
+ * which also shifts every later slot index). Those two are the mistakes worth
+ * naming; "must be omitted" overstates the rule.
+ */
+export type RichTextNode<T> = { readonly text: string } | { readonly children: readonly RichTextNode<T>[]; readonly payload: T };
+
+export interface EncodedRichPhrase<T> {
+    /** The phrase string: the lookup key, and therefore the identity. */
+    phrase: string;
+    /** Each element's `payload`, in the order its markup token was assigned. */
+    slots: T[];
+}
+
+/**
+ * The `<Phrase>` identity rule, with no DOM in it.
+ *
+ * `<Phrase>` keys by a STRING, not by a token array and not by a `custom_id`:
+ * inline elements become neutral `{mNo}`/`{mNc}` markup-token pairs and the
+ * whole thing collapses to one sentence, which is then the catalog key. So this
+ * string is as load-bearing as `generateCustomId`'s output, and a second
+ * implementation of it re-keys every rich phrase the moment the two drift —
+ * silently, as a cache miss and a re-registration rather than an error.
+ *
+ * That is why it is here and generic over the host's node type: `langsys-js-server`
+ * renders `<Phrase>` from parse5 nodes and was otherwise going to write its own
+ * encoder. The DOM adapter is `encodeRichText` in `richtext.ts`, which is now
+ * nothing but a node-shape mapping over this function.
+ *
+ * Three details are identity and every adapter has to match them:
+ *
+ *  1. **Slot indices are assigned in pre-order**, parent before its children,
+ *     which is why `slots` comes back from here rather than being built by the
+ *     caller's walk. An adapter that numbered its own slots would have to
+ *     independently reproduce this order, and a nested phrase is where it would
+ *     not.
+ *  2. **Whitespace collapses ONCE, over the assembled string**, markup tokens
+ *     included — never per text node. `<p>a <em> b</em></p>` keeps the space
+ *     before `b` inside the markers; a per-node trim moves it outside them and
+ *     changes the key. This is the same mistake the attribute path made against
+ *     the text path, which is what split `custom_id` between this SDK and PHP.
+ *  3. **`%name%` normalizes after the collapse**, not before. The two orders
+ *     happen to agree today (an identifier cannot contain whitespace, so no
+ *     collapse creates or destroys a match) — stated because "it doesn't matter"
+ *     is not something a second implementation can verify, while "this order" is.
+ *
+ * The whitespace collapse is `normalizeTokenText`, deliberately SHARED with the
+ * token path so the disputed set (U+FEFF, U+0085, U+180E — see CONFORMANCE) has
+ * one definition to change when the spec rules. That sharing is about the
+ * whitespace set only: COALESCING adjacent text nodes stays opposite between the
+ * two paths, on purpose, and `content-block.ts` says so from its side.
+ */
+export function encodeRichPhrase<T>(nodes: readonly RichTextNode<T>[]): EncodedRichPhrase<T> {
+    const slots: T[] = [];
+    const assembled = _encodeRichNodes(nodes, slots);
+    return { phrase: normalizeMarkupPlaceholders(normalizeTokenText(assembled)), slots };
+}
+
+function _encodeRichNodes<T>(nodes: readonly RichTextNode<T>[], slots: T[]): string {
+    let out = '';
+    for (const node of nodes) {
+        if ('text' in node) {
+            out += node.text;
+            continue;
+        }
+        // Index taken and payload pushed BEFORE recursing: pre-order.
+        const index = slots.length;
+        slots.push(node.payload);
+        out += `{m${index}o}` + _encodeRichNodes(node.children, slots) + `{m${index}c}`;
+    }
+    return out;
 }

@@ -23,16 +23,46 @@ import * as pure from '../src/pure.js';
  * `dist/pure.js`, and bundling is where a stray import gets pulled back in.
  */
 
+const TRAPPED_NAMES = [
+    // The original eight.
+    'window', 'document', 'navigator', 'localStorage', 'sessionStorage', 'self', 'top', 'parent',
+    // The hole. Every name below is absent from bare Node, so trapping one can
+    // only catch real DOM reach, never a legitimate Node API.
+    'Node', 'Element', 'HTMLElement', 'SVGElement', 'Document', 'DocumentFragment',
+    'Text', 'Comment', 'CharacterData', 'NodeFilter', 'NodeIterator', 'TreeWalker',
+    'Range', 'DOMParser', 'XMLSerializer', 'getComputedStyle', 'MutationObserver',
+    'IntersectionObserver', 'ResizeObserver', 'customElements', 'requestAnimationFrame',
+    'matchMedia', 'history', 'location', 'screen', 'frames', 'alert', 'XMLHttpRequest',
+    'HTMLTemplateElement', 'ShadowRoot', 'CSSStyleSheet',
+] as const;
+
 const GUARD = `
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const TRAPPED = ['window','document','navigator','localStorage','sessionStorage','self','top','parent'];
+const TRAPPED = ${JSON.stringify(TRAPPED_NAMES)};
 for (const name of TRAPPED) Object.defineProperty(globalThis, name, {
     configurable: true,
     get() { throw new Error('DOM_TOUCHED:' + name); },
     set() { throw new Error('DOM_TOUCHED:set:' + name); },
 });
-const [, , target, phase, kind] = process.argv;
+const [, , target, phase, kind, extra] = process.argv;
+
+// BEFORE importing anything: this phase is about the trap itself, not the target.
+if (phase === 'selftrap') {
+    try {
+        // A BARE IDENTIFIER reference, which is how source code touches a DOM
+        // global — \`Node.TEXT_NODE\`, not \`globalThis.Node\`. eval is what makes
+        // the name a parameter while keeping the reference bare; the value is
+        // consumed by String() so nothing here is dead code a runtime may drop.
+        const probe = eval('void ' + extra + ', typeof ' + extra);
+        console.log('NOT_TRAPPED ' + extra + ' -> ' + String(probe));
+        process.exit(0);
+    } catch (e) {
+        console.log('TRIPPED ' + String(e.message).split('\\n')[0]);
+        process.exit(3);
+    }
+}
+
 try {
     const m = kind === 'cjs' ? require(target) : await import(target);
     if (phase === 'import') { console.log('IMPORT_CLEAN exports=' + Object.keys(m).length); process.exit(0); }
@@ -54,6 +84,10 @@ try {
             () => m.generateLegacyCustomId('UI', [String.fromCodePoint(233), String.fromCodePoint(128512)]),
             () => m.normalizeTokenText('a' + String.fromCodePoint(160) + ' b' + String.fromCodePoint(10) + '  c'),
             () => m.normalizeMarkupPlaceholders('%a% and {b}'),
+            () => m.encodeRichPhrase([{ text: 'Based on ' }, { children: [{ text: '12 reviews' }], payload: 'EM' }]),
+            () => m.encodeRichPhrase([{ children: [{ children: [{ text: 'deep' }], payload: 'B' }], payload: 'A' }]),
+            () => m.encodeRichPhrase([]),
+            () => m.findUnusedParamKeys(['Hi {a} and %b%'], { a: 1, b: 2, c: 3 }),
             () => m.md5(String.fromCodePoint(128512)),
             () => m.md5Legacy(String.fromCodePoint(128512)),
             () => m.isICU('{n, plural, one {#} other {#}}'),
@@ -67,6 +101,28 @@ try {
             }
         }
         console.log('VARIED_CLEAN probes=' + ran); process.exit(0);
+    }
+    if (phase === 'nodeish') {
+        // Call every export with an argument SHAPED LIKE A DOM NODE, so a walker
+        // gets past its argument handling and reaches the DOM global it needs.
+        // The fixed \`fn('x', ['y'])\` sweep below cannot: a walker reading
+        // \`root.childNodes\` on the string 'x' throws on undefined long before it
+        // evaluates \`Node.TEXT_NODE\`, so it never touches a trapped name.
+        const leaf = { nodeType: 3, nodeValue: 'x', textContent: 'x', childNodes: [],
+            attributes: [], tagName: 'SPAN', getAttribute: () => 'x', hasAttribute: () => false };
+        leaf.cloneNode = () => leaf;
+        const root = { nodeType: 1, nodeValue: null, textContent: 'x', childNodes: [leaf],
+            attributes: [], tagName: 'DIV', getAttribute: () => 'x', hasAttribute: () => false };
+        root.cloneNode = () => root;
+        let probed = 0;
+        for (const [, v] of Object.entries(m)) {
+            if (typeof v !== 'function') continue;
+            try { v(root, [leaf]); probed++; } catch (e) {
+                if (String(e.message).startsWith('DOM_TOUCHED')) throw e;
+                probed++;
+            }
+        }
+        console.log('NODEISH_CLEAN probed=' + probed); process.exit(0);
     }
     let called = 0;
     for (const [, v] of Object.entries(m)) {
@@ -84,12 +140,34 @@ try {
 }
 `;
 
+/**
+ * A hand-written miniature of the exact hazard: a function that walks child nodes
+ * and compares against a DOM global. Not taken from `dist`, so it stays a fixed
+ * reference point no refactor can quietly defuse.
+ */
+const WALKER_PROBE = `
+export function walk(root) {
+    let out = '';
+    for (const node of Array.from(root.childNodes)) {
+        if (node.nodeType === Node.TEXT_NODE) out += node.nodeValue ?? '';
+    }
+    return out;
+}
+`;
+
 const SCRATCH = join(process.cwd(), 'node_modules', '.langsys-dom-guard.mjs');
+const WALKER = join(process.cwd(), 'node_modules', '.langsys-walker-probe.mjs');
 const DIST = join(process.cwd(), 'dist');
 
-function runGuard(artifact: string, phase: 'import' | 'call' | 'varied', kind: 'esm' | 'cjs' = 'esm') {
+function runGuard(
+    artifact: string,
+    phase: 'import' | 'call' | 'varied' | 'selftrap' | 'nodeish',
+    kind: 'esm' | 'cjs' = 'esm',
+    extra = ''
+) {
     try {
-        const out = execFileSync(process.execPath, [SCRATCH, join(DIST, artifact), phase, kind], {
+        const target = artifact.startsWith('/') ? artifact : join(DIST, artifact);
+        const out = execFileSync(process.execPath, [SCRATCH, target, phase, kind, extra], {
             encoding: 'utf8',
             stdio: ['ignore', 'pipe', 'pipe'],
         });
@@ -102,6 +180,62 @@ function runGuard(artifact: string, phase: 'import' | 'call' | 'varied', kind: '
 
 beforeAll(() => {
     writeFileSync(SCRATCH, GUARD);
+    writeFileSync(WALKER, WALKER_PROBE);
+});
+
+describe('every name in the trap list is a live trap', () => {
+    // WHY THIS EXISTS. The list was eight names — window, document, navigator,
+    // storage, self, top, parent — and `encodeRichText` reaches the DOM through
+    // none of them: it reads `Node.TEXT_NODE`, and `Node` is NOT a global in bare
+    // Node (measured: `'Node' in globalThis` is false on v22). So it would have
+    // thrown `ReferenceError: Node is not defined`, the guard's catch would have
+    // classified that as "a TypeError from deliberately wrong arguments, fine",
+    // and the phase would have reported CALLS_CLEAN.
+    //
+    // That is the whole failure mode this file was built to prevent, arriving in
+    // the file itself: the guard could fail, but not for the case most likely to
+    // occur — someone adding a node walker to /pure, which is exactly what the
+    // JS Server lane asked for and what prompted the measurement.
+    //
+    // Parameterised per name rather than sampled, because a longer list is not
+    // the same thing as a working one and the only way to tell is to trip each.
+    it.each(TRAPPED_NAMES)('%s trips the guard when referenced bare', (name) => {
+        const r = runGuard('pure.mjs', 'selftrap', 'esm', name);
+        expect(r.code, `${name} was NOT trapped: ${r.out}`).toBe(3);
+        expect(r.out).toContain(`DOM_TOUCHED:${name}`);
+    });
+});
+
+describe('a DOM WALKER is caught, which needed the probe shape and not just the list', () => {
+    // MEASURED, and the reason this block exists. Adding `encodeRichText` to
+    // /pure — the export the JS Server lane asked for — was checked three ways:
+    //
+    //   call    + 39-name trap : CALLS_CLEAN  exit 0   <- still missed it
+    //   call    +  8-name trap : CALLS_CLEAN  exit 0
+    //   nodeish + 39-name trap : DOM_TOUCHED:Node      <- caught
+    //
+    // So lengthening the trap list did NOT close the hole on its own, which is
+    // what the first attempt at this fix assumed. The `call` sweep passes every
+    // export `fn('x', ['y'])`, and a walker reading `'x'.childNodes` throws a
+    // TypeError on `Array.from(undefined)` before it ever evaluates
+    // `Node.TEXT_NODE` — the guard's catch then classifies that as an ordinary
+    // wrong-argument error and reports clean. BOTH halves are load-bearing: a
+    // trapped name that nothing reaches is not a trap.
+    it('the nodeish sweep trips on a walker', () => {
+        const r = runGuard(WALKER, 'nodeish');
+        expect(r.code, r.out).toBe(3);
+        expect(r.out).toContain('DOM_TOUCHED:Node');
+    });
+
+    it('…and the fixed-argument sweep does NOT, on the same probe', () => {
+        // The negative half, asserted rather than described. If someone later
+        // "simplifies" the nodeish phase away, this is the test that says why it
+        // was there — and if the call sweep ever does start catching walkers,
+        // this fails and the comment above is the thing to correct.
+        const r = runGuard(WALKER, 'call');
+        expect(r.code, r.out).toBe(0);
+        expect(r.out).toContain('CALLS_CLEAN');
+    });
 });
 
 describe('the guard can actually catch a DOM touch', () => {
@@ -143,6 +277,15 @@ describe('/pure touches no DOM', () => {
         expect(r.out).toContain('CALLS_CLEAN');
     });
 
+    it('survives being handed node-shaped arguments', () => {
+        // The phase that would catch a DOM walker. /pure's `encodeRichPhrase`
+        // takes a node-shaped tree by design, so this is the export most likely
+        // to reach for a DOM global one day, and the one this phase watches.
+        const r = runGuard('pure.mjs', 'nodeish');
+        expect(r.code, r.out).toBe(0);
+        expect(r.out).toContain('NODEISH_CLEAN');
+    });
+
     it('survives realistic arguments, not just one fixed shape', () => {
         // The sweep above calls everything as `fn('x', ['y'])`, which reaches a
         // fair amount of code but not the branches that matter: ICU formatting,
@@ -168,6 +311,8 @@ describe('the export list is a contract', () => {
         'TRANSLATABLE_ATTRIBUTES',
         'canonicalContentBlockJson',
         'canonicalizeLocale',
+        'encodeRichPhrase',
+        'findUnusedParamKeys',
         'generateCustomId',
         'generateLegacyCustomId',
         'interpolate',
@@ -215,6 +360,25 @@ describe('the export list is a contract', () => {
                 `/pure's ${name} must BE content-block's, not a copy of it`
             ).toBe((contentBlock as unknown as Record<string, unknown>)[name]);
         }
+    });
+
+    it('the moved placeholder rewriter is one object on all three surfaces', async () => {
+        // `normalizeMarkupPlaceholders` moved from `interpolate.ts` to
+        // `identity.ts` (it decides a stored key, so it belongs with the other
+        // capture-boundary rule) and `interpolate.ts` re-exports it so its eight
+        // importers did not move. That re-export is the compat claim, and a
+        // re-export is only compatible while it is the SAME function — someone
+        // "restoring" a local definition there would leave both surfaces
+        // exporting something named right and drifting apart.
+        const identity = await import('../src/identity.js');
+        const interpolate = await import('../src/interpolate.js');
+        expect(pure.normalizeMarkupPlaceholders).toBe(identity.normalizeMarkupPlaceholders);
+        expect(interpolate.normalizeMarkupPlaceholders).toBe(identity.normalizeMarkupPlaceholders);
+    });
+
+    it('the rich-phrase encoder is the one the DOM path delegates to', async () => {
+        const identity = await import('../src/identity.js');
+        expect(pure.encodeRichPhrase).toBe(identity.encodeRichPhrase);
     });
 
     it('carries PHP’s 27 attributes, in PHP’s order', () => {

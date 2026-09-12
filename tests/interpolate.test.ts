@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { interpolate, isICU } from '../src/interpolate.js';
+import { findUnusedParamKeys, interpolate, isICU } from '../src/interpolate.js';
 import { logger } from '../src/logger.js';
 
 describe('isICU', () => {
@@ -349,5 +349,64 @@ describe('interpolate — debug notice for defaulted arguments', () => {
 
         expect(warnings).toHaveLength(1);
         expect(warnings[0]).toContain('msg_count');
+    });
+});
+
+describe('findUnusedParamKeys agrees with what interpolate actually resolves', () => {
+    /**
+     * The predicate and `adoptPercentPlaceholders` are two halves of one rule:
+     * "is this key a placeholder in this text". They disagreed. The predicate
+     * accepted the brace spellings only, on the documented assumption that texts
+     * arrive canonical (post-`normalizeMarkupPlaceholders`) — which is still true
+     * of both internal callers, `<Translate>` normalizing its tokens at capture
+     * and `<Phrase>`'s string coming out of `encodeRichText` already rewritten.
+     *
+     * It stopped being true of the exported function once `interpolate` began
+     * adopting `%name%` at RENDER time. Then a caller holding a raw stored
+     * translation got the key reported unused for a param that renders
+     * perfectly, and `warnUnmatchedParams` advised them to "write %name%
+     * instead" — the spelling they had used. Reported by the JS Server lane,
+     * which consumes the predicate from `/pure` over server-rendered text.
+     */
+    it('reports nothing for a param spelled %name% in the text', () => {
+        expect(findUnusedParamKeys(['Hi %name%'], { name: 'Ada' })).toEqual([]);
+    });
+
+    it('and interpolate does resolve that text, which is why', () => {
+        // The pairing is the point: a key the renderer substitutes must never be
+        // reported unused. One assertion per half, same input.
+        expect(interpolate('Hi %name%', { name: 'Ada' }, 'en')).toBe('Hi Ada');
+        expect(findUnusedParamKeys(['Hi %name%'], { name: 'Ada' })).toEqual([]);
+    });
+
+    it('still reports a key that appears in neither spelling', () => {
+        // The warning has to keep working — this is the case it exists for.
+        expect(findUnusedParamKeys(['Hi {name}'], { name: 'Ada', count: 2 })).toEqual(['count']);
+        expect(findUnusedParamKeys(['Hi there'], { name: 'Ada' })).toEqual(['name']);
+    });
+
+    it('accepts the brace spellings exactly as before', () => {
+        expect(findUnusedParamKeys(['Hi {name}'], { name: 'Ada' })).toEqual([]);
+        expect(findUnusedParamKeys(['{n, plural, one {#} other {#}}'], { n: 1 })).toEqual([]);
+        expect(findUnusedParamKeys(['Hi { name }'], { name: 'Ada' })).toEqual([]);
+    });
+
+    it('does NOT accept %key% for a key that could never resolve that way', () => {
+        // `adoptPercentPlaceholders` only rewrites identifiers, so `%a.b%` never
+        // becomes a placeholder. Accepting it here would suppress a warning that
+        // is correct — a false negative is worse than the false positive fixed
+        // above, because it hides a real mistake instead of misdirecting it.
+        expect(interpolate('Hi %a.b%', { 'a.b': 'x' }, 'en')).toBe('Hi %a.b%');
+        expect(findUnusedParamKeys(['Hi %a.b%'], { 'a.b': 'x' })).toEqual(['a.b']);
+    });
+
+    it('does not treat a percent run in prose as a placeholder', () => {
+        expect(findUnusedParamKeys(['Save 20% to 30%'], { off: 1 })).toEqual(['off']);
+    });
+
+    it('matches a key across the multi-text join without bleeding over it', () => {
+        // Texts are joined on NUL; a key must match within one text, not across
+        // two. `%` + NUL + `name%` must not count as `%name%`.
+        expect(findUnusedParamKeys(['ends with %', 'name% starts'], { name: 'Ada' })).toEqual(['name']);
     });
 });

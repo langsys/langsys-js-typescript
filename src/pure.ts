@@ -13,12 +13,20 @@
  * persisted stores. A copy cannot track a rule change: that one predated every
  * content-id decision made this month. Importing can.
  *
- * The TOKENIZER ITSELF IS NOT HERE, and deliberately so: `tokenizeElement` walks
- * real DOM nodes and reads computed styles, which has no meaning without a
- * document. What is exported instead is everything the walker is built FROM —
- * the attribute list, the skip list, the per-token text normaliser, the
- * placeholder rewriter and the hashing — so a server that does its own parsing
- * can produce byte-identical ids without reimplementing any of the rules.
+ * THE TWO WALKERS ARE NOT HERE, and deliberately so: `tokenizeElement` and
+ * `encodeRichText` read real DOM nodes, which has no meaning without a document.
+ * What is exported instead is everything they are built FROM — the attribute
+ * list, the skip list, the per-token text normaliser, the placeholder rewriter,
+ * the hashing, and `encodeRichPhrase` (the whole `<Phrase>` encoding over a
+ * host-neutral node shape) — so a server that does its own parsing produces
+ * byte-identical keys without reimplementing a rule.
+ *
+ * The line between the two is worth stating, since it is not "DOM-free parts
+ * only": for the content-block path the walk itself is identity (token arity and
+ * order), so a host must reproduce it against the exported rules. For `<Phrase>`
+ * the walk is NOT identity — only the string it assembles is — so the whole
+ * encoder travels, generic over the host's node type, and the host supplies just
+ * a node-shape mapping.
  *
  * Enforced by `tests/pure-subpath.test.ts`, which imports this module in bare
  * Node under a `globalThis` Proxy that throws on any DOM-ish access, calls every
@@ -31,8 +39,11 @@ export {
     canonicalContentBlockJson,
     generateCustomId,
     generateLegacyCustomId,
+    // <Phrase> identity — the string IS the key, so the encoder is shared
+    encodeRichPhrase,
     // What the tokenizer is built from
     normalizeTokenText,
+    normalizeMarkupPlaceholders,
     TRANSLATABLE_ATTRIBUTES,
     NON_TRANSLATABLE_ELEMENTS,
     // Markers, both spellings, read by either SDK
@@ -46,9 +57,10 @@ export {
 
 export { canonicalizeLocale, maximizedLangScript } from './locale.js';
 
-export { interpolate, isICU, normalizeMarkupPlaceholders } from './interpolate.js';
+export { findUnusedParamKeys, interpolate, isICU } from './interpolate.js';
 
 export { md5, md5Legacy, isEmpty } from './utils.js';
 
+export type { EncodedRichPhrase, RichTextNode } from './identity.js';
 export type { ParamPrimitive, TranslationParams } from './types/translation-fn.js';
 export type { iContentBlock } from './types/content-block.js';

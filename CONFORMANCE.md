@@ -7,7 +7,7 @@
 | **specVersion** | 8 (published) |
 | **Spec revision read** | langsys `c6b08d11`, `docs/sdk-spec.mdx` blob `042dedb5b533499a277b88fc9e2ee39ef30a0b89` (specVersion 8, published). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree c6b08d11 docs/sdk-spec.mdx`. Every rule profiled `all` or `browser`, plus SRV-4's browser-core clause, is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 424 tests in 29 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 507 tests in 30 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -303,7 +303,8 @@ bodies** rather than against the author's summary of them. TOK-1..5 and MARK-1/2
 | TOK-2 (U+00A0 collapses) | implemented | `tokenizer-convergence` — satisfied with no code: JavaScript's `\s` already matches U+00A0. Pinned anyway, because the rule now warns that a hand-written character class would silently drop it. Finding credited to this lane in the rule body |
 | TOK-4 (attribute values collapse as text does) | implemented | `tokenizer-convergence` — one normaliser shared by both paths, so "same content, same id" holds by construction. Before: `<img alt="A long\n  description">` kept its newlines while the same sentence in a `<p>` collapsed |
 | TOK-5 (`{name}` with `%name%` accepted) | implemented | `tokenizer-convergence` + `interpolate` — `%name%` now resolves at RENDER, conditional on the key being supplied, so prose containing percent signs is untouched |
-| Side-effect-free identity subpath | implemented | `pure-subpath` — bare Node under a trapping `globalThis`, import and every call clean for ESM and CJS, main entry as the positive control, export list pinned, and `/pure` proven to share function identity with the DOM path rather than re-implementing it. No rule id was reported for this; it may be unruled |
+| Side-effect-free identity subpath | implemented | `pure-subpath` — bare Node under a trapping `globalThis`, import and every call clean for ESM and CJS, main entry as the positive control, export list pinned, and `/pure` proven to share function identity with the DOM path rather than re-implementing it. Now also carries `encodeRichPhrase` (the whole `<Phrase>` encoding, generic over the host's node type) and `findUnusedParamKeys`. No rule id was reported for this; it may be unruled |
+| `<Phrase>` key reproducible without a DOM | implemented | `rich-phrase-identity` — the encoder moved to `identity.ts` and `encodeRichText` is now a node-shape mapping over it, so there is one implementation of a string that IS the catalog key. Expectations are the PRE-REFACTOR values, measured on the old single-function encoder over 22 inputs and pasted as literals, so they can catch the refactor having moved a key. Mutants: post-order slot numbering reds 8, collapsing per text node instead of once over the assembled string reds 19. No rule id covers the `<Phrase>` encoding; `custom_id` rules do not apply to it, since it keys by string and never computes one |
 
 SSR-1..3 keep their ids and bodies; Langsys reports only their families-table row moved from
 `server (JS)` to `browser`, which does not change what this SDK owes.
