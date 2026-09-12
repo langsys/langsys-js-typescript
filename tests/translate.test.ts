@@ -319,3 +319,73 @@ function elClone(html: string): HTMLElement {
     d.innerHTML = html;
     return d;
 }
+
+describe('TOK-1 at 8.0.1 — svg text translates in place, geometry survives', () => {
+    /**
+     * The rule's third svg clause: "translating svg text replaces the text NODE in
+     * place, never the svg element's content or structure, so its `<path>`
+     * geometry survives."
+     *
+     * This is the render half, and it needs a real render rather than a token
+     * comparison — the failure it guards against is a writer that sets
+     * `textContent` or `innerHTML` on the nearest element, which produces correct
+     * TOKENS and a destroyed drawing. The same defect class as the single-token
+     * `innerText` path above, which flattened the subtree while agreeing about
+     * every string in it.
+     */
+    function withBlock(tokens: string[], translations: Record<string, string>, category = '') {
+        const customId = generateCustomId(category, tokens);
+        sTranslations.set({
+            ...bare(),
+            __uncategorized__: {
+                __category__: '__uncategorized__',
+                __symbol__: '__uncategorized__',
+                [customId]: translations as unknown as string,
+            },
+        } as iCategories);
+    }
+
+    it('translates the svg <text> and leaves the <path> intact', async () => {
+        const tokens = ['Click', 'go', 'to continue'];
+        withBlock(tokens, { Click: 'Clic', go: 'ir', 'to continue': 'para continuar' });
+        const { el } = make('<p>Click <svg><text>go</text><path d="M0 0L8 8"/></svg> to continue</p>');
+        await new Promise((r) => setTimeout(r, 10));
+
+        // The words changed…
+        expect(el.querySelector('text')?.textContent).toBe('ir');
+        expect(el.textContent).toContain('Clic');
+        expect(el.textContent).toContain('para continuar');
+
+        // …and the drawing did not. `d` is the assertion that matters: a writer
+        // that rebuilt the subtree from strings would keep a <path> with no
+        // geometry, or no <path> at all.
+        const path = el.querySelector('path');
+        expect(path, 'the <path> must survive translation').not.toBeNull();
+        expect(path?.getAttribute('d')).toBe('M0 0L8 8');
+        expect(el.querySelector('svg')).not.toBeNull();
+    });
+
+    it('a standalone svg keeps both its <path> and its <text> after translation', async () => {
+        // The rule names this case separately from the inline-icon one, and it is
+        // the stricter of the two: with no sibling prose, a single-token fast path
+        // is reachable, which is exactly where markup gets destroyed.
+        withBlock(['go'], { go: 'ir' });
+        const { el } = make('<svg><text>go</text><path d="M1 1L2 2"/></svg>');
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(el.querySelector('text')?.textContent).toBe('ir');
+        expect(el.querySelector('path')?.getAttribute('d')).toBe('M1 1L2 2');
+    });
+
+    it('and <math> contributes nothing to render, so its notation is untouched', async () => {
+        // The exclusion's render-side consequence: no token means no write, so the
+        // expression survives verbatim rather than being "translated" in place.
+        withBlock(['Area', 'units'], { Area: 'Area', units: 'unidades' });
+        const { el } = make('<p>Area <math><mi>x</mi><mo>+</mo><mn>2</mn></math> units</p>');
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(el.querySelector('math')?.textContent).toBe('x+2');
+        expect(el.querySelector('mo')?.textContent).toBe('+');
+        expect(el.textContent).toContain('unidades');
+    });
+});

@@ -190,6 +190,16 @@ describe('the three named canonicalization rules are each covered', () => {
         expect(row.expected_custom_id).toBe(braces);
     });
 
+    it('TOK-1 at 8.0.1: math excluded, svg not, both as ids', () => {
+        const byId = (id: string) => doc.cases.find((c) => c.id === id)!;
+        // Notation produces no token, so the id is the paragraph's own words only.
+        expect(byId('math-subtree').expected_tokens).toEqual(['Area', 'units']);
+        // And svg is the paired half: its text IS harvested, in document order
+        // alongside the parent's own. Asserting the ORDER matters because the same
+        // three strings in a different sequence is a different id.
+        expect(byId('svg-inline-icon').expected_tokens).toEqual(['Click', 'go', 'to continue']);
+    });
+
     it('the fixed translatable-attribute list, including order', () => {
         const ids = doc.cases.map((c) => c.id);
         expect(ids).toContain('attr-original-15');

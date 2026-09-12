@@ -1,6 +1,6 @@
 {
  "": "Canonicalization + identity agreement across Langsys SDKs. AUTHORED in langsys-js-typescript, not vendored from another lane.",
- "purpose": "Proof that the SDKs mint the SAME custom_id for the same content. Covers the TOK batch's canonicalization rules — the collapse set, attribute values collapsing like text nodes, the fixed twenty-seven attributes in order — and, from spec 8.0.1, the three collapse-set boundary characters and the %name%-at-capture rule.",
+ "purpose": "Proof that the SDKs mint the SAME custom_id for the same content. Covers the TOK batch's canonicalization rules — the collapse set, attribute values collapsing like text nodes, the fixed twenty-seven attributes in order — and, from spec 8.0.1, the three collapse-set boundary characters and the %name%-at-capture rule, plus TOK-1's <math> exclusion and the <svg> behavioural clause it is paired with.",
  "how_to_row_against_it": "Tokenize the html field, compare to expected_tokens, then hash (category, tokens) and compare to expected_custom_id. Compare CODEPOINTS, not display strings: several cases differ only by U+00A0 or U+2028, which render identically to a space — the html_codepoints and expected_tokens_codepoints fields exist so a mismatch is readable instead of looking like two identical strings with two different hashes.",
  "expected_is": "What langsys-js-typescript produces. Every row matches spec blob 8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c (specVersion 8.0.1), and as of this write every row is also matched by langsys-php-sdk. It is not an invitation to change the expectation: the JS core is the identity authority per TOK-2, so a lane that disagrees records a divergence here and fixes its own side.",
  "spec_blob": "8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c (langsys 63df13c7, specVersion 8.0.1). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 63df13c7 docs/sdk-spec.mdx` at this write, not carried from the previous one — 8.0.1 requires the header revision to be re-derived every time.",
@@ -40,8 +40,8 @@
   "not_rows": "The VT/FF cases are deliberately NOT fixture rows. They diverge in the parser, not the tokenizer, so no implementation can make them agree; a row whose expectation can never be met would sit here failing forever and teach a reader to ignore failures. Spec 8.0.1 records the split in prose and specified four rows, which are the four added here."
  },
  "agreement": {
-  "rows": 23,
-  "agree": 23,
+  "rows": 25,
+  "agree": 25,
   "diverge": 0
  },
  "resolved_divergences": {
@@ -1444,6 +1444,233 @@
     "langsys2 (server)": null
    },
    "agree": true
+  },
+  {
+   "id": "math-subtree",
+   "why": "TOK-1 at 8.0.1: a <math> body is NOTATION and is never tokenized. Translating a bare variable or an operator corrupts the expression rather than localising it, so this is not merely wasteful the way harvesting CSS was. Before the exclusion this SDK produced ['Area','x','+','2','units'] — the operator registered as a translatable phrase. langsys-php-sdk already excluded it, so this SDK was the only lane with the gap.",
+   "html": "<p>Area <math><mi>x</mi><mo>+</mo><mn>2</mn></math> units</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0041",
+    "U+0072",
+    "U+0065",
+    "U+0061",
+    "U+0020",
+    "U+003C",
+    "U+006D",
+    "U+0061",
+    "U+0074",
+    "U+0068",
+    "U+003E",
+    "U+003C",
+    "U+006D",
+    "U+0069",
+    "U+003E",
+    "U+0078",
+    "U+003C",
+    "U+002F",
+    "U+006D",
+    "U+0069",
+    "U+003E",
+    "U+003C",
+    "U+006D",
+    "U+006F",
+    "U+003E",
+    "U+002B",
+    "U+003C",
+    "U+002F",
+    "U+006D",
+    "U+006F",
+    "U+003E",
+    "U+003C",
+    "U+006D",
+    "U+006E",
+    "U+003E",
+    "U+0032",
+    "U+003C",
+    "U+002F",
+    "U+006D",
+    "U+006E",
+    "U+003E",
+    "U+003C",
+    "U+002F",
+    "U+006D",
+    "U+0061",
+    "U+0074",
+    "U+0068",
+    "U+003E",
+    "U+0020",
+    "U+0075",
+    "U+006E",
+    "U+0069",
+    "U+0074",
+    "U+0073",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Area",
+    "units"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0041",
+     "U+0072",
+     "U+0065",
+     "U+0061"
+    ],
+    [
+     "U+0075",
+     "U+006E",
+     "U+0069",
+     "U+0074",
+     "U+0073"
+    ]
+   ],
+   "expected_custom_id": "153de0aaa8f6c99b3f0c2cdd5e7def75",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Area",
+      "units"
+     ],
+     "custom_id": "153de0aaa8f6c99b3f0c2cdd5e7def75"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Area",
+      "units"
+     ],
+     "custom_id": "153de0aaa8f6c99b3f0c2cdd5e7def75"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true,
+   "added_by": "spec 8.0.1 TOK-1, derived here as the fixture owner"
+  },
+  {
+   "id": "svg-inline-icon",
+   "why": "TOK-1's counterpart, and the exclusion people expect that is WRONG: <svg> is not excluded, its <text> renders visible words and is tokenized, and an inline svg must never cause its parent block to lose its OWN direct text. 8.0.1 states it behaviourally because the structural reading (“walk svg as a block”) regressed the commonest markup there is when PHP implemented it: every icon-bearing heading, link and list item lost its words. Token ORDER is part of the rule — the block's own text and the svg's text, in document order.",
+   "html": "<p>Click <svg><text>go</text><path/></svg> to continue</p>",
+   "html_codepoints": [
+    "U+003C",
+    "U+0070",
+    "U+003E",
+    "U+0043",
+    "U+006C",
+    "U+0069",
+    "U+0063",
+    "U+006B",
+    "U+0020",
+    "U+003C",
+    "U+0073",
+    "U+0076",
+    "U+0067",
+    "U+003E",
+    "U+003C",
+    "U+0074",
+    "U+0065",
+    "U+0078",
+    "U+0074",
+    "U+003E",
+    "U+0067",
+    "U+006F",
+    "U+003C",
+    "U+002F",
+    "U+0074",
+    "U+0065",
+    "U+0078",
+    "U+0074",
+    "U+003E",
+    "U+003C",
+    "U+0070",
+    "U+0061",
+    "U+0074",
+    "U+0068",
+    "U+002F",
+    "U+003E",
+    "U+003C",
+    "U+002F",
+    "U+0073",
+    "U+0076",
+    "U+0067",
+    "U+003E",
+    "U+0020",
+    "U+0074",
+    "U+006F",
+    "U+0020",
+    "U+0063",
+    "U+006F",
+    "U+006E",
+    "U+0074",
+    "U+0069",
+    "U+006E",
+    "U+0075",
+    "U+0065",
+    "U+003C",
+    "U+002F",
+    "U+0070",
+    "U+003E"
+   ],
+   "category": "UI",
+   "expected_tokens": [
+    "Click",
+    "go",
+    "to continue"
+   ],
+   "expected_tokens_codepoints": [
+    [
+     "U+0043",
+     "U+006C",
+     "U+0069",
+     "U+0063",
+     "U+006B"
+    ],
+    [
+     "U+0067",
+     "U+006F"
+    ],
+    [
+     "U+0074",
+     "U+006F",
+     "U+0020",
+     "U+0063",
+     "U+006F",
+     "U+006E",
+     "U+0074",
+     "U+0069",
+     "U+006E",
+     "U+0075",
+     "U+0065"
+    ]
+   ],
+   "expected_custom_id": "2874ee4f081268ea85f29781d07ef833",
+   "measured": {
+    "langsys-js-typescript": {
+     "tokens": [
+      "Click",
+      "go",
+      "to continue"
+     ],
+     "custom_id": "2874ee4f081268ea85f29781d07ef833"
+    },
+    "langsys-php-sdk": {
+     "tokens": [
+      "Click",
+      "go",
+      "to continue"
+     ],
+     "custom_id": "2874ee4f081268ea85f29781d07ef833"
+    },
+    "langsys2 (server)": null
+   },
+   "agree": true,
+   "added_by": "spec 8.0.1 TOK-1, derived here as the fixture owner"
   },
   {
    "id": "line-separators",

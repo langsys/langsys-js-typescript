@@ -103,12 +103,32 @@ export const TRANSLATABLE_ATTRIBUTES = [
  * libxml2, so a lane measuring in a test environment reproduces a
  * browser-versus-server split that does not exist.
  *
- * `<template>` is named as intent and is NOT a vector: its content lives on
+ * `<template>` is named as intent and is NOT a vector HERE: its content lives on
  * `HTMLTemplateElement.content`, so a walker over `childNodes` never reaches it
- * and omitting it from this list changes nothing. Two lanes measured that
- * independently, in a DOM and in parse5.
+ * and omitting it from this list changes nothing in a DOM or in parse5 — two
+ * lanes measured that independently. It is load-bearing elsewhere, which is why
+ * it stays named: libxml2 puts `<template>` children in the ordinary tree, so a
+ * PHP or Ruby walker that omitted it registers the template's text, and Ruby
+ * measured exactly that leak. 8.0.1 states the split rather than calling the
+ * exclusion free.
+ *
+ * `<math>` is notation, not prose. Translating a variable name or an operator
+ * corrupts the expression instead of localising it, and before this exclusion
+ * `<p>Area <math><mi>x</mi><mo>+</mo><mn>2</mn></math> units</p>` tokenized to
+ * `['Area','x','+','2','units']` — the operator and the bare variable registered
+ * as translatable phrases and sent for machine translation. Added by spec 8.0.1
+ * after v8 shipped without it.
+ *
+ * `<svg>` IS DELIBERATELY ABSENT and must stay absent. It is the exclusion people
+ * expect that is wrong: an `<svg><text>` renders visible words to a reader, so its
+ * text is translated like any other. 8.0.1 states that behaviourally because the
+ * structural reading — "walk `<svg>` as a block" — regressed the commonest markup
+ * there is when PHP implemented it: treating svg as a block dropped the PARENT's
+ * direct text, so `<p>Click <svg><path/></svg> to continue</p>` registered nothing
+ * and every icon-bearing heading, link and list item lost its words. Adding `svg`
+ * here would reproduce that, which is what `tokenizer-convergence` now pins.
  */
-export const NON_TRANSLATABLE_ELEMENTS = ['script', 'style', 'template', 'noscript'];
+export const NON_TRANSLATABLE_ELEMENTS = ['script', 'style', 'template', 'noscript', 'math'];
 
 /**
  * THE definition. `phrase.ts` re-exports this rather than restating it — the

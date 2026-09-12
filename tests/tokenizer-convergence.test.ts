@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateCustomId, tokenizeElement } from '../src/content-block.js';
 import { interpolate } from '../src/interpolate.js';
-import { normalizeTokenText, TRANSLATABLE_ATTRIBUTES } from '../src/identity.js';
+import { NON_TRANSLATABLE_ELEMENTS, normalizeTokenText, TRANSLATABLE_ATTRIBUTES } from '../src/identity.js';
 
 /**
  * TOKENIZER CONVERGENCE with langsys-php — the identity contract.
@@ -37,6 +37,19 @@ describe('(a) code-bearing subtrees are not prose', () => {
     it('does not harvest <script> content', () => {
         // Measured before: ['window.dataLayer.push(1)', 'Plans'], id 7cd0a69f33…
         expect(tokensOf('<script>window.dataLayer.push(1)</script><p>Plans</p>')).toEqual(['Plans']);
+    });
+
+    it('does not harvest <math> content — notation, not prose', () => {
+        // Added by spec 8.0.1 after v8 shipped without it. Measured before the
+        // exclusion: tokens were ['Area', 'x', '+', '2', 'units'] — a bare
+        // variable and an OPERATOR registered as translatable phrases and sent
+        // for machine translation. Translating either corrupts the expression
+        // rather than localising it, which is why this is not merely wasteful the
+        // way harvesting CSS was.
+        expect(tokensOf('<p>Area <math><mi>x</mi><mo>+</mo><mn>2</mn></math> units</p>')).toEqual([
+            'Area',
+            'units',
+        ]);
     });
 
     it('does not harvest <template> content — but this assertion does NOT discriminate', () => {
@@ -104,11 +117,17 @@ describe('(a) code-bearing subtrees are not prose', () => {
         // no single case ever sees both. Identical content in one document makes
         // the count itself the assertion, so "exactly one" can only be satisfied
         // by skipping the right three and keeping the right one.
+        //
+        // FOUR elements as of 8.0.1, `<math>` having joined them. The shape is
+        // what makes the addition safe to assert: with the same sentence in all
+        // four AND once in ordinary markup, "exactly one phrase" can only be
+        // satisfied by skipping the right four and keeping the right one.
         const SENTENCE = 'Enable JavaScript';
         const tokens = tokensOf(
             `<script>${SENTENCE}</script>` +
                 `<style>${SENTENCE}</style>` +
                 `<noscript>${SENTENCE}</noscript>` +
+                `<math>${SENTENCE}</math>` +
                 `<p>${SENTENCE}</p>`
         );
 
@@ -116,7 +135,32 @@ describe('(a) code-bearing subtrees are not prose', () => {
         expect(tokens).toHaveLength(1);
     });
 
-    it('control: ordinary markup is still tokenized — the exclusion is four tags, not a mood', () => {
+    it('<svg> is NOT excluded: its text is harvested AND the parent keeps its own', () => {
+        // 8.0.1 states this behaviourally, and the history is the reason. An
+        // earlier draft said "walk <svg> as a block element"; PHP implemented
+        // exactly that and it broke ordinary pages — treating svg as a block made
+        // the walker drop the PARENT's direct text, so an icon in a heading, link
+        // or list item cost that element its words.
+        //
+        // The spec's own vector, and the order is part of it: the block's tokens
+        // are its own text plus the svg's text, in document order.
+        expect(tokensOf('<p>Click <svg><text>go</text><path/></svg> to continue</p>')).toEqual([
+            'Click',
+            'go',
+            'to continue',
+        ]);
+    });
+
+    it('…and adding svg to the exclusion list would reproduce the regression', () => {
+        // A pin on an ABSENCE, which is otherwise the kind of requirement nothing
+        // tests. `NON_TRANSLATABLE_ELEMENTS` must not grow `svg`: the assertion
+        // above is what fails if it does, and this states the contract directly so
+        // the reason survives next to it.
+        expect(NON_TRANSLATABLE_ELEMENTS).not.toContain('svg');
+        expect(NON_TRANSLATABLE_ELEMENTS).toEqual(['script', 'style', 'template', 'noscript', 'math']);
+    });
+
+    it('control: ordinary markup is still tokenized — the exclusion is five tags, not a mood', () => {
         // The rule names this as the whole test. Excluding too much is the
         // failure mode on the other side of TOK-1, and it looks identical from
         // the outside: content that is simply never translated.

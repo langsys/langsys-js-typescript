@@ -365,12 +365,20 @@ function _walkForTokens(
         if (node.nodeType === Node.ELEMENT_NODE) {
             const el = node as HTMLElement;
             if (isTranslationExcluded(el)) return;
-            // Code and markup, never prose. Measured before this guard existed:
-            // `<style>.plan{color:#fff}</style>` registered `.plan{color:#fff}`
-            // as a translatable phrase and `<script>window.dataLayer.push(1)`
-            // registered the statement — both then sent for machine translation.
-            // `<noscript>` is deliberately absent from that list: its content is
-            // prose a real reader sees, and must still be translated.
+            // Code, markup and notation — never prose. Measured before this guard
+            // existed: `<style>.plan{color:#fff}</style>` registered
+            // `.plan{color:#fff}` as a translatable phrase and
+            // `<script>window.dataLayer.push(1)` registered the statement; later,
+            // `<math>` registered its operators. All were then sent for machine
+            // translation.
+            //
+            // The previous version of this comment said `<noscript>` was
+            // "deliberately absent from that list", which had been false since
+            // TOK-1 was reversed to exclude it — the reasoning left standing
+            // beside a list that contradicted it, which is the same way the
+            // attribute list's docstring went stale. The list is the contract;
+            // see `NON_TRANSLATABLE_ELEMENTS` for why each member is in it and
+            // why `<svg>` is not.
             if (NON_TRANSLATABLE_ELEMENTS.includes(el.tagName.toLowerCase())) return;
             // A <Phrase> subtree is its own self-managed rich phrase — skip it
             // here so the content block doesn't tokenize its inner text.
