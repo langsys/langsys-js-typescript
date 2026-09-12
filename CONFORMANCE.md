@@ -5,7 +5,7 @@
 | **SDK** | `langsys-js-typescript` (browser reference implementation) |
 | **Profiles** | `all`, `browser` |
 | **specVersion** | 8 (published) |
-| **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `45cdddf8e9136a85143dc5a5169d59b3355d7dc1`, re-derived at write time with `git -C ~/Documents/dev/langsys2 ls-tree origin/main docs/sdk-spec.mdx`. Every rule profiled `all` or `browser` is audited against this blob |
+| **Spec revision read** | langsys `c6b08d11`, `docs/sdk-spec.mdx` blob `042dedb5b533499a277b88fc9e2ee39ef30a0b89` (specVersion 8, published). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree c6b08d11 docs/sdk-spec.mdx`. Every rule profiled `all` or `browser`, plus SRV-4's browser-core clause, is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
 | **Suite** | 425 tests in 29 files, `npm test`, counted at the tip of this branch |
 
@@ -104,11 +104,12 @@ own to compare against, so closing it properly means threading
 `initialTranslationsLocale` into the cache layer, which is a wider change than the corner
 justifies. Filed rather than left to be discovered.
 
-**Spec moved; counts re-derived, not carried over.** The previous filing cited blob
-`06ae105a`. At `45cdddf8` (history entry dated 2026-08-29) the rule total is unchanged at
-**67**, and so is the set binding this SDK at **60** — but the distribution shifted:
-`all` 44 → 40 and `browser` 16 → 20, which is **GRANT-1..4 re-profiled `all` → `browser`**
-and nothing else. Those four still bind here either way, since `browser` is one of this
+**Spec moved; counts re-derived, not carried over.** *(History. The live counts are in
+Coverage arithmetic above — 79 rules, 68 binding. The figures in this paragraph were correct
+when written and are kept because the reasoning still is.)* An earlier filing cited blob
+`06ae105a`. At `45cdddf8` the rule total was then unchanged at 67, as was the set binding this
+SDK at 60 — but the distribution had shifted: `all` 44 → 40 and `browser` 16 → 20, which was
+**GRANT-1..4 re-profiled `all` → `browser`** and nothing else. Those four still bind here either way, since `browser` is one of this
 SDK's profiles, so no row was added, removed or re-graded by the move. The new server clause
 attached to that family — a server SDK MUST NOT send `X-Write-Grant` — is addressed to a
 profile this SDK is not.
@@ -121,18 +122,41 @@ consumer is bound by the `browser` rules already carried here. Said explicitly b
 "a profile was added" and "rules were added" look the same from a distance, and only the
 second would leave gaps.
 
-**Coverage arithmetic**, so the counts reconcile rather than needing to be trusted. The spec
-carries **67 rules**. **60 bind this SDK** (40 profiled `all`, 20 `browser`) and each has its
-own row. The other seven are covered by two rows: `HINT-2` (profile `server`) keeps a row of
-its own so the n/a stays visible as a claim about that rule's Profiles line, and `BIND-1..6`
-share one combined row because a binding profile is n/a for the same single reason six times
-over. So **62 physical rows covering 67 rules** — the row count and the rule count are
-deliberately different numbers, and neither is the other.
+**Coverage arithmetic**, recomputed against the published blob rather than carried forward. The
+spec now carries **79 rules**, up from 67 — a PURE INSERTION: diffing every rule title and
+Profiles line between the previously-cited `45cdddf8` and `042dedb5` shows only additions
+(TOK-1..5, MARK-1/2, SRV-1..5) and not one pre-existing rule changed, so the earlier audit of
+those stands rather than needing redoing.
 
-Two kinds of n/a are kept apart. `HINT-2` and `BIND-1..6` are **profile-n/a**: the rule is
-real and simply addressed to somebody else. That is not the same as a rule being
-inapplicable to this architecture, which would need saying differently and does not currently
-occur here.
+**68 bind a browser core** — 47 profiled `all`, 20 `browser`, plus SRV-4, which names the
+browser core explicitly for the synchronous seed it exposes. Every one of the 68 has a row, and
+that is checked by set difference rather than by counting: binding-rules-without-a-row is empty.
+
+The other eleven are covered by two rows. `HINT-2` (profile `server`) keeps a row of its own so
+the n/a stays visible as a claim about that rule's Profiles line, and `BIND-1..6` share one
+combined row because a binding profile is n/a for the same single reason six times over. SRV-1,
+2, 3 and 5 are profiled `server; and a binding…` and are rowed as profile-n/a.
+
+So **71 physical rows covering 79 rules** — the row count and the rule count are deliberately
+different numbers, and neither is the other.
+
+Two kinds of n/a are kept apart. `HINT-2`, `BIND-1..6` and the four server-side SRV rules are
+**profile-n/a**: the rule is real and simply addressed to somebody else. That is not the same as
+a rule being inapplicable to this architecture, which would need saying differently and does not
+currently occur here.
+
+Computed grade summary over the 71 physical rows, counted from the file rather than typed:
+
+```
+  28  implemented
+  25  provisional
+   6  corroborated (cross-implementation)
+   6  provisional (no test)
+   2  n/a
+   2  partial
+   1  core half implemented; the Profiles line now includes this SDK
+   1  profile-n/a
+```
 
 **Grade vocabulary.** This file grades every row `implemented`, `partial`, `provisional`,
 `corroborated (cross-implementation)` or `n/a`. The verification gate's reports use `met`
@@ -276,9 +300,9 @@ bodies** rather than against the author's summary of them. TOK-1..5 and MARK-1/2
 | MARK-2 (phrase stamp, both spellings read) | implemented | `content-block-identity` — behavioural and cross-module: the attribute `Phrase` exports is the one the tokenizer skips on, and PHP's spelling is accepted alongside it |
 | TOK-3 (27 attributes, order normative) | implemented | `tokenizer-convergence` + `pure-subpath` — the 27 verified against `langsys-php/src/Html/HtmlParser.php` directly, appended never inserted, with a case asserting list order beats document order. Langsys's point is the sharp one: the same set in a different order agrees on every single-attribute element and diverges only where nobody looks |
 | TOK-1 (skip script/style/template **and noscript**) | implemented | Re-rowed against the published blob `042dedb5`. Exclusion set compared element-by-element with the rule: `['script','style','template','noscript']`, matching. TOK-1 REVERSED on `noscript` and now excludes it. `tokenizer-convergence` asserts exclusion under BOTH parser models — the markup shape happy-dom and libxml2 give, and the raw-text shape Chromium and parse5 give — plus **TOK-1's own specified test shape**: the same sentence inside `<script>`, `<style>` and `<noscript>` and once in ordinary markup, in ONE document, with exactly one phrase produced. That form is stronger than the per-element cases this file had first — separate cases with different content pass even if the walker skipped the ordinary copy and harvested a skipped one, because no single case sees both. Mutation-checked against over-exclusion (adding `p`/`div`/`span` reds five). Red-first: both noscript assertions failed against the previous list. `<template>` remains named as intent and is not a vector |
-| TOK-2 (U+00A0 collapses) | implemented, free in this runtime | `tokenizer-convergence` — satisfied with no code: JavaScript's `\s` already matches U+00A0. Pinned anyway, because the rule now warns that a hand-written character class would silently drop it. Finding credited to this lane in the rule body |
-| TOK-4 (attribute values collapse as text does) | implemented, text unread | `tokenizer-convergence` — one normaliser shared by both paths, so "same content, same id" holds by construction. Before: `<img alt="A long\n  description">` kept its newlines while the same sentence in a `<p>` collapsed |
-| TOK-5 (`{name}` with `%name%` accepted) | implemented, text unread | `tokenizer-convergence` + `interpolate` — `%name%` now resolves at RENDER, conditional on the key being supplied, so prose containing percent signs is untouched |
+| TOK-2 (U+00A0 collapses) | implemented | `tokenizer-convergence` — satisfied with no code: JavaScript's `\s` already matches U+00A0. Pinned anyway, because the rule now warns that a hand-written character class would silently drop it. Finding credited to this lane in the rule body |
+| TOK-4 (attribute values collapse as text does) | implemented | `tokenizer-convergence` — one normaliser shared by both paths, so "same content, same id" holds by construction. Before: `<img alt="A long\n  description">` kept its newlines while the same sentence in a `<p>` collapsed |
+| TOK-5 (`{name}` with `%name%` accepted) | implemented | `tokenizer-convergence` + `interpolate` — `%name%` now resolves at RENDER, conditional on the key being supplied, so prose containing percent signs is untouched |
 | Side-effect-free identity subpath | implemented | `pure-subpath` — bare Node under a trapping `globalThis`, import and every call clean for ESM and CJS, main entry as the positive control, export list pinned, and `/pure` proven to share function identity with the DOM path rather than re-implementing it. No rule id was reported for this; it may be unruled |
 
 SSR-1..3 keep their ids and bodies; Langsys reports only their families-table row moved from
