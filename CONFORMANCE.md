@@ -7,7 +7,7 @@
 | **specVersion** | 7 (read at 7.0.1) |
 | **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `45cdddf8e9136a85143dc5a5169d59b3355d7dc1`, re-derived at write time with `git -C ~/Documents/dev/langsys2 ls-tree origin/main docs/sdk-spec.mdx`. Every rule profiled `all` or `browser` is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 394 tests in 28 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 396 tests in 28 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -248,19 +248,40 @@ reading reached the PHP lane before it was corrected. The claim is about a
 function; the behaviour is a property of the function *plus its callers*, and
 the two answers differ.
 
-## Pending spec — implemented here, not yet ruled
+## New spec families — rule ids known, spec text NOT YET VERIFIABLE HERE
 
-Langsys is naming these rules now (topic `838-spec-batch-ssr-and-tokenizer`). Rows are
-withheld rather than invented: a row keyed to an id I guessed would read as conformance
-against a rule that does not exist. Re-derive against the blob when it lands, and replace
-this section with real rows.
+Langsys reports the spec batch committed as `2a9cc2586e7f2826c6951a48b9b78b4fe067c284`,
+blob `57c8a4982d6a5a24d4bf5f044c31e4285f4e6b70`, with the families below. **That commit is
+not pushed** — their GitLab is refusing connections — so the SHA and blob are recorded AS
+REPORTED and I have not read the rule bodies. Rows are filed against the ids, which are
+stable, and graded on evidence I actually hold; re-derive against the blob once it pushes,
+and promote the grades then.
 
-| behaviour | status here | evidence |
+Saying that plainly matters: a row citing a blob nobody here can open would read as
+conformance against text that was never seen, which is the error this file exists to catch.
+
+| Rule | Status | Evidence |
 |---|---|---|
-| Side-effect-free identity subpath (`/pure`) | implemented | `pure-subpath` — imports and calls every export in bare Node under a `globalThis` whose DOM properties throw. Positive control: the main entry trips the same guard when its exports are called. Export list pinned; `/pure` proven to share function identity with the DOM path rather than re-implementing it |
-| Synchronous catalog seed (`seedCatalog`) | implemented | `seed-catalog` — `t()` resolves on the line after the call; `init()` still authorizes and does not clobber a seeded locale. Mutation: making it `async` reds four of seven |
-| Content-block host marker (`data-ls-contentblock`) | implemented | `translate` — the stamp equals the id the tokenizer derives, follows a legacy-id adoption, and honours a caller-supplied `custom_id`. Mutations: dropping the stamp and stamping a constant each red four |
-| Tokenizer convergence (a)–(e) | implemented | `tokenizer-convergence`, 15 cases with the pre-convergence value recorded beside each. **Changes `custom_id`**; re-registration is the accepted path, legacy tolerance declined |
+| SRV-4 (synchronous seed) | implemented, spec text unread | `seed-catalog` — `t()` resolves on the line after `seedCatalog()`; returns `undefined`, not a promise. Making it `async` reds 4 of 9. **Synchronicity is the normative part**, per Langsys: an entry point that must be awaited cannot satisfy SRV-4 however it is named. The exported name is ours and the spec deliberately does not fix it |
+| SRV-1..3, SRV-5 | n/a or server-side | Serving translated HTML is the server's half of the hand-off. This SDK's obligation is the seed (SRV-4); re-derive the rest when the text is readable rather than guessing which bind |
+| MARK-1 (content-block stamp) | implemented | `translate` — the stamp is compared against an id **re-derived by running the tokenizer over the same subtree**, not read back from the attribute just written, which is what MARK-1's test asks for and would otherwise prove only that a write happened. Mutations: dropping the stamp and stamping a constant each red four |
+| MARK-2 (phrase stamp, both spellings read) | implemented | `content-block-identity` — behavioural and cross-module: the attribute `Phrase` exports is the one the tokenizer skips on, and PHP's spelling is accepted alongside it |
+| TOK-3 (27 attributes, order normative) | implemented | `tokenizer-convergence` + `pure-subpath` — the 27 verified against `langsys-php/src/Html/HtmlParser.php` directly, appended never inserted, with a case asserting list order beats document order. Langsys's point is the sharp one: the same set in a different order agrees on every single-attribute element and diverges only where nobody looks |
+| TOK-1/2/4/5 (canonicalization) | implemented, mapping unconfirmed | `tokenizer-convergence` covers script/style/template skipping with `noscript` kept, U+00A0 collapse, and attribute/text normalisation through one function. **Which rule number covers which is a guess until the text is readable** — recorded as unconfirmed rather than asserted |
+| Side-effect-free identity subpath | implemented | `pure-subpath` — bare Node under a trapping `globalThis`, import and every call clean for ESM and CJS, main entry as the positive control, export list pinned, and `/pure` proven to share function identity with the DOM path rather than re-implementing it. No rule id was reported for this; it may be unruled |
+
+SSR-1..3 keep their ids and bodies; Langsys reports only their families-table row moved from
+`server (JS)` to `browser`, which does not change what this SDK owes.
+
+### A control this SDK structurally cannot carry
+
+SRV-4's test as specified pairs "seeded renders the translation" with "unseeded produces a
+hydration-mismatch warning". The second half is framework-level: the core has no renderer to
+mismatch, so it cannot emit that warning. The core-level equivalent is in place — `t()`
+demonstrably returns source text with no seed, and the seed is what changes it on the same
+phrase — and the warning half belongs to the bindings. Flagged rather than quietly treated as
+satisfied, because a core reporting SRV-4 green without it would be claiming a binding's
+evidence as its own.
 
 ### The shared tokenizer fixture contradicted itself
 

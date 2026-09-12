@@ -62,6 +62,35 @@ describe('a seeded catalog is readable on the next line', () => {
     });
 });
 
+describe('control: without the seed, the problem is visible', () => {
+    // SRV-4's test shape requires this half. "Seeded renders the translation"
+    // passes against a harness that would render the translation anyway — the
+    // claim only means something if the UNSEEDED case demonstrably does not.
+    //
+    // The spec's own version pairs it with a hydration-mismatch warning, which
+    // is framework-level and cannot be produced here: the core has no renderer
+    // to mismatch. The core-level equivalent is that `t()` falls back to source
+    // text, and the bindings carry the warning half.
+    it('t() returns the source text when nothing was seeded', () => {
+        sTranslations.set(bare());
+        currentlyLoadedLocale.set('es-es');
+
+        expect(LangsysApp.t('Pricing', 'Marketing')).toBe('Pricing');
+    });
+
+    it('and the seed is what changes it, on the same phrase and category', () => {
+        sTranslations.set(bare());
+        currentlyLoadedLocale.set('es-es');
+        const before = LangsysApp.t('Pricing', 'Marketing');
+
+        LangsysApp.seedCatalog(catalog(), 'es-es');
+        const after = LangsysApp.t('Pricing', 'Marketing');
+
+        expect(before).toBe('Pricing');
+        expect(after).toBe('Precios');
+    });
+});
+
 describe('init() does not clobber a seeded catalog', () => {
     it('keeps the seeded catalog while still authorizing', async () => {
         const seen: string[] = [];
