@@ -7,7 +7,7 @@
 | **specVersion** | 7 (read at 7.0.1) |
 | **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `45cdddf8e9136a85143dc5a5169d59b3355d7dc1`, re-derived at write time with `git -C ~/Documents/dev/langsys2 ls-tree origin/main docs/sdk-spec.mdx`. Every rule profiled `all` or `browser` is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 359 tests in 25 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 394 tests in 28 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -247,6 +247,34 @@ branch, not on main" — reads as a live cross-SDK hash divergence, and that
 reading reached the PHP lane before it was corrected. The claim is about a
 function; the behaviour is a property of the function *plus its callers*, and
 the two answers differ.
+
+## Pending spec — implemented here, not yet ruled
+
+Langsys is naming these rules now (topic `838-spec-batch-ssr-and-tokenizer`). Rows are
+withheld rather than invented: a row keyed to an id I guessed would read as conformance
+against a rule that does not exist. Re-derive against the blob when it lands, and replace
+this section with real rows.
+
+| behaviour | status here | evidence |
+|---|---|---|
+| Side-effect-free identity subpath (`/pure`) | implemented | `pure-subpath` — imports and calls every export in bare Node under a `globalThis` whose DOM properties throw. Positive control: the main entry trips the same guard when its exports are called. Export list pinned; `/pure` proven to share function identity with the DOM path rather than re-implementing it |
+| Synchronous catalog seed (`seedCatalog`) | implemented | `seed-catalog` — `t()` resolves on the line after the call; `init()` still authorizes and does not clobber a seeded locale. Mutation: making it `async` reds four of seven |
+| Content-block host marker (`data-ls-contentblock`) | implemented | `translate` — the stamp equals the id the tokenizer derives, follows a legacy-id adoption, and honours a caller-supplied `custom_id`. Mutations: dropping the stamp and stamping a constant each red four |
+| Tokenizer convergence (a)–(e) | implemented | `tokenizer-convergence`, 15 cases with the pre-convergence value recorded beside each. **Changes `custom_id`**; re-registration is the accepted path, legacy tolerance declined |
+
+### The shared tokenizer fixture contradicted itself
+
+`tokenizer-reference.json` carries a row named **"script and style contents are never
+harvested"** whose expected tokens are `["Keep", "var a=1;", ".a{}"]`. The name states the
+intent; the data encodes the opposite. Both SDKs matched the data, so both harvested CSS and
+JavaScript as translatable phrases and sent them for machine translation — while the row's
+name said they did not. The fixture was corroborating the bug it was named for.
+
+Found by implementing the convergence: the fix turned that row red. The vendored copy is
+never edited, so the corrected expectation lives in `tokenizer-cross-impl` as a named
+override, and a second test asserts each override still *disagrees* with the fixture — so
+when the PHP lane re-derives the row, the override fails and has to be deleted rather than
+quietly outliving its reason.
 
 ## Declared carve-out (GATE-3)
 

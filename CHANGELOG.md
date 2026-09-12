@@ -1,5 +1,25 @@
 ## Unreleased
 
+### Added
+
+- **`langsys-js-typescript/pure` — a side-effect-free subpath for servers and workers.** Exports the identity contract with no DOM: `generateCustomId`, `generateLegacyCustomId`, `canonicalContentBlockJson`, `canonicalizeLocale`, `maximizedLangScript`, `interpolate`, `isICU`, `normalizeMarkupPlaceholders`, `normalizeTokenText`, `md5`, `md5Legacy`, `isEmpty`, `TRANSLATABLE_ATTRIBUTES`, `NON_TRANSLATABLE_ELEMENTS`, and the phrase and content-block markers in both spellings. Nothing it exposes touches `window`, `document`, `navigator` or storage, at import time or on any call path. The DOM tokenizer itself is **not** exported — `tokenizeElement` walks real nodes and reads computed styles — but everything it is built from is, so a server doing its own parsing can produce byte-identical ids without reimplementing a rule.
+
+- **`LangsysApp.seedCatalog(catalog, locale)` — synchronous hydration hand-off.** Publishes a catalog with no network and no `await`, callable before `init()`, so a client entry can hand over the catalog the server already rendered from and have the first paint carry translations instead of source text. `t()` returns the translation on the next line. `init()` will not re-seed a locale that is already seeded, so passing `initialTranslations` as well is safe in either order.
+
+- **`<Translate>` hosts now carry `data-ls-contentblock`**, holding the resolved `custom_id`, mirroring how `<Phrase>` hosts carry `data-ls-phrase`. Both spellings (`data-ls-*`, `data-langsys-*`) are accepted on read. A server-rendered page is otherwise unreadable: the id is derivable only by re-running the tokenizer over the same subtree.
+
+### Changed — BREAKING (content-block ids)
+
+- **The tokenizer converges with `langsys-php`, and this changes `custom_id` for affected blocks.** Those blocks re-register under the new id and show source text until re-translated; their previous catalog entries remain as orphans. Legacy-id tolerance was considered and deliberately not added, so there is no migration — re-registration is the accepted path. What changed:
+
+  - **`<script>`, `<style>` and `<template>` contents are no longer harvested.** They were: `<style>.plan{color:#fff}</style>` registered `.plan{color:#fff}` as a translatable phrase and `<script>window.dataLayer.push(1)</script>` registered the statement, both then sent for machine translation. `<noscript>` is still harvested, deliberately — its content is prose a reader sees.
+  - **Attribute values now collapse internal whitespace exactly as text nodes do.** Previously attributes were only trimmed, so `<img alt="A long⏎     description">` and `<p>A long⏎     description</p>` produced different ids for the same authored sentence — and put this SDK on different ids from `langsys-php` for the same markup.
+  - **`TRANSLATABLE_ATTRIBUTES` grows from 15 to PHP's 27**, appended in PHP's order: `data-confirm`, `data-tooltip`, `data-title`, `data-content`, `data-original-title`, `data-bs-title`, `data-bs-content`, `data-loading-text`, `data-success-message`, `data-warning-message`, `data-empty-message`, `data-placeholder`. Order is identity, so they are appended rather than inserted; the original fifteen keep their positions and their ids.
+
+### Fixed
+
+- **`%name%` placeholders now resolve when rendering, not only when capturing.** A translation stored with `%name%` previously rendered the percent signs to the reader: `interpolate('Hi %name%', { name: 'Ada' })` returned `Hi %name%`. Conversion is conditional on the key being supplied, so ordinary prose containing percent signs — `Save 20% %off%`, `50% to 70%` — is left alone.
+
 ### Changed — BREAKING
 
 - **Locale identifiers are now lowercase `xx-yy` everywhere, not BCP 47 canonical casing.** `canonicalizeLocale('en-US')` returns `en-us`; `zh-Hant-TW` returns `zh-hant-tw`. This is a public export, and `currentlyLoadedLocale` carries the same form — so any binding or application comparing against cased strings (`locale === 'en-US'`) stops matching. Compare against the normalized form, or run your own value through `canonicalizeLocale` first. Note this is breaking against **0.6.5**, which is published and emits the canonical form.
