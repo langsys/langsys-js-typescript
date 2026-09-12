@@ -7,7 +7,7 @@
 | **specVersion** | 8.0.1 (a correction to v8, not a new release) |
 | **Spec revision read** | langsys `63df13c7`, `docs/sdk-spec.mdx` blob `8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c` (specVersion 8.0.1). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 63df13c7 docs/sdk-spec.mdx` at this write — 8.0.1's conformance guidance requires the revision to be re-derived on every write rather than carried, which is how the previous header came to cite a four-revision-stale blob. Every rule profiled `all` or `browser`, plus SRV-4's browser-core clause, is audited against this blob. Verify with `npm run verify:spec` before writing this row — it re-derives the blob by `ls-tree` and fails if the row names one the cited commit does not carry. Deliberately a script and not a CI test: it needs a sibling checkout of the spec repo, so in CI it could only skip, and a check that silently skips where it is automated is what let the `#private` dist scan sit green for rounds |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 567 tests in 32 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 604 tests in 32 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT

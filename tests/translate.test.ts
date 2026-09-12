@@ -397,3 +397,88 @@ describe('TOK-1 at 8.0.1 — svg text translates in place, geometry survives', (
         expect(el.textContent).toContain('unidades');
     });
 });
+
+describe('register and lookup agree on every path, including attributes', () => {
+    /**
+     * A token is REGISTERED by `tokenizeElement` and LOOKED UP by `Translate`. The
+     * two must derive the same string, or a phrase is stored under one key and asked
+     * for under another and the reader never sees its translation.
+     *
+     * They did not agree for attributes. TOK-4 made registration collapse internal
+     * whitespace in attribute values, through `normalizeTokenText`, but
+     * `translateAttribute` and the `<option>` path still built their lookup key
+     * with `.trim()` alone. Measured before the fix: `alt="A long\n     description"`
+     * registered `A long description` and looked up `A long\n     description`, and
+     * `placeholder="Your  name"` registered `Your name` and looked up `Your  name`.
+     * Both MISSED and rendered the source text. Text nodes resolved, because their
+     * lookup collapsed with a copy of the same regex, which also meant a second
+     * definition waiting to drift from the first.
+     *
+     * This is TOK-2's every-path clause (spec 5c5c0723) arriving in this SDK: PHP's
+     * version of it was register/lookup PAIRS that normalised differently.
+     */
+    function seed(html: string, translations: Record<string, string>) {
+        const probe = document.createElement('div');
+        probe.innerHTML = html;
+        const tokens = tokenizeElement(probe).tokens;
+        sTranslations.set({
+            ...bare(),
+            __uncategorized__: {
+                __category__: '__uncategorized__',
+                __symbol__: '__uncategorized__',
+                [generateCustomId('', tokens)]: translations as unknown as string,
+            },
+        } as iCategories);
+        return tokens;
+    }
+    const settle = () => new Promise((r) => setTimeout(r, 15));
+
+    it('an attribute with an internal line break resolves its translation', async () => {
+        const tokens = seed('<img alt="A long\n     description">', { 'A long description': 'Descripción larga' });
+        expect(tokens).toEqual(['A long description']);
+        const { el } = make('<img alt="A long\n     description">');
+        await settle();
+        expect(el.querySelector('img')!.getAttribute('alt')).toBe('Descripción larga');
+    });
+
+    it('an attribute with a doubled space resolves its translation', async () => {
+        seed('<input placeholder="Your  name">', { 'Your name': 'Tu nombre' });
+        const { el } = make('<input placeholder="Your  name">');
+        await settle();
+        expect(el.querySelector('input')!.getAttribute('placeholder')).toBe('Tu nombre');
+    });
+
+    it('an attribute carrying a no-break space resolves its translation', async () => {
+        // U+00A0 is in TOK-2's collapse set. Written as an escape, never a literal.
+        seed('<button aria-label="Close\u00a0dialog">x</button>', { 'Close dialog': 'Cerrar diálogo', x: 'x' });
+        const { el } = make('<button aria-label="Close\u00a0dialog">x</button>');
+        await settle();
+        expect(el.querySelector('button')!.getAttribute('aria-label')).toBe('Cerrar diálogo');
+    });
+
+    it('with no translation, the ORIGINAL value is kept exactly, whitespace and all', async () => {
+        // The fix changes the lookup KEY only. What an untranslated attribute shows
+        // must still be what the author wrote, not the collapsed key.
+        seed('<img alt="A long\n     description">', {});
+        const { el } = make('<img alt="A long\n     description">');
+        await settle();
+        expect(el.querySelector('img')!.getAttribute('alt')).toBe('A long\n     description');
+    });
+
+    it('control: text nodes and options, which already resolved, still do', async () => {
+        // HONEST LIMIT, measured: reverting the <option> lookup site to `.trim()`
+        // turns nothing red. The text-node path translates an option's own text
+        // node first, so the select branch's lookup never decides the outcome here.
+        // That site uses `normalizeTokenText` for one definition, not because a test
+        // pins it.
+        seed('<p>A long\n     description</p>', { 'A long description': 'Descripción larga' });
+        const text = make('<p>A long\n     description</p>');
+        await settle();
+        expect(text.el.querySelector('p')!.textContent).toBe('Descripción larga');
+
+        seed('<select><option>First\n   choice</option></select>', { 'First choice': 'Primera opción' });
+        const option = make('<select><option>First\n   choice</option></select>');
+        await settle();
+        expect(option.el.querySelector('option')!.textContent).toBe('Primera opción');
+    });
+});

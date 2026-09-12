@@ -13,6 +13,7 @@ import {
     VALUE_TRANSLATABLE_INPUT_TYPES,
 } from './content-block.js';
 import { interpolate, normalizeMarkupPlaceholders, warnUnmatchedParams } from './interpolate.js';
+import { normalizeTokenText } from './identity.js';
 import { LangsysApp } from './langsys-app.js';
 import { logger } from './logger.js';
 import { currentlyLoadedLocale, sTranslations, config as configStore } from './stores.js';
@@ -220,7 +221,7 @@ export class Translate {
         const walk = (parent: Node): boolean => {
             for (const child of Array.from(parent.childNodes)) {
                 if (child.nodeType === TEXT_NODE) {
-                    if ((child.nodeValue ?? '').trim()) {
+                    if (normalizeTokenText(child.nodeValue ?? '')) {
                         if (found) return false;
                         found = child;
                     }
@@ -377,7 +378,7 @@ export class Translate {
                 return;
             }
 
-            if (isEmpty(node.nodeValue?.trim())) return;
+            if (isEmpty(normalizeTokenText(node.nodeValue ?? ''))) return;
 
             if (isEmpty(node.originalNodeValue)) {
                 // Snapshot in canonical placeholder form so lookups, replaces,
@@ -385,7 +386,10 @@ export class Translate {
                 node.originalNodeValue = normalizeMarkupPlaceholders(node.nodeValue!);
             }
 
-            const contentToken = node.originalNodeValue?.replace(/\s+/g, ' ').trim();
+            // The LOOKUP key, and it must be the key registration derived. Both sides
+            // call `normalizeTokenText` so there is one definition of it: a second copy
+            // of the same regex agreed today and would not have followed a change.
+            const contentToken = node.originalNodeValue ? normalizeTokenText(node.originalNodeValue) : undefined;
             if (!contentToken) return;
 
             const translation = this.getTranslation(contentToken);
@@ -463,7 +467,7 @@ export class Translate {
                 if (optionEl.originalAttributes['textContent'] === undefined) {
                     optionEl.originalAttributes['textContent'] = normalizeMarkupPlaceholders(option.textContent || '');
                 }
-                const originalText = optionEl.originalAttributes['textContent'].trim();
+                const originalText = normalizeTokenText(optionEl.originalAttributes['textContent']);
                 if (originalText) {
                     const translation = this.getTranslation(originalText);
                     option.textContent = this.applyParams(translation || optionEl.originalAttributes['textContent']);
@@ -480,7 +484,12 @@ export class Translate {
             element.originalAttributes![attr] = normalizeMarkupPlaceholders(currentValue);
         }
 
-        const originalValue = element.originalAttributes![attr].trim();
+        // Lookup key, derived exactly as registration derives the token. It was
+        // `.trim()` alone, while TOK-4 made registration collapse internal whitespace,
+        // so any attribute value with a line break or doubled space was stored under
+        // one key and asked for under another, and never showed its translation.
+        // The fallback below still writes the ORIGINAL value, whitespace and all.
+        const originalValue = normalizeTokenText(element.originalAttributes![attr]);
         if (!originalValue) return;
 
         const translation = this.getTranslation(originalValue);

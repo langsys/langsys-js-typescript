@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateCustomId, tokenizeElement } from '../src/content-block.js';
 import { interpolate } from '../src/interpolate.js';
-import { NON_TRANSLATABLE_ELEMENTS, normalizeTokenText, TRANSLATABLE_ATTRIBUTES } from '../src/identity.js';
+import { encodeRichPhrase, NON_TRANSLATABLE_ELEMENTS, normalizeTokenText, TRANSLATABLE_ATTRIBUTES } from '../src/identity.js';
 
 /**
  * TOKENIZER CONVERGENCE with langsys-php — the identity contract.
@@ -261,5 +261,70 @@ describe('(e) %name% resolves at render, not only at capture', () => {
         // expression — worse than the bug being fixed.
         expect(interpolate('Save 20% %off%', { x: 1 }, 'en')).toBe('Save 20% %off%');
         expect(interpolate('50% to 70% off', {}, 'en')).toBe('50% to 70% off');
+    });
+});
+
+describe('(b2) TOK-2 at spec 5c5c0723: membership on the collapse function, and its three vectors', () => {
+    /**
+     * The target spec's TOK-2 adds a test consequence: where a parser has already
+     * dropped a character, a DOM-level test that it is NOT collapsed passes for the
+     * wrong reason, because the character never reached the collapse step. So
+     * membership is asserted on `normalizeTokenText` itself, a string in and a
+     * string out, with no parser in between.
+     *
+     * Characters are built with `String.fromCodePoint`, never typed. A literal would
+     * render as a space, and an escape typed into some editors and tools arrives as
+     * the character itself.
+     *
+     * DELIBERATELY ABSENT: the C0 controls U+0001-U+0008, U+000B, U+000C and
+     * U+000E-U+001F. TOK-2's control-character handling is HELD pending the
+     * operator's ruling on stripping them, and VT and FF keep today's behaviour
+     * (they collapse). TAB, LF and CR are not in the held range and are asserted.
+     */
+    const hex = (cp: number) => 'U+' + cp.toString(16).toUpperCase().padStart(4, '0');
+    const ch = (cp: number) => String.fromCodePoint(cp);
+    const NBSP = ch(0xa0);
+
+    const MEMBERS = [0x09, 0x0a, 0x0d, 0x20, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005,
+        0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff];
+    const NON_MEMBERS = [0x85, 0x180e, 0x200b, 0x2060];
+
+    it.each(MEMBERS.map((cp) => [hex(cp), cp] as const))('%s is a member: it collapses to one space', (_label, cp) => {
+        expect(normalizeTokenText('a' + ch(cp) + ch(cp) + 'b')).toBe('a b');
+    });
+
+    it.each(NON_MEMBERS.map((cp) => [hex(cp), cp] as const))('%s is not a member: it survives', (_label, cp) => {
+        expect(normalizeTokenText('a' + ch(cp) + 'b')).toBe('a' + ch(cp) + 'b');
+    });
+
+    it('vector 1: Buy now spaced with U+0020 and with U+00A0 yields one id', () => {
+        expect(idOf('<p>Buy' + NBSP + 'now</p>')).toBe(idOf('<p>Buy now</p>'));
+    });
+
+    it('vector 2: the same character LEADING and TRAILING, not only internal', () => {
+        // A fix applied to the collapse alone can pass vector 1 and still keep a
+        // leading or trailing one, so vector 1 cannot tell a finished
+        // implementation from a half-finished one.
+        expect(tokensOf('<p>' + NBSP + 'Buy now' + NBSP + '</p>')).toEqual(['Buy now']);
+        expect(idOf('<p>' + NBSP + 'Buy now' + NBSP + '</p>')).toBe(idOf('<p>Buy now</p>'));
+    });
+
+    it('vector 3: a whitespace-only node produces NO token, which is what moves block ids', () => {
+        // A token COUNT, not a value: one token where U+00A0 survives, zero where it
+        // collapses away, so the disagreement re-keys every block containing one.
+        expect(tokensOf('<p>' + NBSP + '</p>')).toEqual([]);
+        expect(tokensOf('<div><p>Keep</p><p>' + NBSP + '</p></div>')).toEqual(['Keep']);
+    });
+
+    it('control: a pair differing by a character that genuinely changes the text yields two ids', () => {
+        expect(idOf('<p>Buy now</p>')).not.toBe(idOf('<p>Buy nov</p>'));
+    });
+
+    it('every path: the <Phrase> key collapses through the same function', () => {
+        // CONF-1's every-path clause, reached from TOK-2. The content-block path is
+        // asserted above; attribute registration and Translate's lookup side are
+        // asserted in `translate` ("register and lookup agree on every path"); this
+        // is the Phrase path.
+        expect(encodeRichPhrase([{ text: NBSP + 'Buy' + NBSP + NBSP + 'now' + NBSP }]).phrase).toBe('Buy now');
     });
 });
