@@ -7,7 +7,7 @@
 | **specVersion** | 8 (published) |
 | **Spec revision read** | langsys `c6b08d11`, `docs/sdk-spec.mdx` blob `042dedb5b533499a277b88fc9e2ee39ef30a0b89` (specVersion 8, published). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree c6b08d11 docs/sdk-spec.mdx`. Every rule profiled `all` or `browser`, plus SRV-4's browser-core clause, is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 425 tests in 29 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 424 tests in 29 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -366,19 +366,40 @@ visitor with scripting off) does not survive asking who could translate it: with
 browser SDK is not running. Excluding it is also what makes the two parser models agree, which
 removes the divergence rather than documenting it. Implemented and pinned under both models.
 
-### The shared tokenizer fixture contradicted itself
+### The shared tokenizer fixture contradicted itself — now corrected upstream
 
-`tokenizer-reference.json` carries a row named **"script and style contents are never
-harvested"** whose expected tokens are `["Keep", "var a=1;", ".a{}"]`. The name states the
-intent; the data encodes the opposite. Both SDKs matched the data, so both harvested CSS and
-JavaScript as translatable phrases and sent them for machine translation — while the row's
-name said they did not. The fixture was corroborating the bug it was named for.
+`tokenizer-reference.json` carried a row named **"script and style contents are never
+harvested"** whose expected tokens were `["Keep", "var a=1;", ".a{}"]`. The name stated the
+intent; the data recorded the bug. Both SDKs matched the data, so both harvested CSS and
+JavaScript as translatable phrases and sent them to paid machine translation — while the row's
+name said they did not. The fixture locked in the behaviour it was named for preventing.
 
-Found by implementing the convergence: the fix turned that row red. The vendored copy is
-never edited, so the corrected expectation lives in `tokenizer-cross-impl` as a named
-override, and a second test asserts each override still *disagrees* with the fixture — so
-when the PHP lane re-derives the row, the override fails and has to be deleted rather than
-quietly outliving its reason.
+Found by implementing TOK-1: the fix turned that row red. The vendored copy was not edited — a
+named override in `tokenizer-cross-impl` held the corrected expectation, and a second test
+asserted the override still *disagreed* with the fixture, so a later upstream correction would
+fail it rather than let a stale exception accumulate.
+
+**That is how it ended.** PHP corrected the row (`ba9fb7b`, blob `5689f3c1`, note "CORRECTED
+2026-09-11"), the disagreement test went red with *"delete this override"*, and the override and
+its test were deleted. The fixture is re-vendored at the corrected blob and the row passes on
+its own terms. A self-retiring exception is worth its extra test: the alternative is an override
+nobody revisits, quietly asserting a divergence that has stopped existing.
+
+### Two measured divergences not yet in the published rows
+
+Recorded so they are not lost while the spec rules on them. Both were measured by the Reviewer.
+
+- **The whitespace collapse set is not agreed.** U+FEFF: this SDK drops it, PHP keeps it.
+  U+0085 and U+180E: PHP collapses them, this SDK keeps them. Both agree on U+200B and U+2060
+  (kept) and U+2007 (collapsed). So "collapse whitespace" currently means two different sets,
+  and TOK-2's `\s` framing does not pin it — Langsys is defining the set explicitly.
+- **`%name%` inside markup.** This SDK normalises at capture, producing the token
+  `Hello {name}` (id `1e4b462c…`); PHP keeps `Hello %name%` (id `bb74011a…`). A cross-SDK id
+  divergence, and not one the canonicalization fixture covers. **No row added yet, deliberately:**
+  that file's expectations are "what this SDK produces, which the spec agrees with", and the
+  spec has not ruled which form is canonical. A row now would encode a guess as the expectation,
+  which is the one thing that file must not do.
+
 
 ## Declared carve-out (GATE-3)
 

@@ -5,8 +5,8 @@ import fixture from './fixtures/tokenizer-reference.json';
 
 /**
  * Cross-implementation assertion for the tokenizer, against langsys-php's
- * shared fixture. Vendored from `langsys-php-sdk` @ `5fa4d48`,
- * `tests/fixtures/tokenizer-reference.json`, blob `a8632b462c52`.
+ * shared fixture. Vendored from `langsys-php-sdk` @ `ba9fb7b`,
+ * `tests/fixtures/tokenizer-reference.json`, blob `5689f3c1425502f3a2c4afd4b48e9bdbfc25a32d`.
  *
  * Same machinery and the same reasons as `custom-id-cross-impl`: two
  * independently written tokenizers, in different languages, agreeing on the
@@ -30,26 +30,22 @@ interface Row {
 const rows = fixture as unknown as Row[];
 
 /**
- * Rows where the vendored fixture is WRONG and we deliberately diverge.
+ * There are no overrides, and that is the end of a story worth keeping.
  *
- * `tokenizer-reference.json` carries a row named "script and style contents are
- * never harvested" whose expected tokens are `["Keep", "var a=1;", ".a{}"]` —
- * the name states the intent and the data encodes the opposite. Both SDKs
- * matched the data, so both harvested CSS and JavaScript as translatable
- * phrases and sent them for machine translation, while the row's name said they
- * did not. The fixture was corroborating the bug.
+ * This file briefly carried one. `tokenizer-reference.json` had a row named
+ * "script and style contents are never harvested" whose expected tokens were
+ * `["Keep", "var a=1;", ".a{}"]` — the name stated the intent and the data
+ * recorded the bug, so the row locked in the behaviour it was named for
+ * preventing, and both SDKs matched the data and sent CSS and JavaScript to
+ * machine translation.
  *
- * The tokenizer convergence fixes the behaviour, which makes this row red. The
- * vendored copy is never edited (it is langsys-php's file), so the corrected
- * expectation lives here until the PHP lane re-derives it.
- *
- * SELF-CLEANING: the test below asserts each override still DISAGREES with the
- * fixture. When PHP corrects the row, the override becomes redundant and fails,
- * which forces its removal instead of letting a stale exception accumulate.
+ * The override held our corrected expectation without editing a vendored file,
+ * and a second test asserted it still DISAGREED with the fixture — so that when
+ * PHP re-derived the row, the override would fail and have to be deleted rather
+ * than quietly outliving its reason. PHP corrected it (`ba9fb7b`, blob
+ * `5689f3c1`, note "CORRECTED 2026-09-11"), the disagreement test went red with
+ * "delete this override", and this is that deletion.
  */
-const FIXTURE_OVERRIDES: Record<string, string[]> = {
-    'script and style contents are never harvested': ['Keep'],
-};
 
 describe('the tokenizer agrees with langsys-php', () => {
     it('vendored the whole fixture', () => {
@@ -61,30 +57,10 @@ describe('the tokenizer agrees with langsys-php', () => {
         host.innerHTML = row.html;
 
         const { tokens } = tokenizeElement(host);
-        const override = FIXTURE_OVERRIDES[row.description];
-
-        if (override) {
-            expect(tokens).toEqual(override);
-            return;
-        }
-
         expect(tokens).toEqual(row.tokens);
 
         // Arity and order are the identity, so the id must follow from them.
         expect(canonicalContentBlockJson(row.category, tokens)).toBe(row.canonical_json);
         expect(generateCustomId(row.category, tokens)).toBe(row.custom_id);
-    });
-});
-
-describe('the fixture overrides are still needed', () => {
-    // An override that has stopped disagreeing with the fixture is an exception
-    // nobody removed. Failing here is the signal to delete it.
-    it.each(Object.keys(FIXTURE_OVERRIDES))('%s still diverges from the vendored fixture', (description) => {
-        const row = rows.find((r) => r.description === description);
-        expect(row, `no fixture row named "${description}" — re-vendored? drop the override`).toBeDefined();
-        expect(
-            row!.tokens,
-            `the fixture now agrees with us on "${description}" — delete this override`
-        ).not.toEqual(FIXTURE_OVERRIDES[description]);
     });
 });
