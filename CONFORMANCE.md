@@ -7,7 +7,7 @@
 | **specVersion** | 7 (read at 7.0.1) |
 | **Spec revision read** | langsys `origin/main`, `docs/sdk-spec.mdx` blob `45cdddf8e9136a85143dc5a5169d59b3355d7dc1`, re-derived at write time with `git -C ~/Documents/dev/langsys2 ls-tree origin/main docs/sdk-spec.mdx`. Every rule profiled `all` or `browser` is audited against this blob |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 396 tests in 28 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 398 tests in 28 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -250,11 +250,11 @@ the two answers differ.
 
 ## New spec families — read at the pushed blob
 
-Read at langsys `507e008f`, `docs/sdk-spec.mdx` blob
-`593abecd264923892d93e84d7b44574dd1b95246` — **verified reachable and matching before use**
-(`git ls-tree 507e008f docs/sdk-spec.mdx`), not taken from the report. The earlier
-`57c8a498` recorded here as reported-and-unread is discarded: it was the first of three
-commits and two rounds of review fixes landed after it.
+Read at langsys `1493dea0`, `docs/sdk-spec.mdx` blob
+`318b594173c7470fbcfcf1eaec19ff9e62bec517` — **verified reachable and matching before use**
+(`git ls-tree 1493dea0 docs/sdk-spec.mdx`), not taken from the report. Supersedes `593abecd`
+read earlier this round, which itself superseded the `57c8a498` draft carried as
+reported-and-unread. Three blobs in one round: re-derive, never carry forward.
 
 Carrying that one as unread rather than asserting it turned out to matter. Langsys has since
 said they once sent the Reviewer a blob hash they had not derived, and were caught. A hash
@@ -266,7 +266,7 @@ bodies** rather than against the author's summary of them. TOK-1..5 and MARK-1/2
 
 | Rule | Status | Evidence |
 |---|---|---|
-| SRV-4 (synchronous seed) | **core half implemented — and the rule's Profiles line excludes this SDK** | `seed-catalog` — `t()` resolves on the line after `seedCatalog()`; returns `undefined`, not a promise; making it `async` reds 4 of 9. The body states the split this lane reported: *"Exposing the synchronous seed is the core's half and is provable there."* But the **Profiles line reads `server; and a binding for any render it performs inside a server request scope`**, which does not include a browser core. So the body assigns this SDK an obligation the profile line denies it — see the note below. Evidence held and recorded either way |
+| SRV-4 (synchronous seed) | **core half implemented; the Profiles line now includes this SDK** | `seed-catalog` — `t()` resolves on the line after `seedCatalog()`; returns `undefined`, not a promise; an actual deferral (`await Promise.resolve()`) reds 4 of 9; a bare `async` keyword reds only 1 — the return-type assertion — which is why that assertion exists. The body states the split this lane reported: *"Exposing the synchronous seed is the core's half and is provable there."* At `1493dea0` the Profiles line reads `server; **browser core** for the synchronous seed it exposes; and a binding for any render…` — corrected after this lane reported that the body assigned the core a half its profile line denied it. The binding half (calling the seed before hydration, and the hydration-mismatch control) remains not ours |
 | SRV-1..3, SRV-5 | profile-n/a | All five SRV rules are profiled `server; and a binding…`. Serving translated HTML is the server's half of the hand-off; none of them bind a browser core by their Profiles lines |
 | MARK-1 (content-block stamp) | implemented | `translate` — the stamp is compared against an id **re-derived by running the tokenizer over the same subtree**, not read back from the attribute just written, which is what MARK-1's test asks for and would otherwise prove only that a write happened. Mutations: dropping the stamp and stamping a constant each red four |
 | MARK-2 (phrase stamp, both spellings read) | implemented | `content-block-identity` — behavioural and cross-module: the attribute `Phrase` exports is the one the tokenizer skips on, and PHP's spelling is accepted alongside it |
@@ -295,22 +295,41 @@ it does not. Worth noting which direction that went: filing the row as *unsatisf
 rather than green is what surfaced the gap in the rule. A green row would have hidden it, and
 the rule would have stayed unfulfillable by any core.
 
-### SRV-4's body and its Profiles line disagree
+### SRV-4's Profiles line excluded the core it obligated — now fixed
 
-Reading the pushed text rather than the summary turned up a second, opposite problem. The body
-says the core holds a provable half. The Profiles line says `server; and a binding for any
-render it performs inside a server request scope` — no core, of any profile.
+Reading the pushed text rather than the author's summary turned up the opposite of the bug the
+fleet had already named. The body said the core holds a provable half; the Profiles line said
+`server; and a binding…`, no core of any profile. A core reading only the profile would row it
+`n/a` and be correct to.
 
-So a browser core reading only the Profiles line rows SRV-4 `n/a` and is correct to, while a
-core reading the body owes a half. That is the **inverse of the vacuous-profile class** the
-fleet already named: not a rule that cannot fail for a profile it lists, but a rule that
-assigns an obligation to a profile it does not list. The Profiles section's own operational
-test settles it — a core CAN fail this rule, by shipping an asynchronous seed, so by that test
-the profile is wrong.
+That is the **inverse of the unfalsifiable-profile class**: not a rule that cannot fail for a
+profile it lists, but a rule obligating a profile it does not list. The Profiles section's own
+operational test settles it — a core CAN fail SRV-4, by shipping a seed that must be awaited —
+so the profile was wrong, not the body. Corrected at `1493dea0`; the rule body now records the
+class in both directions, since the fleet has hit it each way.
 
-Reported to Langsys. This row deliberately records both readings rather than picking the one
-that flatters the implementation: by profile this SDK owes nothing and by body it owes a half,
-and it holds the half either way.
+### TOK-1's noscript half is parser-dependent, and the id diverges
+
+`tokenizer-convergence` covers noscript under a scripting-DISABLED parser, which is what
+happy-dom and PHP's server-side parser both give. The HTML Standard makes a noscript body RAW
+TEXT when scripting is ENABLED, so a real browser produces one text node of literal markup.
+Measured against our own tokenizer with that node shape constructed by hand — happy-dom cannot
+produce it, so this is the shape, not a browser measurement:
+
+```
+scripting off / PHP   ["Keep", "Enable JavaScript"]
+scripting on  / browser   ["Keep", "<p>Enable JavaScript</p>"]
+```
+
+The consequence is not cosmetic. The token is the markup string, so the **same source HTML
+yields a different `custom_id` depending on where it was tokenized** — one id on the server,
+another in the browser — which breaks the SSR hand-off for any block containing `<noscript>`,
+and registers markup as a translatable phrase, which is what TOK-1 exists to prevent.
+
+Not patched here. Any fix belongs in the rule, and implementing a guess would encode the guess
+as conformance. Reported to Langsys with the measurement; the divergence is pinned so it stays
+visible. **A real-browser measurement is still owed and this repo cannot make one** — there is
+no browser in the test environment, only happy-dom.
 
 ### The shared tokenizer fixture contradicted itself
 

@@ -21,14 +21,25 @@ import { md5, md5Legacy } from './utils.js';
 /**
  * HTML attributes whose values should be harvested for translation.
  *
- * `langsys-php` harvests a superset of this list. The overlap is deliberate,
- * the difference is not accidental: standard attributes carrying user-visible
- * text belong in both SDKs, because on SSR handoff an attribute only one side
- * harvests is translated by that side and left untranslated by the other — a
- * coverage hole rather than a conflict. Framework-convention attributes
- * (Bootstrap `data-bs-*`, Rails `data-confirm`, and similar) are deliberately
- * NOT mirrored: they're written by server-rendered templates, and a JS app
- * renders those strings through its own components instead.
+ * THE LIST IS NOW IDENTICAL TO `langsys-php`'s, all twenty-seven, in its order.
+ *
+ * It used to be a subset of fifteen, and this docstring used to argue that the
+ * framework-convention attributes (Bootstrap `data-bs-*`, Rails `data-confirm`)
+ * were deliberately not mirrored because a JS app renders those strings through
+ * its own components. That reasoning is superseded and was left standing beside
+ * the list that contradicted it — the twelve below are exactly the attributes it
+ * said would never appear here.
+ *
+ * The reason it was wrong: on an SSR handoff the two SDKs tokenize the SAME
+ * markup, so an attribute only one side harvests produces a different token
+ * array and therefore a different `custom_id` for identical content. That is not
+ * a coverage hole to be argued about, it is a split identity.
+ *
+ * ORDER IS IDENTITY. `custom_id` hashes the token array, and where an element
+ * carries several of these the list order decides the sequence. The same set in
+ * a different order agrees on every single-attribute element and diverges on
+ * exactly the ones nobody notices, so the twelve are APPENDED — inserting would
+ * have re-keyed every block using one of the original fifteen.
  */
 export const TRANSLATABLE_ATTRIBUTES = [
     'placeholder',

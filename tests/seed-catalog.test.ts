@@ -58,6 +58,12 @@ describe('a seeded catalog is readable on the next line', () => {
     it('returns undefined, not a promise — the signature is the contract', () => {
         // A caller that can `await` this would be encouraged to, and a future
         // async rewrite would then look compatible while breaking first paint.
+        //
+        // This is the ONLY assertion a bare `async` keyword reds: adding `async`
+        // without deferring anything still resolves the writes synchronously, so
+        // the four behavioural tests stay green. An actual deferral
+        // (`await Promise.resolve()`) reds all four. Both mutants matter, and an
+        // earlier commit body reported the second figure for the first mutant.
         expect(LangsysApp.seedCatalog(catalog(), 'es-es')).toBeUndefined();
     });
 });

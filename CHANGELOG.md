@@ -1,4 +1,9 @@
-## Unreleased
+## Unreleased — intended as 0.7.0 (minor)
+
+Additive exports plus a breaking change to content-block ids. `package.json` still reads
+0.6.5: the version is stamped by `_dev_/publish.sh` at release time, not written here, so this
+heading records the INTENT rather than the number. There is no summary-regenerating script in
+`_dev_/` — counts in CONFORMANCE and CLAUDE.md are recomputed from the test run by hand.
 
 ### Added
 
@@ -6,7 +11,9 @@
 
 - **`LangsysApp.seedCatalog(catalog, locale)` — synchronous hydration hand-off.** Publishes a catalog with no network and no `await`, callable before `init()`, so a client entry can hand over the catalog the server already rendered from and have the first paint carry translations instead of source text. `t()` returns the translation on the next line. `init()` will not re-seed a locale that is already seeded, so passing `initialTranslations` as well is safe in either order.
 
-- **`<Translate>` hosts now carry `data-ls-contentblock`**, holding the resolved `custom_id`, mirroring how `<Phrase>` hosts carry `data-ls-phrase`. Both spellings (`data-ls-*`, `data-langsys-*`) are accepted on read. A server-rendered page is otherwise unreadable: the id is derivable only by re-running the tokenizer over the same subtree.
+- **`<Translate>` hosts now carry `data-ls-contentblock`**, holding the resolved `custom_id`. A server-rendered page is otherwise unreadable: the id is derivable only by re-running the tokenizer over the same subtree.
+
+  Scope, stated precisely because the first draft of this entry overclaimed twice. The core **writes** this attribute and does not yet **read** it: a pre-stamped `data-langsys-contentblock` is ignored and the id re-derived. Both constants are exported for readers to use, and a reader is still owed — the bindings and `langsys-php` consume them. And the core's `Phrase` writes no attribute at all; the framework `<Phrase>` components do, so "mirroring `<Phrase>`" describes the binding layer, not this one.
 
 ### Changed — BREAKING (content-block ids)
 

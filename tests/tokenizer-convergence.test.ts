@@ -53,13 +53,47 @@ describe('(a) code-bearing subtrees are not prose', () => {
         expect(tokensOf('<template><p>hidden</p></template><p>Plans</p>')).toEqual(['Plans']);
     });
 
-    it('DOES harvest <noscript>, which is prose a reader sees', () => {
-        // The one member of this family that must still be translated, and the
-        // reason the list is an allow-list of three rather than "hidden things".
+    it('DOES harvest <noscript> — under a scripting-DISABLED parser', () => {
+        // True, and narrower than it reads. happy-dom has no scripting flag and
+        // so takes the scripting-disabled branch, parsing the noscript body as
+        // markup. A server-side parser (PHP's) does the same. This assertion
+        // covers that model only.
         expect(tokensOf('<noscript><p>Enable JavaScript</p></noscript><p>Plans</p>')).toEqual([
             'Enable JavaScript',
             'Plans',
         ]);
+    });
+
+    it('but a scripting-ENABLED parser yields the literal markup, and the id diverges', () => {
+        // The HTML Standard says a noscript body is RAW TEXT when scripting is
+        // enabled, so a real browser produces ONE text node holding the literal
+        // markup. happy-dom cannot produce that shape, so it is constructed by
+        // hand — this asserts what OUR tokenizer does given that input, which is
+        // the half this repo owns. It is not a measurement of a browser.
+        //
+        // The consequence is not a cosmetic mechanism difference: the token is
+        // the markup string, so the SAME source HTML yields a DIFFERENT
+        // custom_id depending on where it was tokenized. A content block
+        // containing <noscript> therefore has one id on the server and another
+        // in the browser, which breaks the SSR hand-off for that block — and it
+        // registers markup as a translatable phrase, which is what TOK-1 exists
+        // to prevent.
+        //
+        // Reported to Langsys as a spec question rather than patched here: any
+        // fix belongs in the rule, and guessing at one would encode a guess as
+        // conformance. Pinned so the divergence is visible and measured.
+        const host = document.createElement('div');
+        const keep = document.createElement('p');
+        keep.textContent = 'Keep';
+        const ns = document.createElement('noscript');
+        ns.appendChild(document.createTextNode('<p>Enable JavaScript</p>'));
+        host.appendChild(keep);
+        host.appendChild(ns);
+
+        expect(tokenizeElement(host).tokens).toEqual(['Keep', '<p>Enable JavaScript</p>']);
+
+        // Stated as the divergence it is, not as an incidental difference.
+        expect(tokenizeElement(host).tokens).not.toEqual(tokensOf('<p>Keep</p><noscript><p>Enable JavaScript</p></noscript>'));
     });
 
     it('skipping changes the id, which is the accepted cost', () => {

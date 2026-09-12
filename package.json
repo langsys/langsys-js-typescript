@@ -48,7 +48,8 @@
         "test": "vitest run",
         "test:watch": "vitest",
         "prepublishOnly": "npm run build",
-        "release": "./_dev_/publish.sh"
+        "release": "./_dev_/publish.sh",
+        "pretest": "npm run build"
     },
     "keywords": [
         "i18n",
