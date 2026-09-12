@@ -39,7 +39,17 @@ describe('(a) code-bearing subtrees are not prose', () => {
         expect(tokensOf('<script>window.dataLayer.push(1)</script><p>Plans</p>')).toEqual(['Plans']);
     });
 
-    it('does not harvest <template> content', () => {
+    it('does not harvest <template> content — but this assertion does NOT discriminate', () => {
+        // Honest label. Removing 'template' from the skip list leaves this green,
+        // while removing script or style reds three tests. Template content is
+        // not in `childNodes` at all: a DOM puts it on
+        // `HTMLTemplateElement.content` as a separate DocumentFragment, so the
+        // walker never reaches it and the skip is a no-op.
+        //
+        // Kept as a pin of that no-op, not as evidence the skip works. The JS
+        // Server lane measured the same thing independently in parse5, which
+        // models it identically — so adding `template` to the list expecting an
+        // id to change would be a mistake in either host.
         expect(tokensOf('<template><p>hidden</p></template><p>Plans</p>')).toEqual(['Plans']);
     });
 
@@ -62,8 +72,15 @@ describe('(b) U+00A0 collapses like any other whitespace', () => {
         // Recorded rather than implemented: `\s` matches U+00A0 in JS, so the
         // existing collapse already handled it. Pinned so a future hand-rolled
         // character class cannot quietly drop it.
-        expect(normalizeTokenText('A long   description')).toBe('A long description');
-        expect(idOf('<p>A long   description</p>')).toBe(idOf('<p>A long description</p>'));
+        //
+        // Written as the ESCAPE `\u00a0`, never the character. A literal
+        // non-breaking space renders identically to the plain spaces beside it,
+        // so a reviewer cannot see what this test is about, and anyone tidying
+        // the whitespace turns it into an assertion about ordinary spaces that
+        // still passes. Same reason `interpolate.ts` writes its NUL separator as
+        // an escape. Mutation-checked: narrowing `\s` to `[ \t\n\r]` reds this.
+        expect(normalizeTokenText('A\u00a0long   description')).toBe('A long description');
+        expect(idOf('<p>A\u00a0long   description</p>')).toBe(idOf('<p>A long description</p>'));
     });
 });
 

@@ -248,27 +248,26 @@ reading reached the PHP lane before it was corrected. The claim is about a
 function; the behaviour is a property of the function *plus its callers*, and
 the two answers differ.
 
-## New spec families — rule ids known, spec text NOT YET VERIFIABLE HERE
+## New spec families — read at the pushed blob
 
-Langsys reports the spec batch as `2a9cc2586e7f2826c6951a48b9b78b4fe067c284`, blob
-`57c8a4982d6a5a24d4bf5f044c31e4285f4e6b70`, plus a follow-up `0ce14605` that took two
-findings from this lane (see below). **Neither commit is pushed** — their GitLab is refusing
-connections on port 8888 — so every SHA, blob and rule body here is **recorded as reported
-and UNREAD**. Rows are filed against the ids, which are stable, and graded only on evidence
-held in this repo; re-derive against the blob once it pushes and promote the grades then.
+Read at langsys `507e008f`, `docs/sdk-spec.mdx` blob
+`593abecd264923892d93e84d7b44574dd1b95246` — **verified reachable and matching before use**
+(`git ls-tree 507e008f docs/sdk-spec.mdx`), not taken from the report. The earlier
+`57c8a498` recorded here as reported-and-unread is discarded: it was the first of three
+commits and two rounds of review fixes landed after it.
 
-Saying that plainly matters: a row citing a blob nobody here can open would read as
-conformance against text that was never seen, which is the error this file exists to catch.
+Carrying that one as unread rather than asserting it turned out to matter. Langsys has since
+said they once sent the Reviewer a blob hash they had not derived, and were caught. A hash
+relayed in prose is a claim; `ls-tree` is the check.
 
-**The rule-to-behaviour mapping below is the spec author's summary, not the spec.** Langsys
-supplied it rather than leave this lane guessing, and labelled it as a summary on the same
-reported-and-unread terms. It is used here to stop the rows being arbitrary, not as grounds
-to call anything verified.
+All four previously-unconfirmed mappings were correct, and are now confirmed **against the
+bodies** rather than against the author's summary of them. TOK-1..5 and MARK-1/2 are profiled
+`all`, so they bind this SDK.
 
 | Rule | Status | Evidence |
 |---|---|---|
-| SRV-4 (synchronous seed) | **core half implemented; binding half not ours** | `seed-catalog` — `t()` resolves on the line after `seedCatalog()`; returns `undefined`, not a promise; making it `async` reds 4 of 9. Synchronicity is the normative part — an entry point that must be awaited cannot satisfy SRV-4 however it is named — and the exported name is deliberately left to the implementation. **`0ce14605` rewrote the body to state the split this lane reported**: exposing the seed is the core's half and provable here, calling it before hydration and demonstrating the absence of a hydration-mismatch warning are the binding's. Profile line left as-is by the author; whether it should be re-profiled is the Reviewer's to rule |
-| SRV-1..3, SRV-5 | n/a or server-side | Serving translated HTML is the server's half of the hand-off. This SDK's obligation is the seed (SRV-4); re-derive the rest when the text is readable rather than guessing which bind |
+| SRV-4 (synchronous seed) | **core half implemented — and the rule's Profiles line excludes this SDK** | `seed-catalog` — `t()` resolves on the line after `seedCatalog()`; returns `undefined`, not a promise; making it `async` reds 4 of 9. The body states the split this lane reported: *"Exposing the synchronous seed is the core's half and is provable there."* But the **Profiles line reads `server; and a binding for any render it performs inside a server request scope`**, which does not include a browser core. So the body assigns this SDK an obligation the profile line denies it — see the note below. Evidence held and recorded either way |
+| SRV-1..3, SRV-5 | profile-n/a | All five SRV rules are profiled `server; and a binding…`. Serving translated HTML is the server's half of the hand-off; none of them bind a browser core by their Profiles lines |
 | MARK-1 (content-block stamp) | implemented | `translate` — the stamp is compared against an id **re-derived by running the tokenizer over the same subtree**, not read back from the attribute just written, which is what MARK-1's test asks for and would otherwise prove only that a write happened. Mutations: dropping the stamp and stamping a constant each red four |
 | MARK-2 (phrase stamp, both spellings read) | implemented | `content-block-identity` — behavioural and cross-module: the attribute `Phrase` exports is the one the tokenizer skips on, and PHP's spelling is accepted alongside it |
 | TOK-3 (27 attributes, order normative) | implemented | `tokenizer-convergence` + `pure-subpath` — the 27 verified against `langsys-php/src/Html/HtmlParser.php` directly, appended never inserted, with a case asserting list order beats document order. Langsys's point is the sharp one: the same set in a different order agrees on every single-attribute element and diverges only where nobody looks |
@@ -291,10 +290,27 @@ phrase — and the warning half belongs to the bindings. Flagged rather than qui
 satisfied, because a core reporting SRV-4 green without it would be claiming a binding's
 evidence as its own.
 
-Langsys adopted this into SRV-4's body at `0ce14605` — a core records the half it holds and
-names the half it does not. Worth noting which direction that went: filing the row as
-*unsatisfiable here* rather than green is what surfaced the gap in the rule. A green row
-would have hidden it, and the rule would have stayed unfulfillable by any core.
+Langsys adopted this into SRV-4's body — a core records the half it holds and names the half
+it does not. Worth noting which direction that went: filing the row as *unsatisfiable here*
+rather than green is what surfaced the gap in the rule. A green row would have hidden it, and
+the rule would have stayed unfulfillable by any core.
+
+### SRV-4's body and its Profiles line disagree
+
+Reading the pushed text rather than the summary turned up a second, opposite problem. The body
+says the core holds a provable half. The Profiles line says `server; and a binding for any
+render it performs inside a server request scope` — no core, of any profile.
+
+So a browser core reading only the Profiles line rows SRV-4 `n/a` and is correct to, while a
+core reading the body owes a half. That is the **inverse of the vacuous-profile class** the
+fleet already named: not a rule that cannot fail for a profile it lists, but a rule that
+assigns an obligation to a profile it does not list. The Profiles section's own operational
+test settles it — a core CAN fail this rule, by shipping an asynchronous seed, so by that test
+the profile is wrong.
+
+Reported to Langsys. This row deliberately records both readings rather than picking the one
+that flatters the implementation: by profile this SDK owes nothing and by body it owes a half,
+and it holds the half either way.
 
 ### The shared tokenizer fixture contradicted itself
 
