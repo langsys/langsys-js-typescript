@@ -462,6 +462,13 @@ await LangsysApp.init({
 - `'server'` — flush tokens immediately from the server.
 - `'auto'` — small batches (≤5) flush from server, larger batches wait for the client.
 
+> **Precondition for `'server'`, and for the server half of `'auto'`: allow-list the origin server's address.**
+> Registration during a server render is sent from your server, not from the visitor's browser, so the write
+> decision is computed for your server's own address. If that address is not on the key's allow-list, the server
+> lane is read-only and fails silently: no error, no request, nothing in the catalog, and no discovery report
+> either, since reports are never sent during a server render. Allow-list the address your server makes requests
+> from before choosing `'server'` or `'auto'`, or keep the default `'client'`.
+
 ## Detecting the user's preferred locale
 
 ```ts

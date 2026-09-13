@@ -548,3 +548,103 @@ describe('GATE-8 constraint 3: absent write_enabled gates the report lane off', 
         expect(sent).toEqual([]);
     });
 });
+
+/**
+ * HINT-5: each report waits 5 to 30 seconds of jitter, and does not fetch the catalog
+ * first.
+ *
+ * The lane tests above advance 31s, so they would pass with no jitter at all. These
+ * pin the jitter from both sides by fixing the random draw at its extremes, plus one
+ * mid-range draw to show the delay tracks the draw instead of being a constant.
+ */
+describe('HINT-5: each report is delayed by 5 to 30 seconds of jitter', () => {
+    it('never sends before 5s, even with the random draw at its minimum', async () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0);
+        recordMissForDiscovery('UI', 'Early phrase');
+        await vi.advanceTimersByTimeAsync(4_999);
+        expect(sent).toEqual([]);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(sent).toEqual(['https://site.local/page']);
+    });
+
+    it('always sends by 30s, even with the random draw at its maximum', async () => {
+        vi.spyOn(Math, 'random').mockReturnValue(1 - Number.EPSILON);
+        recordMissForDiscovery('UI', 'Late phrase');
+        // Timers truncate a fractional delay to whole milliseconds, so this draw's
+        // 29999.99...ms fires at 29_999. The rule is "by 30s"; assert it at the second.
+        await vi.advanceTimersByTimeAsync(29_000);
+        expect(sent).toEqual([]);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(sent).toEqual(['https://site.local/page']);
+    });
+
+    it('spreads arrival: a mid-range draw sends mid-window, not at a fixed delay', async () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0.5);
+        recordMissForDiscovery('UI', 'Middle phrase');
+        await vi.advanceTimersByTimeAsync(17_400);
+        expect(sent).toEqual([]);
+        await vi.advanceTimersByTimeAsync(200);
+        expect(sent).toEqual(['https://site.local/page']);
+    });
+
+    it('does not fetch the catalog before sending', async () => {
+        const fetchCatalog = vi.spyOn(LangsysAppAPI, 'getTranslations').mockResolvedValue({ status: true, data: {} });
+        recordMissForDiscovery('UI', 'Some phrase');
+        await runOutJitter();
+        expect(sent).toHaveLength(1);
+        expect(fetchCatalog).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * HINT-7: fire and forget. No retry, no backoff, no recorded outcome, and a rate-limit
+ * response turns reporting off for the rest of the session.
+ *
+ * The lane has no retry path in code, and until now nothing failed a report to prove
+ * it. The failure cases use both shapes the client produces: a rejected send, and a
+ * resolved non-2xx envelope, which is what `send()` returns for an HTTP error.
+ */
+describe('HINT-7: the report lane carries no reliability machinery', () => {
+    const serverError = { status: false, errors: ['HTTP 500: Server Error'], http: { status: 500, statusText: 'Server Error', url: '', data: '' } };
+
+    it('a report whose send rejects is not retried, however long the session runs', async () => {
+        const post = vi.mocked(LangsysAppAPI.postDiscoveryHint).mockRejectedValue(new TypeError('Failed to fetch'));
+        vi.spyOn(logger, 'warn').mockImplementation(() => {});
+        recordMissForDiscovery('UI', 'Phrase that fails');
+        await runOutJitter();
+        expect(post).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(post).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failed report leaves no state to retry on: a later miss on the same page sends nothing', async () => {
+        const post = vi.mocked(LangsysAppAPI.postDiscoveryHint).mockResolvedValue(serverError as never);
+        recordMissForDiscovery('UI', 'Phrase A');
+        await runOutJitter();
+        recordMissForDiscovery('UI', 'Phrase B');
+        await runOutJitter();
+        expect(post).toHaveBeenCalledTimes(1);
+    });
+
+    it('control: after that failure a DIFFERENT page still reports, so the silence is not a dead lane', async () => {
+        const post = vi.mocked(LangsysAppAPI.postDiscoveryHint).mockResolvedValue(serverError as never);
+        recordMissForDiscovery('UI', 'Phrase A');
+        await runOutJitter();
+        HREF.value = 'https://site.local/other';
+        recordMissForDiscovery('UI', 'Phrase B');
+        await runOutJitter();
+        expect(post).toHaveBeenCalledTimes(2);
+    });
+
+    it('a rate-limit response disables reporting for the remainder of the session', async () => {
+        const post = vi
+            .mocked(LangsysAppAPI.postDiscoveryHint)
+            .mockResolvedValue({ status: false, http: { status: 429, statusText: 'Too Many Requests', url: '', data: '' } } as never);
+        recordMissForDiscovery('UI', 'Phrase A');
+        await runOutJitter();
+        HREF.value = 'https://site.local/other';
+        recordMissForDiscovery('UI', 'Phrase B');
+        await runOutJitter();
+        expect(post).toHaveBeenCalledTimes(1);
+    });
+});

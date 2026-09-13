@@ -17,9 +17,15 @@ heading records the INTENT rather than the number. There is no summary-regenerat
 
   Scope, stated precisely because the first draft of this entry overclaimed twice. The core **writes** this attribute and does not yet **read** it: a pre-stamped `data-langsys-contentblock` is ignored and the id re-derived. Both constants are exported for readers to use, and a reader is still owed — the bindings and `langsys-php` consume them. And the core's `Phrase` writes no attribute at all; the framework `<Phrase>` components do, so "mirroring `<Phrase>`" describes the binding layer, not this one.
 
+- **The main entry now exports every marker constant `/pure` does.** `CONTENT_BLOCK_MARKER_ATTR`, `CONTENT_BLOCK_MARKER_ATTR_LEGACY`, `CONTENT_BLOCK_MARKER_ATTRS` and `PHRASE_MARKER_ATTR_LEGACY` join `PHRASE_MARKER_ATTR` and `PHRASE_MARKER_ATTRS` there. The content-block set was `/pure`-only, so a binding importing it from the main entry got `undefined`, and an assertion built on `undefined` looks for an attribute named "undefined" and cannot fail.
+
+- **Historical content-block ids resolve in more of the shapes other SDKs wrote.** On lookup only, a block is also tried under every shape in the fleet's shared 20-row legacy fixture: the pre-0.6.0 code-unit hash and `langsys-php`'s pipe-join hash, over each uncategorised slot spelling the reference SDKs used. Translations stored under those ids keep resolving instead of orphaning. Registration still uses only the current id.
+
+- **A one-time warning when a write grant turns off server-side collection.** With `writeGrant` configured, `ssrTokenStrategy: 'server'` or `'auto'` collects nothing during a server render, because capability is then per-user. That was announced only at debug level, so production said nothing; it now warns once per process.
+
 ### Changed — BREAKING (content-block ids)
 
-- **The tokenizer converges with `langsys-php`, and this changes `custom_id` for affected blocks.** Those blocks re-register under the new id and show source text until re-translated; their previous catalog entries remain as orphans. Legacy-id tolerance was considered and deliberately not added, so there is no migration — re-registration is the accepted path. What changed:
+- **The tokenizer converges with `langsys-php`, and this changes `custom_id` for affected blocks.** Those blocks re-register under the new id and show source text until re-translated; their previous catalog entries remain as orphans. Tolerance for these moved ids was considered and deliberately not added, so there is no migration — re-registration is the accepted path. The historical-id lookup added in this release is a different thing: it covers older hash shapes, and a block whose tokens changed below still re-registers. What changed:
 
   - **`<script>`, `<style>`, `<template>`, `<noscript>` and `<math>` contents are no longer harvested.** They were: `<style>.plan{color:#fff}</style>` registered `.plan{color:#fff}` as a translatable phrase and `<script>window.dataLayer.push(1)</script>` registered the statement, both then sent for machine translation.
 
@@ -34,6 +40,12 @@ heading records the INTENT rather than the number. There is no summary-regenerat
 - **An unused-params warning no longer fires on a param that renders correctly.** `findUnusedParamKeys` matched `{name}` only, so once `%name%` began resolving at render a caller holding a raw stored translation was told its key was unused — and advised to write `%name%`, the spelling they had used. The predicate and the renderer are two halves of one rule and had stopped agreeing. Both spellings now count, with the percent form restricted to identifier keys so a key like `a.b`, which never resolves from `%a.b%`, still warns.
 
 - **`%name%` placeholders now resolve when rendering, not only when capturing.** A translation stored with `%name%` previously rendered the percent signs to the reader: `interpolate('Hi %name%', { name: 'Ada' })` returned `Hi %name%`. Conversion is conditional on the key being supplied, so ordinary prose containing percent signs — `Save 20% %off%`, `50% to 70%` — is left alone.
+
+- **An API outage no longer triggers a burst of registrations.** When the catalog fetch failed, every phrase looked unregistered, because there was no catalog to find it in. A write-enabled session then queued and POSTed phrases the backend already held, and a failed locale switch did the same, since the new locale's catalog starts empty. While the last catalog fetch has failed, nothing is recorded now: no registration queued or sent, no content block registered, no discovery report. Anything queued before the failure waits and is checked against the next catalog that arrives. `change()` also no longer rejects if the API client itself throws.
+
+- **A historical content-block id is attached only when the stored block has the same phrases.** The historical id spaces are not injective (`["UI",["xxxA"]]` and `["UI",["xxxŁ"]]` share a code-unit id), so the fallback could file a block under another block's id, show that block's translations, and never register its own content. The stored phrases are now compared first, and a mismatch registers under the block's own id.
+
+- **An ICU phrase renders its `other` branch when no params are passed, instead of its raw source.** `t('{g, select, male {He} female {She} other {They}} left')` returned the template itself, and so did `<Translate>` over the same text: both interpolated only when params were supplied, and a `<Translate>` block at the base locale was not walked at all without them. It now renders "They left", and a plural with no count shows `{count}` where `#` was. Plain text containing braces is unchanged, and `<Translate>` with params still chooses by them.
 
 ### Changed — BREAKING
 

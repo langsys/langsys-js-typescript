@@ -29,10 +29,11 @@ import { LangsysAppAPI } from './api.js';
 import { recordMissForDiscovery } from './discovery.js';
 import { normalizeMarkupPlaceholders } from './interpolate.js';
 import { logger } from './logger.js';
-import { config as configStore, sTranslations, writeEnabled } from './stores.js';
+import { catalogUnavailable, config as configStore, sTranslations, writeEnabled } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
 import {
+    blockContentMatches,
     NON_TRANSLATABLE_ELEMENTS,
     normalizeTokenText,
     PHRASE_MARKER_ATTRS,
@@ -161,6 +162,50 @@ export function isContentBlockKnown(category: string, customId: string): boolean
 }
 
 /**
+ * Resolve a content block under a historical id, verified on content.
+ *
+ * Walks `candidates` (from `historicalCustomIds`, most likely first) and returns the
+ * first id whose stored block holds this block's phrases. A stored block whose
+ * phrases differ is a collision, not a match, and is declined. A block cached by
+ * this session's own registration is `{}` with no phrases to compare, so it can
+ * never be verified and is declined as well.
+ *
+ * The failure direction is deliberate (CID-4): a false positive attaches the wrong
+ * text, while a false negative silently restores nothing and looks like "this block
+ * had no legacy id". So both outcomes are logged when debug is on, matching
+ * langsys-python.
+ */
+export function resolveHistoricalBlockId(
+    category: string,
+    candidates: readonly string[],
+    tokens: readonly string[]
+): string | null {
+    const bucket = sTranslations.get()[category || '__uncategorized__'] as unknown as Record<string, unknown> | undefined;
+    if (!bucket) return null;
+    for (const id of candidates) {
+        const stored = bucket[id];
+        if (typeof stored !== 'object' || stored === null) continue;
+        if (!blockContentMatches(Object.keys(stored), tokens)) {
+            if (configStore.debug) {
+                logger.log(
+                    `Historical content-block id ${id} resolved to a block whose phrases differ; declining it ` +
+                        'rather than attaching to the wrong text.'
+                );
+            }
+            continue;
+        }
+        if (configStore.debug) {
+            logger.log(
+                `Content block resolved under a historical id (${id}). Its translations still apply; it is never ` +
+                    're-keyed and never registered under that id.'
+            );
+        }
+        return id;
+    }
+    return null;
+}
+
+/**
  * POST a content block to the backend, then stamp its custom_id into the
  * local translations cache so subsequent mounts in this session — and
  * subsequent reloads, since the cache is persisted — skip the POST.
@@ -175,6 +220,20 @@ export function isContentBlockKnown(category: string, customId: string): boolean
 export async function registerContentBlock(
     contentBlock: iContentBlock,
 ): Promise<{ status: boolean; errors?: unknown[] }> {
+    // WIRE-4. After a failed catalog fetch every block looks unregistered, because
+    // there is no catalog to find it in. Registering on that basis re-POSTs blocks
+    // the backend already holds, on every page an outage touches. Record nothing,
+    // on either lane: a discovery miss for a block that may well be registered is
+    // the same mistake made read-only.
+    if (catalogUnavailable.get()) {
+        if (configStore.debug) {
+            logger.log('Skipping content block registration: the catalog fetch failed, so an unknown block cannot be told from a registered one', {
+                custom_id: contentBlock.custom_id,
+            });
+        }
+        return { status: true };
+    }
+
     // Server-computed capability, never inferred from `key_type`. This is the
     // lane the discovery renderer depends on most: it exists for dynamic
     // content, which is disproportionately content blocks rather than bare

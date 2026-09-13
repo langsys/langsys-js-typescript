@@ -6,14 +6,14 @@ import {
     isTranslationExcluded,
     legacyTokenizeElement,
     registerContentBlock,
-    generateLegacyCustomId,
     tokenizeElement,
     TRANSLATABLE_ATTRIBUTES,
     VALUE_TRANSLATABLE_ELEMENTS,
     VALUE_TRANSLATABLE_INPUT_TYPES,
+    resolveHistoricalBlockId,
 } from './content-block.js';
-import { interpolate, normalizeMarkupPlaceholders, warnUnmatchedParams } from './interpolate.js';
-import { normalizeTokenText } from './identity.js';
+import { interpolate, isICU, normalizeMarkupPlaceholders, warnUnmatchedParams } from './interpolate.js';
+import { historicalCustomIds, normalizeTokenText } from './identity.js';
 import { LangsysApp } from './langsys-app.js';
 import { logger } from './logger.js';
 import { currentlyLoadedLocale, sTranslations, config as configStore } from './stores.js';
@@ -149,7 +149,19 @@ export class Translate {
     private renderSingleToken(category: string): void {
         const token = this.tokens[0];
         const fromBlock = LangsysApp.Translations.lookupContent(category, this.custom_id, token);
-        const resolved = this.applyParams(fromBlock ?? LangsysApp.Translations.t(token, category));
+        // The params go INTO `t()`, never onto its result. `t()` renders ICU without
+        // params too (ICU-1), so a select in its output has already collapsed to
+        // `other`, and interpolating that again can no longer choose by the params
+        // supplied here: with `{g: 'female'}` it rendered "They left".
+        const tWithParams = LangsysApp.Translations.t as unknown as (
+            phrase: string,
+            category: string,
+            params: Record<string, unknown>
+        ) => string;
+        const resolved =
+            fromBlock === null || fromBlock === undefined
+                ? tWithParams(token, category, this.options.params ?? {})
+                : this.applyParams(fromBlock);
 
         // Write the ONE text node. Never `innerText`, which replaces every
         // child of the host element: a single-token block still commonly wraps
@@ -302,28 +314,26 @@ export class Translate {
             return;
         }
 
-        // Migration fallback: resolve blocks registered by older SDKs so their
-        // translations keep working instead of orphaning. Two things have moved
-        // the id, so there are three historical shapes to try:
+        // Migration fallback, LOOKUP ONLY (CID-3). A block an older SDK registered
+        // is stored under an id this SDK no longer emits, and its translations must
+        // keep resolving instead of orphaning. `historicalCustomIds` lists every shape
+        // the fleet's shared legacy fixture names; registration below still uses the
+        // corrected id, so the legacy-keyed population can only shrink. Skipped for a
+        // caller-supplied custom_id, since nothing was derived.
         //
-        //   corrected md5 + corrected tokens  → current (tried above)
-        //   corrected md5 + legacy tokens     → registered by 0.6.0–0.6.2
-        //   legacy md5    + legacy tokens     → registered before 0.6.0
-        //
-        // (legacy md5 + corrected tokens never existed — the token fix came
-        // after the hash fix.) LOOKUP ONLY: registration below always uses the
-        // corrected id, so the legacy-keyed population can only shrink.
-        // Skipped for a caller-supplied custom_id, since nothing was derived.
+        // A historical hit is attached only when the stored block holds this block's
+        // phrases (CID-4). It used to attach on the id being present, and none of these
+        // id spaces is injective, so a collision filed this block under a foreign id
+        // and it never registered its own content.
         if (derivedId) {
-            const legacyTokens = legacyTokenizeElement(this.element);
-            const candidates = [
-                generateCustomId(contentBlock.category, legacyTokens),
-                generateLegacyCustomId(contentBlock.category, legacyTokens),
-            ];
-            for (const candidate of candidates) {
-                if (candidate === this.custom_id) continue;
-                if (!isContentBlockKnown(contentBlock.category, candidate)) continue;
-                this.custom_id = candidate;
+            const candidates = historicalCustomIds(
+                contentBlock.category,
+                contentBlock.tokens,
+                legacyTokenizeElement(this.element)
+            ).filter((id) => id !== this.custom_id);
+            const resolved = resolveHistoricalBlockId(contentBlock.category, candidates, contentBlock.tokens);
+            if (resolved) {
+                this.custom_id = resolved;
                 // The fallback just changed which id is in use; the attribute
                 // must follow, or it names an id nothing resolves under.
                 this.stampContentBlockMarker();
@@ -354,11 +364,14 @@ export class Translate {
     private translate(nodes: iNode[]) {
         const currentLocale = currentlyLoadedLocale.get();
         // With params, the base locale still needs a pass — placeholders must
-        // be interpolated even when no translation lookup will hit.
+        // be interpolated even when no translation lookup will hit. So does a
+        // block carrying ICU without params, which renders its `other` branch
+        // rather than its raw source (ICU-1).
         if (
             currentLocale === configStore.baseLocale &&
             (this.lastTranslatedLocale === '' || this.lastTranslatedLocale === configStore.baseLocale) &&
-            isEmpty(this.options.params)
+            isEmpty(this.options.params) &&
+            !this.tokens.some((token) => isICU(token))
         ) {
             return;
         }
@@ -432,12 +445,12 @@ export class Translate {
     /**
      * Interpolate `{name}`-style params into a resolved text, matching `t()`:
      * unknown keys fall through untouched, and the untranslated fallback is
-     * interpolated too. No-op when no params were supplied.
+     * interpolated too. Runs without params as well, since a text carrying ICU
+     * renders its `other` branch rather than its raw source (ICU-1). Plain text,
+     * braces included, comes back exactly as written.
      */
     private applyParams(text: string): string {
-        const { params } = this.options;
-        if (isEmpty(params)) return text;
-        return interpolate(text, params!, currentlyLoadedLocale.get());
+        return interpolate(text, this.options.params ?? {}, currentlyLoadedLocale.get());
     }
 
     private translateAttributes(element: iElement) {

@@ -37,6 +37,18 @@ export {
     tokenizeElement,
 } from './content-block.js';
 
+// Marker constants. Every one `/pure` exports is exported here too, with the same
+// value. The content-block set used to be `/pure`-only while the phrase one was here,
+// and a binding importing `CONTENT_BLOCK_MARKER_ATTR` from this entry got `undefined`:
+// its served-bytes assertion then looked for an attribute named "undefined" and could
+// not fail (found by the Svelte lane). Pinned by `marker-exports`.
+export {
+    CONTENT_BLOCK_MARKER_ATTR,
+    CONTENT_BLOCK_MARKER_ATTR_LEGACY,
+    CONTENT_BLOCK_MARKER_ATTRS,
+    PHRASE_MARKER_ATTR_LEGACY,
+} from './identity.js';
+
 // Reactive primitives
 export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber, type Updater } from './signal.js';
 export { persist, setPersistStorage, type PersistStorage } from './persist.js';

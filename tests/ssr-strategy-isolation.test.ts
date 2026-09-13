@@ -33,6 +33,8 @@ const LF = String.fromCharCode(10);
 
 const CHILD = `const [, , dist, mode] = process.argv;
 const m = await import(dist);
+const warnings = [];
+for (const channel of ['warn', 'error', 'log']) console[channel] = (...args) => { warnings.push(channel + ': ' + args.map(String).join(' ')); };
 const cfg = (extra) => Object.assign({ projectid: 'p', key: 'k', sUserLocale: m.createSignal('en-US'), baseLocale: 'en' }, extra || {});
 function run(strategy, phrases) {
     const tr = new m.Translations(Object.assign(cfg(), { ssrTokenStrategy: strategy }));
@@ -46,15 +48,18 @@ let tokens;
 if (mode === 'client') tokens = run('client', ['SSR client phrase']);
 else if (mode === 'server') tokens = run('server', ['SSR server phrase']);
 else if (mode === 'auto') tokens = run('auto', Array.from({ length: 12 }, (_, i) => 'Auto ' + i));
-else if (mode === 'grant') { m.LangsysAppAPI.setup(cfg({ writeGrant: () => 'jwt' })); tokens = run('server', ['SSR phrase with a grant configured']); }
+else if (mode === 'grant') { m.LangsysAppAPI.setup(cfg({ writeGrant: () => 'jwt' })); tokens = run('server', ['SSR phrase with a grant configured', 'A second miss under the same grant']); }
+else if (mode === 'grant-client') { m.LangsysAppAPI.setup(cfg({ writeGrant: () => 'jwt' })); tokens = run('client', ['Client strategy under a grant']); }
 else if (mode === 'shared-grant-then-server') { m.LangsysAppAPI.setup(cfg({ writeGrant: () => 'jwt' })); run('server', ['first']); tokens = run('server', ['SSR server phrase']); }
 else throw new Error('unknown mode ' + mode);
-console.log(JSON.stringify({ pid: process.pid, tokens }));
+process.stdout.write(JSON.stringify({ pid: process.pid, tokens, warnings }) + String.fromCharCode(10));
 process.exit(0);`;
 
 interface CaseResult {
     pid: number;
     tokens: string[];
+    /** Everything the case wrote to console.warn, console.error or console.log. */
+    warnings: string[];
 }
 
 function runCase(mode: string): CaseResult {
@@ -70,7 +75,7 @@ let sharedControl: CaseResult;
 
 beforeAll(() => {
     writeFileSync(SCRATCH, CHILD);
-    for (const mode of ['client', 'server', 'auto', 'grant']) results[mode] = runCase(mode);
+    for (const mode of ['client', 'server', 'auto', 'grant', 'grant-client']) results[mode] = runCase(mode);
     sharedControl = runCase('shared-grant-then-server');
 }, 30_000);
 
@@ -100,8 +105,8 @@ describe('SSR-2: a configured grant makes the server lane unusable, so nothing i
 describe('CONF-3: the isolation is real, not ceremonial', () => {
     it('every case ran in a process of its own, none of them this one', () => {
         const pids = Object.values(results).map((r) => r.pid);
-        expect(pids).toHaveLength(4);
-        expect(new Set(pids).size).toBe(4);
+        expect(pids).toHaveLength(5);
+        expect(new Set(pids).size).toBe(5);
         expect(pids).not.toContain(process.pid);
     });
 });
@@ -118,5 +123,27 @@ describe('CONF-3 control: one shared process really does contaminate', () => {
         // expectation to make it green.
         expect(results.server!.tokens).toEqual(['SSR server phrase']);
         expect(sharedControl.tokens).toEqual([]);
+    });
+});
+
+describe('SSR-2: the degradation is loud, once per process', () => {
+    // The child captures real console output and sets no debug flag, so these
+    // assertions see what a production process would print. Patching the logger's
+    // method instead would pass even if the message were suppressed outside debug.
+    const grantNotices = (r: CaseResult) => r.warnings.filter((w) => w.includes('write grant is configured'));
+
+    it('warns once when a grant stops a server strategy collecting, however many misses follow', () => {
+        const notices = grantNotices(results.grant!);
+        expect(notices).toHaveLength(1);
+        expect(notices[0]).toContain("'server' is degraded to 'client'");
+    });
+
+    it('stays quiet when no grant is configured', () => {
+        expect(grantNotices(results.server!)).toEqual([]);
+    });
+
+    it("stays quiet under 'client', where nothing was degraded", () => {
+        expect(results['grant-client']!.tokens).toEqual([]);
+        expect(grantNotices(results['grant-client']!)).toEqual([]);
     });
 });

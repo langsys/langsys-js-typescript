@@ -379,3 +379,87 @@ function _encodeRichNodes<T>(nodes: readonly RichTextNode<T>[], slots: T[]): str
     }
     return out;
 }
+
+const UNCATEGORIZED_SLOT = '__uncategorized__';
+
+function sameTokenList(a: readonly string[], b: readonly string[]): boolean {
+    return a.length === b.length && a.every((token, i) => token === b[i]);
+}
+
+/**
+ * CID-3: every historical id a block with this content could be stored under.
+ * LOOKUP ONLY. Never register or emit any of these.
+ *
+ * The authoritative list is the fleet's shared legacy fixture (vendored as
+ * `tests/fixtures/legacy-custom-id-reference.json`, blob dc555646), and every row
+ * of it must resolve. That takes three families of shape:
+ *
+ *  1. the corrected hash over the PRE-FIX token list, which the published JS SDK
+ *     registered from 0.6.0 to 0.6.2, before the duplicated `<option>` fix;
+ *  2. the JS code-unit hash (`generateLegacyCustomId`, which does not coalesce its
+ *     category), which published JS SDKs registered before 0.6.0;
+ *  3. the PHP pipe-join form, `md5` over `[slot, ...phrases].join('|')`.
+ *
+ * An uncategorised block could have been written under several spellings of its
+ * category. Python lists the code-unit hash under `''` and `'__uncategorized__'`;
+ * PHP lists it under `''` and a genuine `null` from an untyped JS caller. The
+ * fixture has a row for each, and the spec test is that every row resolves, so this
+ * takes the UNION rather than either SDK's subset. The pipe-join form covers `''`
+ * and `'__uncategorized__'`, which is all PHP ever wrote. Every extra candidate is
+ * safe because none is attached without the CID-4 content check.
+ *
+ * Most likely first, de-duplicated, and never including the current id.
+ */
+export function historicalCustomIds(
+    category: string | null | undefined,
+    tokens: readonly string[],
+    legacyTokens: readonly string[] = tokens
+): string[] {
+    const uncategorised =
+        category === null || category === undefined || category === '' || category === UNCATEGORIZED_SLOT;
+    const named = uncategorised ? '' : (category as string);
+    const codeUnitSlots: Array<string | null> = uncategorised ? ['', UNCATEGORIZED_SLOT, null] : [named];
+    const pipeSlots: string[] = uncategorised ? ['', UNCATEGORIZED_SLOT] : [named];
+    const differ = !sameTokenList(tokens, legacyTokens);
+    const lists: ReadonlyArray<readonly string[]> = differ ? [legacyTokens, tokens] : [tokens];
+
+    const ids: string[] = [];
+    if (differ) ids.push(generateCustomId(named, [...legacyTokens]));
+    for (const list of lists) {
+        for (const slot of codeUnitSlots) {
+            ids.push(generateLegacyCustomId(slot as string, [...list]));
+        }
+    }
+    for (const list of lists) {
+        for (const slot of pipeSlots) {
+            ids.push(md5([slot, ...list].join('|')));
+        }
+    }
+    const current = generateCustomId(named, [...tokens]);
+    return [...new Set(ids)].filter((id) => id !== current);
+}
+
+/**
+ * CID-4: whether a block found under a historical id holds THIS block's content.
+ *
+ * None of the historical id spaces is injective. The UTF-16 packing loses a byte at
+ * every fourth position, and joining on an unescaped delimiter loses the field
+ * boundary, so an id alone does not identify a block, and attaching on the id being
+ * present can file one block's translations under another.
+ *
+ * Compared as normalised for hashing, not as stored: a phrase stored by an older SDK
+ * may carry whitespace or a `%name%` spelling that today's tokenizer canonicalises,
+ * and a raw comparison would decline those correct matches. Compared as SETS, which
+ * the rule allows where the representation has lost order, and the catalog returns a
+ * block as a map keyed by source phrase. A set still defeats every collision mode,
+ * since each is a collision over DIFFERING content. Matches langsys-python.
+ */
+export function blockContentMatches(storedPhrases: Iterable<string>, tokens: readonly string[]): boolean {
+    const canonical = (phrase: string) => normalizeMarkupPlaceholders(normalizeTokenText(phrase));
+    const stored = new Set(Array.from(storedPhrases, canonical));
+    const current = new Set(tokens.map(canonical));
+    if (stored.size !== current.size) return false;
+    for (const phrase of stored) if (!current.has(phrase)) return false;
+    return true;
+}
+

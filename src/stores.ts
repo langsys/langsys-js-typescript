@@ -77,6 +77,18 @@ export const config: iLangsysConfig = {
 export const writeEnabled = createSignal<boolean | undefined>(undefined);
 
 /**
+ * Whether the most recent catalog fetch FAILED (WIRE-4). While true, the catalog
+ * cannot tell a miss from a hit, so nothing may be recorded against it: no
+ * registration queued or sent, no content block registered, no discovery miss.
+ * Cleared by the next catalog that actually arrives, fetched or seeded.
+ *
+ * Internal, and deliberately not exported from the package: it describes the state
+ * of `sTranslations`, which is equally module-global, and a binding has no decision
+ * to make with it.
+ */
+export const catalogUnavailable = createSignal<boolean>(false);
+
+/**
  * Whether this API key is permitted to report page URLs for content discovery.
  *
  * A POLICY, not a capability — deliberately independent of `writeEnabled`, and

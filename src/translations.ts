@@ -4,7 +4,7 @@ import { interpolate } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
 import { Logger, logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
-import { batchLimit, currentlyLoadedLocale, scopeCatalogCache, sTranslations, setWriteEnabled, writeEnabled } from './stores.js';
+import { batchLimit, catalogUnavailable, currentlyLoadedLocale, scopeCatalogCache, sTranslations, setWriteEnabled, writeEnabled } from './stores.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
 import type { TFunction } from './types/translation-fn.js';
@@ -100,6 +100,40 @@ export function noticeUnusableWriteCapability(enabled: boolean, keyType: string 
 /** Test seam — the latch is module state and must not leak between cases. */
 export function _resetCapabilityNotice(): void {
     capabilityNoticeSignature = null;
+}
+
+/**
+ * SSR-2: when a configured write grant stops a server render from collecting, say so,
+ * outside debug.
+ *
+ * The degradation itself was already right. Under a grant, write capability is
+ * per-user, and a process-wide server queue cannot carry it, so `shouldQueueForWrite`
+ * refuses to collect and the browser collects after hydration instead. But it did
+ * that with a silent `return false`, and the only trace was a debug-gated log. A
+ * production site that configured a grant lost server-side collection without a
+ * word, and the rule's title says the degradation is loud.
+ *
+ * Latched ONCE per process. The cause is the process's configuration, not any
+ * particular miss, so repeating it on every miss would be noise, and noise is how a
+ * warning gets silenced. It fires only for a strategy that would otherwise have
+ * collected; under `'client'` nothing was degraded.
+ */
+let ssrGrantNoticeGiven = false;
+
+export function noticeSsrGrantDegradation(strategy: string): void {
+    if (ssrGrantNoticeGiven) return;
+    ssrGrantNoticeGiven = true;
+    logger.warn(
+        `Langsys: a write grant is configured, so this server render does not collect missing phrases ` +
+            `(ssrTokenStrategy '${strategy}' is degraded to 'client'). Under a grant, write capability is ` +
+            `per-user and a process-wide server queue cannot carry it, so missing phrases are collected in the ` +
+            `browser after hydration instead.`
+    );
+}
+
+/** Test seam — module state, and must not leak between cases. */
+export function _resetSsrGrantNotice(): void {
+    ssrGrantNoticeGiven = false;
 }
 
 export class Translations {
@@ -293,7 +327,11 @@ export class Translations {
                 translated = phrase;
             }
 
-            return params ? interpolate(translated, params, currentlyLoadedLocale.get()) : translated;
+            // Interpolated with or without params. Returning early without them
+            // rendered a select or plural as its raw source, where ICU-1 renders the
+            // `other` branch and ICU-3 shows `{count}` in place of a `#` with no count.
+            // Plain text, braces included, comes back exactly as written.
+            return interpolate(translated, params ?? {}, currentlyLoadedLocale.get());
         }) as TFunction;
         return fn;
     }
@@ -348,6 +386,18 @@ export class Translations {
                     `shortened form will be translated and stored, and the full text will later register as a ` +
                     `separate phrase. Register the untruncated string if you can. Registering anyway.`
             );
+        }
+
+        // WIRE-4. Without a catalog a miss cannot be told from a hit, and treating a
+        // failed fetch as "everything is unknown" re-registers phrases that already
+        // exist: every outage becomes a write storm, on exactly the paths that were
+        // already failing. Record nothing, including the discovery miss, since a hint
+        // for content the catalog may hold is the same mistake on the read-only lane.
+        // A successful fetch rebuilds `t`, so reactive consumers re-render and miss
+        // again, and a genuine miss is recorded then.
+        if (catalogUnavailable.get()) {
+            this.debug.log('Not recording a miss: the catalog fetch failed, so a miss cannot be told from a hit', { category, token });
+            return;
         }
 
         // Recorded before the queue dedup below: the discovery lane keys on the
@@ -455,9 +505,11 @@ export class Translations {
             // either, since that signal is never written server-side. The
             // degradation to the client lane is real, so the server instance
             // must also stop collecting — not just stop sending.
-            if (LangsysAppAPI.hasWriteGrant()) return false;
-
             const strategy = this.config.ssrTokenStrategy || 'client';
+            if (LangsysAppAPI.hasWriteGrant()) {
+                if (strategy !== 'client') noticeSsrGrantDegradation(strategy);
+                return false;
+            }
             if (strategy === 'server') return true;
             if (strategy === 'auto') {
                 // Past the threshold 'auto' defers to a client that can't receive it.
@@ -647,6 +699,7 @@ export class Translations {
         locale = canonicalizeLocale(locale);
         this.locale = locale;
         this.lastLoaded[locale] = new Date().getTime() / 1000;
+        catalogUnavailable.set(false);
         // A seeded catalog counts as "ready": the cache hit above means no
         // fetch will ever fire to resolve the promise, and content-block /
         // Phrase consumers awaiting ready() would otherwise hang forever.
@@ -672,6 +725,7 @@ export class Translations {
 
         if (skipFetch) {
             this.debug.log('Using pre-fetched translations for locale', locale);
+            catalogUnavailable.set(false);
             this.locale = locale;
             this.lastLoaded[locale] = new Date().getTime() / 1000;
             this.readyResolve();
@@ -741,6 +795,14 @@ export class Translations {
         }
         if (!isTeardown && this.retryNotBefore && Date.now() < this.retryNotBefore) return false;
         if (!this.config.projectid || !this.config.key) return false;
+        // WIRE-4. Tokens queued before the fetch failed are HELD, not sent: the dedup
+        // below filters against the catalog, and there is no catalog to filter against.
+        // The next catalog that arrives lifts the hold and the dedup then drops whatever
+        // it already holds. Applies to the teardown flush too, which has no dedup either.
+        if (catalogUnavailable.get()) {
+            this.debug.log('Holding queued tokens: the catalog fetch failed, so they cannot be deduplicated');
+            return false;
+        }
         if (!this.canWrite()) {
             this.debug.log('Skipping token updates (session is not write-enabled)', {
                 writeEnabled: writeEnabled.get(),
@@ -874,12 +936,37 @@ export class Translations {
         }
     }
 
+    /**
+     * WIRE-4: the catalog fetch failed. Settle `ready()` so consumers render their
+     * source text, and mark the catalog unusable for deciding what is missing.
+     *
+     * The second half is the one that needs saying. Measured before it existed, with
+     * write capability already granted: a network-failed fetch let `t()` misses queue
+     * and POST phrases that were already registered, and a failed locale switch did
+     * the same, because the new scope had just reset the catalog to empty.
+     */
+    private markCatalogUnavailable(): void {
+        catalogUnavailable.set(true);
+        this.readyResolve();
+    }
+
     private async getTranslations(): Promise<void> {
         if (!LangsysAppAPI.config.projectid && this.config.projectid) {
             LangsysAppAPI.setup(this.config);
         }
 
-        const response: ResponseObject = await LangsysAppAPI.getTranslations(this.locale);
+        let response: ResponseObject;
+        try {
+            response = await LangsysAppAPI.getTranslations(this.locale);
+        } catch (err) {
+            // `send()` already turns a network failure into an error envelope, so this
+            // is the client itself throwing. Still an expected condition (WIRE-4), and
+            // `change()` runs un-awaited from the locale subscription, where a
+            // rejection has no caller to land on.
+            this.debug.error('Catalog fetch threw', err);
+            this.markCatalogUnavailable();
+            return;
+        }
         this.debug.log('GET TRANSLATIONS API RESPONSE', response);
 
         // Envelope-level, alongside `words` / `untranslated_words` — never
@@ -890,7 +977,7 @@ export class Translations {
 
         if (response.errors) {
             this.debug.error('Error', response.errors[0]);
-            this.readyResolve();
+            this.markCatalogUnavailable();
             return;
         }
 
@@ -931,6 +1018,9 @@ export class Translations {
 
         this.debug.log('GET TRANSLATIONS ' + this.locale, trans);
 
+        // Before publishing, so subscribers re-rendering off this catalog record their
+        // misses normally.
+        catalogUnavailable.set(false);
         sTranslations.set(trans);
         // Small delay so consumers see translations + locale updates on the same tick.
         setTimeout(() => currentlyLoadedLocale.set(this.locale), 100);
