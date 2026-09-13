@@ -327,49 +327,16 @@ describe('retry backoff', () => {
     });
 });
 
-describe('SSR collects only what it can actually send', () => {
-    // No browser shim here — this is the real server path.
-    it("'client' does not collect: the post-hydration flush reads a different process", () => {
-        const tr = newTranslations('client');
-        tr.applyWriteEnabled(true);
-        tr.t('SSR client phrase', 'UI');
-        expect(queueOf(tr)).toHaveLength(0);
-    });
-
-    it("'server' does collect, because it flushes in-process", () => {
-        const tr = newTranslations('server');
-        tr.applyWriteEnabled(true);
-        tr.t('SSR server phrase', 'UI');
-        expect(queueOf(tr).map((t) => t.token)).toEqual(['SSR server phrase']);
-    });
-
-    it("'auto' collects only up to its flush threshold", () => {
-        const tr = newTranslations('auto');
-        tr.applyWriteEnabled(true);
-        for (let i = 0; i < 12; i++) tr.t(`Auto ${i}`, 'UI');
-        expect(queueOf(tr)).toHaveLength(5);
-    });
-});
+// The SSR strategy cases ('client', 'server', 'auto') moved to
+// `ssr-strategy-isolation`, where each runs in a fresh process as CONF-3
+// requires. They shared this file's process here, and the singleton state
+// they touch would have leaked between them without any test going red.
 
 describe('review regressions', () => {
-    it('TS-1: does not collect under SSR when a grant makes the server lane unusable', () => {
-        // canWrite() refuses the SSR lane whenever a grant is configured, so
-        // collecting anyway rebuilds the undrainable plateau: nothing can send
-        // it, and the writeEnabled release path never fires server-side.
-        LangsysAppAPI.setup({
-            projectid: 'p',
-            key: 'k',
-            sUserLocale: createSignal('en-US'),
-            baseLocale: 'en',
-            writeGrant: () => 'jwt',
-        });
-        const tr = newTranslations('server');
-        tr.applyWriteEnabled(true);
-        tr.t('SSR phrase with a grant configured', 'UI');
-
-        expect(queueOf(tr)).toHaveLength(0);
-        LangsysAppAPI.setup({ projectid: 'p', key: 'k', sUserLocale: createSignal('en-US'), baseLocale: 'en' });
-    });
+    // TS-1 (a configured grant stops SSR collection) moved to
+    // `ssr-strategy-isolation`. It writes the config singleton through
+    // LangsysAppAPI.setup and had to undo that by hand here; a fresh process
+    // needs no undo.
 
     it('TS-3: a prototype-named phrase is actually sent, not filtered out of every batch', async () => {
         installBrowserShim();

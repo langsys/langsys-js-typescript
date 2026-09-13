@@ -50,6 +50,7 @@
         "prepublishOnly": "npm run build",
         "release": "./_dev_/publish.sh",
         "verify:spec": "./_dev_/verify-spec-blob.sh",
+        "tally:conformance": "node _dev_/tally-conformance.mjs",
         "pretest": "npm run build"
     },
     "keywords": [

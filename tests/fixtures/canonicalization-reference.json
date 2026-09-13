@@ -2,11 +2,11 @@
  "": "Canonicalization + identity agreement across Langsys SDKs. AUTHORED in langsys-js-typescript, not vendored from another lane.",
  "purpose": "Proof that the SDKs mint the SAME custom_id for the same content. Covers the TOK batch's canonicalization rules — the collapse set, attribute values collapsing like text nodes, the fixed twenty-seven attributes in order — and, from spec 8.0.1, the three collapse-set boundary characters and the %name%-at-capture rule, plus TOK-1's <math> exclusion and the <svg> behavioural clause it is paired with.",
  "how_to_row_against_it": "Tokenize the html field, compare to expected_tokens, then hash (category, tokens) and compare to expected_custom_id. Compare CODEPOINTS, not display strings: several cases differ only by U+00A0 or U+2028, which render identically to a space — the html_codepoints and expected_tokens_codepoints fields exist so a mismatch is readable instead of looking like two identical strings with two different hashes.",
- "expected_is": "What langsys-js-typescript produces. Every row matches spec blob 8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c (specVersion 8.0.1), and as of this write every row is also matched by langsys-php-sdk. It is not an invitation to change the expectation: the JS core is the identity authority per TOK-2, so a lane that disagrees records a divergence here and fixes its own side.",
- "spec_blob": "8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c (langsys 63df13c7, specVersion 8.0.1). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 63df13c7 docs/sdk-spec.mdx` at this write, not carried from the previous one — 8.0.1 requires the header revision to be re-derived every time. NOTE on what the spec supplies: it specifies the three collapse-set rows by CODEPOINT and expected BEHAVIOUR (member / non-member), and quotes ids only for TOK-5 (1e4b462c… normalised, bb74011a… raw). Its own sentence says 'specified by codepoint and expected id here', which overstates what it lists; the ids for U+FEFF, U+0085 and U+180E were DERIVED here with the core tokenizer, per the CID-3 split between who specifies and who derives.",
+ "expected_is": "What langsys-js-typescript produces. Every row matches spec blob 5c5c0723f88fb8e6b13f58876c7adca8b6b35691 (specVersion 8.0.1), and as of this write every row is also matched by langsys-php-sdk. It is not an invitation to change the expectation: the JS core is the identity authority per TOK-2, so a lane that disagrees records a divergence here and fixes its own side.",
+ "spec_blob": "5c5c0723f88fb8e6b13f58876c7adca8b6b35691 (langsys2 5cff03a1, specVersion 8.0.1, unpublished). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 5cff03a1 docs/sdk-spec.mdx` at this write, and checked against the CONFORMANCE header by `npm run verify:spec`, which fails when the two disagree. What the spec supplies: the three collapse-set rows by code point and expected behaviour (membership shown as an id equal to the plain-space row, non-membership as a distinct id). It quotes no ids for them, and from this revision it quotes none for TOK-5 either, saying they belong in this file. Every id here was derived with the core tokenizer, per the CID-3 split between who specifies and who derives.",
  "measured_at": {
   "langsys-js-typescript": "this repo, tokenizeElement + generateCustomId, re-measured at this write",
-  "langsys-php-sdk": "HtmlParser::extractPhrases + HtmlParser::generateCustomId, PHP 8.3.19, re-measured at this write. MEASURED AT TIP e28972c; the change that made it agree is 717673d (`git log -S`), which adds src/Html/Canonical.php — e28972c touches only CHANGELOG and CONFORMANCE. An earlier version of this field said PHP 'fixed' it at e28972c, conflating the tip a measurement was taken at with the commit that changed the behaviour; the Reviewer caught it.",
+  "langsys-php-sdk": "HtmlParser::extractPhrases + HtmlParser::generateCustomId, PHP 8.3.19, re-measured at this write. MEASURED AT TIP e28972c; the change that made it agree is 717673d (`git log -S`), which adds src/Html/Canonical.php — e28972c touches only CHANGELOG and CONFORMANCE. An earlier version of this field said PHP 'fixed' it at e28972c, conflating the tip a measurement was taken at with the commit that changed the behaviour; the Reviewer caught it. Its parser is libxml2 2.9.13 (LIBXML_DOTTED_VERSION on this host), a pre-2.14 libxml2, which is what makes the vertical-tab and form-feed harness controls below diverge.",
   "langsys2 (server)": "NO MINTER EXISTS. Searched by hashing call and by canonical-serialization signature, with the same searches positive-controlled against langsys-php-sdk (4 hits there, 0 here). The backend stores ids clients send; it does not compute them."
  },
  "harness_control": {
@@ -24,12 +24,14 @@
      "U+0061",
      "U+0062"
     ],
-    "note": "libxml2 DROPS U+000B from DOM text where a JS DOM keeps it and collapses it to a space. Spec 8.0.1 names this as a parser-level split below the SDK that no tokenizer can close. Independently reproduced here, which is why it makes a good control: a real divergence the harness must see."
+    "note": "Under a pre-2.14 libxml2, U+000B is dropped from DOM text before any tokenizer sees it, where a JS DOM keeps it and collapses it to a space. Spec 5c5c0723 records this as a libxml2 VERSION boundary, not a library difference: 2.14 and newer keep the character. So this control diverges only while the PHP host runs a pre-2.14 libxml2. After an upgrade it would agree and stop being a positive control, and a replacement must be chosen rather than the expectation flipped.",
+    "parser": "langsys-php-sdk on libxml2 2.9.13 (PHP 8.3.19)"
    },
    {
     "input": "<p>a U+000C b</p>",
     "result": "DIVERGE",
-    "note": "Same split, form feed."
+    "note": "Same version boundary, form feed (U+000C).",
+    "parser": "langsys-php-sdk on libxml2 2.9.13 (PHP 8.3.19)"
    },
    {
     "input": "JS fed <p>LEFT</p>, PHP fed <p>RIGHT</p>",
@@ -37,7 +39,7 @@
     "note": "Proves the comparison is not structurally returning AGREE regardless of input."
    }
   ],
-  "not_rows": "The VT/FF cases are deliberately NOT fixture rows. They diverge in the parser, not the tokenizer, so no implementation can make them agree; a row whose expectation can never be met would sit here failing forever and teach a reader to ignore failures. Spec 8.0.1 records the split in prose and specified four rows, which are the four added here."
+  "not_rows": "The vertical-tab and form-feed cases are deliberately NOT fixture rows. Spec 5c5c0723 now asks for the parser-drop split to be recorded as its own row labelled with the libxml2 version, but that clause belongs to TOK-2 control-character handling, which the operator has HELD pending a ruling on stripping C0 controls. No row is built for it until that ruling; if the strip is adopted, this lane authors those rows as the fixture owner. Separately, they diverge below the tokenizer, so as ordinary rows no implementation could make them agree."
  },
  "agreement": {
   "rows": 26,
@@ -2358,7 +2360,7 @@
   },
   {
    "id": "brace-name-in-markup",
-   "why": "TOK-5's counterpart, and the half that makes the rule cross-lane DATA rather than one SDK's assertion. `%name%` normalising at capture only means something if the brace-authored form reaches the SAME id — otherwise both paths could drift together and agree about nothing useful. The spec AT BLOB 8e2527b9 quotes both ids — 1e4b462c… for the normalised form and bb74011a… for a path that tokenizes the raw markup. Scoped to that blob on purpose: the pending follow-up removes them from the prose, so an unscoped claim would quietly become false.",
+   "why": "TOK-5's counterpart, and the half that makes the rule cross-lane DATA rather than one SDK's assertion. `%name%` normalising at capture only means something if the brace-authored form reaches the SAME id — otherwise both paths could drift together and agree about nothing useful. The spec at blob 8e2527b9 quoted both ids (1e4b462c for the normalised form, bb74011a for a path that tokenizes the raw markup). From 5c5c0723 it names neither and says they belong in this fixture row, derived by the JS core, so this row is now where they live.",
    "html": "<p>Hello {name}</p>",
    "html_codepoints": [
     "U+003C",

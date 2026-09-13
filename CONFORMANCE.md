@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | **SDK** | `langsys-js-typescript` (browser reference implementation) |
-| **Profiles** | `all`, `browser` |
+| **Profiles** | all, browser |
 | **specVersion** | 8.0.1 (a correction to v8, not a new release) |
-| **Spec revision read** | langsys `63df13c7`, `docs/sdk-spec.mdx` blob `8e2527b9f30e4e8a38121eeb7c401d4db60dfa6c` (specVersion 8.0.1). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 63df13c7 docs/sdk-spec.mdx` at this write — 8.0.1's conformance guidance requires the revision to be re-derived on every write rather than carried, which is how the previous header came to cite a four-revision-stale blob. Every rule profiled `all` or `browser`, plus SRV-4's browser-core clause, is audited against this blob. Verify with `npm run verify:spec` before writing this row — it re-derives the blob by `ls-tree` and fails if the row names one the cited commit does not carry. Deliberately a script and not a CI test: it needs a sibling checkout of the spec repo, so in CI it could only skip, and a check that silently skips where it is automated is what let the `#private` dist scan sit green for rounds |
+| **Spec revision read** | langsys2 5cff03a1…, docs/sdk-spec.mdx blob 5c5c0723f88fb8e6b13f58876c7adca8b6b35691 (specVersion 8.0.1, unpublished, the committed target for the 8.0.1 push). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 5cff03a1 docs/sdk-spec.mdx` at this write and checked by `npm run verify:spec`, which also fails if the vector file cites a different blob. Every rule id is counted by `npm run tally:conformance`. |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 604 tests in 32 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 620 tests in 34 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -122,127 +122,149 @@ consumer is bound by the `browser` rules already carried here. Said explicitly b
 "a profile was added" and "rules were added" look the same from a distance, and only the
 second would leave gaps.
 
-**Coverage arithmetic**, recomputed against the published blob rather than carried forward. The
-spec now carries **79 rules**, up from 67 — a PURE INSERTION: diffing every rule title and
-Profiles line between the previously-cited `45cdddf8` and `042dedb5` shows only additions
-(TOK-1..5, MARK-1/2, SRV-1..5) and not one pre-existing rule changed, so the earlier audit of
-those stands rather than needing redoing.
+**Coverage arithmetic**, derived by `npm run tally:conformance` against the cited blob rather
+than typed. The spec carries **79 rules**, and **68 bind this SDK**: 47 profiled `all`, 20
+`browser`, plus SRV-4, whose Profiles line names the browser core for the synchronous seed it
+exposes. The other eleven are addressed to other profiles: HINT-2 (`server`), SRV-1, 2, 3 and 5
+(`server; and a binding …`), and BIND-1 to BIND-6 (`binding`).
 
-**68 bind a browser core** — 47 profiled `all`, 20 `browser`, plus SRV-4, which names the
-browser core explicitly for the synchronous seed it exposes. Every one of the 68 has a row, and
-that is checked by set difference rather than by counting: binding-rules-without-a-row is empty.
+**79 rows, one rule id each.** Earlier revisions of this file used 71 physical rows, with
+BIND-1..6 and four SRV rules sharing combined rows and descriptive suffixes on some rule cells.
+The canonical conformance format, which the Reviewer measures the same way across every SDK,
+allows exactly one id per row and no ranges, so the combined rows are expanded. The script
+fails on a missing, duplicated, ranged or compound id.
 
-The other eleven are covered by two rows. `HINT-2` (profile `server`) keeps a row of its own so
-the n/a stays visible as a claim about that rule's Profiles line, and `BIND-1..6` share one
-combined row because a binding profile is n/a for the same single reason six times over. SRV-1,
-2, 3 and 5 are profiled `server; and a binding…` and are rowed as profile-n/a.
+**Grade vocabulary.** `implemented`, `provisional`, `partial`, `not implemented`,
+`held (strip ruling)`, `n/a (profile: …)` and `n/a (architecture: …)`, plus `delegated`
+(bindings only) and `waived`, neither used here. The two n/a grades stay distinct: a profile n/a
+says a real rule is addressed to someone else, an architecture n/a says it cannot apply here and
+what would make it live. This file has no architecture n/a rows.
 
-So **71 physical rows covering 79 rules** — the row count and the rule count are deliberately
-different numbers, and neither is the other.
+**Tier describes the evidence for the property the rule governs, not whether a double appears
+in the test.** `live`, `contract` and `mock` apply only where that property depends on what the
+API answers: acceptance, refusal, or state across calls. Everything else is `n/a (pure)`:
+in-process behaviour, cross-implementation identity fixtures (reference vectors, never
+`contract`), meta-rules discharged by this document and its checker, artifact inspection with a
+positive control, and isolation or scoping properties a stateful fixture could neither prove nor
+disprove. An `implemented` row needs `live`, `contract` or `n/a (pure)`. A `provisional` row
+needs `mock` and names what it waits on. `partial`, `not implemented` and the n/a grades carry `-`.
 
-Two kinds of n/a are kept apart. `HINT-2`, `BIND-1..6` and the four server-side SRV rules are
-**profile-n/a**: the rule is real and simply addressed to somebody else. That is not the same as
-a rule being inapplicable to this architecture, which would need saying differently and does not
-currently occur here.
+**Two grades from earlier revisions are retired.** `corroborated (cross-implementation)` was a
+status here, meaning a second implementation written in another language produces the same
+bytes. The distinction is real and is kept, as evidence rather than status: those rows now read
+`implemented`, tier `n/a (pure)`, "cross-implementation fixture". And `provisional (no test)` is
+gone, because behaviour without a test is `partial`, not provisional.
 
-Computed grade summary over the 71 physical rows, counted from the file rather than typed:
+**Twelve rows were misgraded, and the checker is why that will not recur.** GATE-8, REG-11,
+HINT-1, GRANT-1 to GRANT-4, OBS-1, WIRE-5, CACHE-1, HINT-12 and CID-3 were graded `implemented`
+while recording a `mock` tier, which CONF-2's status definition does not allow. Each was
+regraded on the rule above. Where the governed property depends on the API's answer the row is
+now `provisional` (GATE-8, OBS-1). Where it does not, the tier was wrong rather than the status
+(REG-11, HINT-1, GRANT-2, GRANT-3, GRANT-4, WIRE-5, CACHE-1, HINT-12). Two were not implemented as
+claimed: GRANT-1's documentation clause has no test, and CID-3's named test does not exist. The
+tally script checks status against tier, not status alone, which is the check that would have
+caught all twelve.
+
+Grade summary over the 79 rows, printed by `npm run tally:conformance` at this write:
 
 ```
-  28  implemented
-  25  provisional
-   6  corroborated (cross-implementation)
-   6  provisional (no test)
-   2  n/a
-   2  partial
-   1  core half implemented; the Profiles line now includes this SDK
-   1  profile-n/a
+  40  implemented
+  13  provisional
+  12  partial
+  11  n/a (profile)
+  2   not implemented
+  1   held (strip ruling)
+  implemented, by tier:
+    40  n/a (pure)
+  provisional, by what it waits on:
+    13  conf-2 shared contract fixture
 ```
-
-**Grade vocabulary.** This file grades every row `implemented`, `partial`, `provisional`,
-`corroborated (cross-implementation)` or `n/a`. The verification gate's reports use `met`
-for what this file calls `implemented` — one grade, two words, and the mapping is stated
-here once rather than by mixing both tokens into one column. `corroborated` is the only
-grade that is not a synonym for anything the gate uses: see below for why it is kept apart.
-
-**Evidence grades** follow CONF-2: `live` (real server), `contract` (stateful double),
-`mock` (canned responses — does not meet the bar), `none`.
-
-`corroborated (cross-implementation)` is a distinct status, not a synonym for
-`implemented`, and the distinction is worth keeping. `implemented` means this SDK does
-what the rule says, as judged here. `corroborated` means a second implementation, written
-independently in another language, produces the same bytes — which excludes a whole class
-of error that no amount of testing inside this repo can: the two sides sharing my mistake.
-Six rows hold it: CID-1, CID-4 and ICU-1/2/3/5, backed by three vendored fixtures. Every `mock` and `none` row
-is `provisional` regardless of how confident I am in the behaviour.
 
 ---
 
 ## Status
 
-| Rule | Status | Evidence | Test |
+| Rule | Status | Tier | Evidence |
 |---|---|---|---|
-| GATE-1 | provisional | mock | `write-lane` TS-1 · `discovery` mutual-exclusion · `grant-lane` applies re-authorized capability. IP arm verified live once, **not reproducible** |
-| GATE-2 | provisional | mock | `grant-lane` "flushes what was held once capability resolves true" |
-| GATE-3 | provisional (no test) | none | Code: `writeEnabled` is never `persist()`-backed; `setWriteEnabled` no-ops without `window`. **Carve-out declared below.** |
-| GATE-4 | provisional (no test) | none | Code: `getTranslations` takes `response.data` only; the authorize body is never cached |
-| GATE-5 | provisional | mock | `discovery` "a write-enabled session registers the block and does NOT report" (cache written only after confirmed acceptance) |
-| GATE-6 | provisional | mock | `discovery` "never reports from a write-enabled session" + content-block pair |
-| GATE-7 | provisional | mock | `discovery` "reports a page whose unregistered content is a content block, not a t() miss" — **both directions** |
-| GATE-8 | implemented | mock | `grant-lane` GATE-8 block (write/read fallback, `ip_write` refused, re-evaluated per response, report lane off from the same condition, permissive policy cannot re-enable it) + `discovery` constraint-3 block |
-| CAT-1 | implemented | n/a (pure) | `translations` lookup suite + `write-lane` TS-3 (prototype-named phrase) |
-| CAT-2 | implemented | n/a (pure) | `translations` "returns the phrase as fallback when no translation exists" |
-| CAT-3 | provisional (no test) | none | Code: `isContentBlockKnown` tests object-ness. Server shape pinned by backend's contract test, not mine |
-| REG-1 | provisional | mock | `discovery` content-block pair (read-only registers nothing) |
-| REG-2 | provisional | mock | `write-lane` "sends late-rendering content sub-second rather than on the 3s poll tick" |
-| REG-3 | provisional | mock | `write-lane` "sends what is still queued when the page goes away, with keepalive" |
-| REG-4 | provisional | mock | `write-lane` TS-2/TS-4 asserts `keepalive` on every teardown request |
-| REG-5 | provisional | mock | `write-lane` "does not re-send what the debounce already sent — visibilitychange also fires on a tab switch" |
-| REG-6 | provisional | mock | `write-lane` "does not drop a miss recorded while a send is in flight" |
-| REG-7 | provisional | mock | same test (asserts the first phrase is sent exactly once) |
-| REG-8 | provisional | mock | `write-lane` "backs off instead of hammering a failing server, and keeps the batch" |
-| REG-9 | provisional | mock | `grant-lane` REG-9 block — honours a lower server limit, keeps the default when absent, and chunks sends to it |
-| REG-10 | provisional | mock | `write-lane` backoff test (failure ⇒ queued + backoff, one behaviour) |
-| REG-11 | implemented | mock | `ellipsis-warning` — a phrase ending in `…` or `...` warns, naming it, and is **registered anyway**. The spec permits suppression only on a second signal (a longer catalog entry sharing the prefix); that half is NOT implemented, so nothing is ever skipped. Deliberate: a blanket skip has real false positives (`Loading…`) and silently refusing to register those would create a new silent failure, which is the class this surface exists to remove. Mid-string ellipses are not matched |
-| REG-12 | provisional (no test) | none | Primary mechanism is structural (`t()` treats a non-string value as known). A redundant 32-hex guard remains — see gaps |
-| HINT-1 | implemented | mock | `discovery` — every assertion is on `page_url` only; no payload path exists |
-| HINT-2 | n/a | n/a | Profile `server`. This SDK is `browser`/`all`. |
-| HINT-3 | provisional | mock | `discovery` "names the MISS-time URL, not wherever the user navigated during the jitter" |
-| HINT-4 | provisional | mock | `discovery` "reports a URL at most once per session" + "reports each URL separately" |
-| HINT-5 | provisional | mock | `discovery` jitter is advanced explicitly in every lane test |
-| HINT-6 | implemented | n/a (pure) | `discovery` `normalizeHintUrl` suite. `utm_*` prefix-matched per the server. Fragments preserved verbatim — conformant because the server now splits `normalize()` (verbatim, feeds dispatch) from `dedupKey()` (folds `#!/`→`#/`, suppression only), so preserving is correct rather than merely divergent. Credential-shaped params — in the query AND inside the fragment — decline the whole report rather than being stripped from it. Two contracts, deliberately different: NORMALIZATION stays identical across legs (divergence breaks dedup keys and renderer targets); the DECLINE PREDICATE is a union, where each leg may be stricter without coordination, because a passing URL is byte-identical whatever matched. See the credential-param gap under Gaps |
-| HINT-7 | provisional | mock | `discovery` — no retry/backoff path exists in the lane |
-| HINT-8 | provisional | mock | `discovery` "never reports during SSR" |
-| HINT-9 | provisional | mock | `discovery` auto_discovery block — **includes the positive control**, per the pairing constraint |
-| SSR-1 | provisional | mock | `write-lane` "'client' does not collect" + "'server' does" + "'auto' up to threshold" |
-| SSR-2 | provisional | mock | `write-lane` TS-1. **Was a warning only until the TS-1..TS-11 review pass** — the degradation is now real |
-| SSR-3 | provisional (no test) | none | Precondition documented; verified live once, not reproducible |
-| BIND-1..6 | n/a | n/a | Profile `binding`. This is the core, not a binding — **profile-n/a, not architecture-n/a**. One contract runs the other way and the core owes it: **bindings may forward core methods UNBOUND** (Vue and Solid forward through a `Proxy` and assert identity, so `proxy.method()` runs with `this` set to the proxy), and **the core guarantees it declares no ECMAScript `#private` fields** — `#` access is keyed to the real instance and throws through a proxy, while TypeScript's `private` is erased and is fine (13 of those today). Adopting a single `#private` field is a breaking change for every Proxy binding, at runtime, in whichever method touched it. Pinned by `no-private-fields`, which scans `src/**/*.{ts,mts,cts,tsx}` and the package build, with its own positive control. **The dist half checks esbuild's lowering helpers, not just a literal `#`**: at our `es2021` target a private field is downlevelled to `__privateAdd`/`__privateGet` over a WeakMap, so a literal scan of `dist` finds nothing while the lowered form still throws through a Proxy — measured by loading the built artifact. A missing `dist` fails hard rather than skipping, and CI builds before it tests; previously it did the reverse, which made the dist assertion a permanent no-op there. TypeScript `private` members, which are erased and harmless, number **77** (42 fields + 35 methods, computed over `src/`) — an earlier note said 13, which was `langsys-app.ts` alone |
-| GRANT-1 | implemented | mock | `grant-lane` "is attached when a grant is configured, and resolved per request" |
-| GRANT-2 | implemented | mock | same test — asserts the provider is re-resolved, not cached |
-| GRANT-3 | implemented | mock | `grant-lane` "issues a fresh authorization carrying the grant" |
-| GRANT-4 | implemented | mock | `grant-lane` header assertions |
-| OBS-1 | implemented | mock | `obs-notice` — a `write`/`ip_write` key resolving `write_enabled: false` warns once, ABOVE debug level, naming the key type and the remedy. Latched on the outcome, so a re-authorization that changes the answer speaks again and one that changes nothing stays quiet. Deliberately silent for a `read` key resolving read-only, which is correct behaviour and would otherwise make this the notice everyone silences. Mutation-checked: dropping the expected-to-write guard turns the read-key test red, dropping the latch turns the repeat test red |
-| WIRE-1 | provisional | mock | `api-reachability` WIRE-1 block — `x-Authorization` asserted on every request, plus the ICU capability header |
-| WIRE-2 | provisional | mock | `api` suite; 204 handled by status rather than content-type |
-| WIRE-3 | implemented | n/a (pure) | `locale` WIRE-3 block + `api` wire assertion. Lowercase `xx-yy` internally and on the wire. **Deliberately supersedes main's BCP 47 casing** (operator ruling); CLAUDE.md invariant 1a and the CHANGELOG carry the reason and the migration note |
-| WIRE-4 | provisional (no test) | none | Guarded (`window.location?.href`). No test asserts `t()` cannot throw |
-| WIRE-5 | implemented | mock | `api-reachability` — redirect **observed** at the double, plus the ordering failure proven |
-| CACHE-1 | implemented | mock | `cache-scope` — the catalog is keyed `langsys:translations:<projectid>:<locale>` and hydrated only once `init()` knows both, so a mismatch is a cache MISS rather than foreign content. Was keyed by neither: a page load restored whatever was stored and `t()` served it before anything could check whose it was. Mutation-checked twice — never-clear-on-scope-change turns the cross-project and cross-locale tests red; module-load hydration turns the superseded-key test red. Superseded keys are removed on first scoping |
-| CONF-1 | partial | — | Registration lanes assert catalog state; **hint lanes assert the outgoing payload**. See gaps. |
-| CONF-2 | implemented | — | This file |
-| CONF-3 | partial | — | `setWriteGrant` inertness is covered, but not by mutation. See gaps. |
+| GATE-1 | provisional | mock | `ssr-strategy-isolation` grant case, `discovery` mutual-exclusion, `grant-lane` applies the re-authorized capability. The property is the server-computed write_enabled, and these doubles cannot refuse. The IP arm was verified live once and is not reproducible. Waits on: conf-2 shared contract fixture. |
+| GATE-2 | provisional | mock | `grant-lane` "flushes what was held once capability resolves true". Depends on the capability the server returns. Waits on: conf-2 shared contract fixture. |
+| GATE-3 | partial | - | No test. In code, `writeEnabled` is never `persist()`-backed and `setWriteEnabled` no-ops without `window`; the SSR process-level value is the declared carve-out below. Missing: a test that the decision never reaches storage or outlives the session. |
+| GATE-4 | partial | - | No test. In code, `getTranslations` caches `response.data` only and the authorize body is never cached. Missing: a test that `write_enabled` is absent from every cached artifact, on both endpoints the rule names. |
+| GATE-5 | provisional | mock | `discovery` "a write-enabled session registers the block and does NOT report" (cache written only after confirmed acceptance). Acceptance is the property, and proving it needs a double that can refuse plus a second read. Waits on: conf-2 shared contract fixture. |
+| GATE-6 | provisional | mock | `discovery` "never reports from a write-enabled session", plus the content-block pair. Depends on write_enabled from the server; asserted on reports captured by a mocked sender (see CONF-1). Waits on: conf-2 shared contract fixture. |
+| GATE-7 | provisional | mock | `discovery` "reports a page whose unregistered content is a content block, not a t() miss", both directions. Routing follows the server capability answer; asserted on captured reports (see CONF-1). Waits on: conf-2 shared contract fixture. |
+| GATE-8 | provisional | mock | `grant-lane` GATE-8 block (write/read fallback, `ip_write` refused, re-evaluated per response, report lane off from the same condition, permissive policy cannot re-enable it) + `discovery` constraint-3 block The property is how the SDK reads a payload that omits write_enabled, which is an API answer. Previously graded implemented while recording this same mock tier, which CONF-2 does not allow. Waits on: conf-2 shared contract fixture. |
+| CAT-1 | implemented | n/a (pure) | `translations` lookup suite + `write-lane` TS-3 (prototype-named phrase) Mutation: not yet recorded (CONF-3). |
+| CAT-2 | implemented | n/a (pure) | `translations` "returns the phrase as fallback when no translation exists" Mutation: not yet recorded (CONF-3). |
+| CAT-3 | partial | - | No test. In code, `isContentBlockKnown` treats object presence as known. Missing: a test that a registered but untranslated block (an object whose phrases are null) counts as known and is not re-registered. |
+| REG-1 | provisional | mock | `discovery` content-block pair: a read-only session registers nothing, asserted by a spy seeing no call (see CONF-1). Depends on write_enabled from the server. Waits on: conf-2 shared contract fixture. |
+| REG-2 | implemented | n/a (pure) | `write-lane` "sends late-rendering content sub-second rather than on the 3s poll tick". The property is when and what the SDK sends, observable without the server answer. Mutation: not yet recorded (CONF-3). |
+| REG-3 | implemented | n/a (pure) | `write-lane` "sends what is still queued when the page goes away, with keepalive". Proven on the browser teardown path (visibilitychange, pagehide). A host without `document` installs no teardown flush, so React Native reaches none; a core seam is proposed and routed to the operator. Mutation: not yet recorded (CONF-3). |
+| REG-4 | implemented | n/a (pure) | `write-lane` TS-2/TS-4 asserts keepalive on every teardown request. Mutation: not yet recorded (CONF-3). |
+| REG-5 | implemented | n/a (pure) | `write-lane` "does not re-send what the debounce already sent". The property is when and what the SDK sends, observable without the server answer. Mutation: not yet recorded (CONF-3). |
+| REG-6 | implemented | n/a (pure) | `write-lane` "does not drop a miss recorded while a send is in flight". The property is when and what the SDK sends, observable without the server answer. Mutation: not yet recorded (CONF-3). |
+| REG-7 | implemented | n/a (pure) | `write-lane` "does not drop a miss recorded while a send is in flight", asserting the first phrase is sent exactly once. Mutation: not yet recorded (CONF-3). |
+| REG-8 | provisional | mock | `write-lane` "backs off instead of hammering a failing server, and keeps the batch". Depends on the server refusing. Waits on: conf-2 shared contract fixture. |
+| REG-9 | provisional | mock | `grant-lane` REG-9 block: honours a lower server limit, keeps the default when it is absent, and chunks sends to it. The limit is an API answer. Waits on: conf-2 shared contract fixture. |
+| REG-10 | provisional | mock | `write-lane` backoff test: a failure means queued plus backoff, one behaviour. Depends on the server refusing. Waits on: conf-2 shared contract fixture. |
+| REG-11 | implemented | n/a (pure) | `ellipsis-warning` — a phrase ending in `…` or `...` warns, naming it, and is **registered anyway**. The spec permits suppression only on a second signal (a longer catalog entry sharing the prefix); that half is NOT implemented, so nothing is ever skipped. Deliberate: a blanket skip has real false positives (`Loading…`) and silently refusing to register those would create a new silent failure, which is the class this surface exists to remove. Mid-string ellipses are not matched The warning is local and needs no server. Suppression on a second signal is permitted, not required, and is not implemented, which conforms. Mutation: not yet recorded (CONF-3). |
+| REG-12 | partial | - | No test. The primary mechanism is structural (t() treats a non-string catalog value as known) and a redundant 32-hex guard remains. Missing: a test that a hash-shaped phrase is not treated as a block, and that presence and structure agree on both paths. |
+| HINT-1 | implemented | n/a (pure) | `discovery` — every assertion is on `page_url` only; no payload path exists The property is the shape of the report the SDK builds. Mutation: not yet recorded (CONF-3). |
+| HINT-2 | n/a (profile: server) | - | Profile `server`. This SDK claims all and browser. |
+| HINT-3 | implemented | n/a (pure) | `discovery` "names the MISS-time URL, not wherever the user navigated during the jitter". Mutation: not yet recorded (CONF-3). |
+| HINT-4 | implemented | n/a (pure) | `discovery` "reports a URL at most once per session" and "reports each URL separately". Mutation: not yet recorded (CONF-3). |
+| HINT-5 | partial | - | Jitter exists in code, but no test asserts its 5 to 30 second bounds: the lane tests advance 31s and would pass with no jitter at all. Missing: bound assertions on both sides. |
+| HINT-6 | implemented | n/a (pure) | `discovery` `normalizeHintUrl` suite. `utm_*` prefix-matched per the server. Fragments preserved verbatim — conformant because the server now splits `normalize()` (verbatim, feeds dispatch) from `dedupKey()` (folds `#!/`→`#/`, suppression only), so preserving is correct rather than merely divergent. Credential-shaped params — in the query AND inside the fragment — decline the whole report rather than being stripped from it. Two contracts, deliberately different: NORMALIZATION stays identical across legs (divergence breaks dedup keys and renderer targets); the DECLINE PREDICATE is a union, where each leg may be stricter without coordination, because a passing URL is byte-identical whatever matched. See the credential-param gap under Gaps Mutation: not yet recorded (CONF-3). |
+| HINT-7 | partial | - | The lane has no retry or backoff path in code, but no test fails a report and asserts it is not retried. Missing: that test. |
+| HINT-8 | implemented | n/a (pure) | `discovery` "never reports during SSR". Mutation: not yet recorded (CONF-3). |
+| HINT-9 | provisional | mock | `discovery` auto_discovery block, including its positive control. The policy is what the server returns; asserted on captured reports (see CONF-1). Waits on: conf-2 shared contract fixture. |
 | HINT-10 | implemented | n/a (pure) | `discovery` — exact set narrowed to `{sig, auth, otp, nonce}`; `normalizeParamName` strips `-`/`_` before matching; fragments gain `oauth`/`authcode`/`accesscode`; `code` matches only with an OAuth marker (`state`/`session_state`). Red-first: 14 of these fail against the parent commit |
-| HINT-11 | implemented | n/a (pure) | `discovery` — `normalizeHintUrl` returns `null` for the whole report; both fragment shapes (`#/cb?code=&state=`, bare `#access_token=`); the no-`=` rule; the `?email` declines / `#contact-email` carries asymmetry. Seven shapes in `tests/fixtures/hint-url-fragment-reference.json`, iterated by the suite rather than restated |
-| HINT-12 | implemented | mock | Upgraded from `partial` by moving the observation point. `discovery` "a declined URL crosses no boundary": for a matching URL **zero bytes reach the transport and nothing derived from it enters SDK-side state** — no `postDiscoveryHint` call, no `langsys:hinted:` entry, and no fragment of the path, host or param value anywhere in either. Mutation-checked twice: strip-and-send and no-gate-at-all both turn it red, and the positive control (a carried URL DOES cross both seams) stays green under both. The internal check-ordering remains unobservable and is no longer what the row rests on |
-| ICU-1 | **corroborated (cross-implementation)** | contract (shared fixture) | `interpolation-cross-impl` — all 19 rows of langsys-php's `interpolation-reference.json`, vendored @ `5fa4d48` blob `d369bd185ca2`, plus `interpolate` "missing select arguments fall back to `other`" |
-| ICU-2 | **corroborated (cross-implementation)** | contract (shared fixture) | same fixture; plus `interpolate` "treats null and undefined as absent" |
-| ICU-3 | **corroborated (cross-implementation)** | contract (shared fixture) | same fixture; plus the nested plural/select cases where `#` with no count renders `{argName}` |
-| ICU-4 | implemented | n/a (pure) | `interpolate` "debug notice for defaulted arguments" — names the argument and locale, deduped per template+locale, silent unless `logger.debugEnabled`, fires for plural as well as select. Both directions asserted. NOT corroborated: a debug-only emission has no counterpart in the shared fixture, which asserts rendered output |
-| ICU-5 | **corroborated (cross-implementation)** | contract (shared fixture) | `interpolation-cross-impl` (19 rows) plus `interpolate` "a recovered argument survives the format call" — five vectors, mutation-checked against restoring the argument node, which reproduces the PHP lane's live symptom. Conforming by remove-binding-sites, which the amended clause names explicitly |
-| CID-1 | **corroborated (cross-implementation)** | contract (shared fixture) | `custom-id-cross-impl` — all 13 rows of langsys-php's `custom-id-reference.json`, vendored @ `8862841`. Per row: the vendored codepoints are checked FIRST (so a normalising editor can't mangle the file into agreement), then canonical string, then UTF-8 bytes vs `serialized_hex`, then `generateCustomId` vs `custom_id`. Two independently written serializers in different languages agreeing byte-for-byte, so implementation error is excluded and only spec-level error remains. Mutation-checked: escaping non-ASCII (the 2-flag equivalent) fails 10/13, swapping the envelope order fails 13/13 |
-| CID-2 | implemented | n/a (pure) | `custom-id` — `generateCustomId` coalesces `category \|\| ''` on this branch. **This is NOT a cross-SDK divergence and produces no id change**: on `origin/main` and published 0.6.5 the function itself does not coalesce, but every internal caller already passes `''` (`iContentBlock.category` is non-optional; `translate.ts` destructures `const { category = '' }` at `:107`, `:135`, `:271`), so every SDK-generated id already matches PHP. The guard closes a third-party-caller hole in the *export*, not a behaviour gap. See the note below |
-| CID-3 | implemented | mock | `translate` migration-fallback path — three historical id shapes tried on LOOKUP only, registration always uses the corrected id, so the legacy-keyed population can only shrink. Documented under "Historical ids" above |
-| CID-4 | **corroborated (cross-implementation)** | contract (shared fixture) | `tokenizer-cross-impl` — all 17 rows of `tokenizer-reference.json`, vendored @ `5fa4d48` blob `a8632b462c52`, asserting the token ARRAY (arity and order are the identity) and the id that follows from it; plus `content-block-identity`, mutation-checked — adding `clone.normalize()` to `tokenizeElement` turns three of its tests red |
+| HINT-11 | implemented | n/a (pure) | `discovery` — `normalizeHintUrl` returns `null` for the whole report; both fragment shapes (`#/cb?code=&state=`, bare `#access_token=`); the no-`=` rule; the `?email` declines / `#contact-email` carries asymmetry. Seven shapes in `tests/fixtures/hint-url-fragment-reference.json`, iterated by the suite rather than restated Mutation: not yet recorded (CONF-3). |
+| HINT-12 | implemented | n/a (pure) | Upgraded from `partial` by moving the observation point. `discovery` "a declined URL crosses no boundary": for a matching URL **zero bytes reach the transport and nothing derived from it enters SDK-side state** — no `postDiscoveryHint` call, no `langsys:hinted:` entry, and no fragment of the path, host or param value anywhere in either. Mutation-checked twice: strip-and-send and no-gate-at-all both turn it red, and the positive control (a carried URL DOES cross both seams) stays green under both. The internal check-ordering remains unobservable and is no longer what the row rests on Cross-leg reference vectors in `tests/fixtures/hint-url-fragment-reference.json`. |
+| ICU-1 | implemented | n/a (pure) | Cross-implementation fixture: `interpolation-cross-impl`, all 19 rows of langsys-php `interpolation-reference.json`. `interpolation-cross-impl` — all 19 rows of langsys-php's `interpolation-reference.json`, vendored @ `5fa4d48` blob `d369bd185ca2`, plus `interpolate` "missing select arguments fall back to `other`" Mutation: not yet recorded (CONF-3). |
+| ICU-2 | implemented | n/a (pure) | Cross-implementation fixture: `interpolation-cross-impl`, all 19 rows of langsys-php `interpolation-reference.json`. same fixture; plus `interpolate` "treats null and undefined as absent" Mutation: not yet recorded (CONF-3). |
+| ICU-3 | implemented | n/a (pure) | Cross-implementation fixture: `interpolation-cross-impl`, all 19 rows of langsys-php `interpolation-reference.json`. same fixture; plus the nested plural/select cases where `#` with no count renders `{argName}` Mutation: not yet recorded (CONF-3). |
+| ICU-4 | implemented | n/a (pure) | `interpolate` "debug notice for defaulted arguments" — names the argument and locale, deduped per template+locale, silent unless `logger.debugEnabled`, fires for plural as well as select. Both directions asserted. NOT corroborated: a debug-only emission has no counterpart in the shared fixture, which asserts rendered output Mutation: not yet recorded (CONF-3). |
+| ICU-5 | implemented | n/a (pure) | Cross-implementation fixture. `interpolation-cross-impl` (19 rows) plus `interpolate` "a recovered argument survives the format call" — five vectors, mutation-checked against restoring the argument node, which reproduces the PHP lane's live symptom. Conforming by remove-binding-sites, which the amended clause names explicitly |
+| CID-1 | implemented | n/a (pure) | Cross-implementation fixture. `custom-id-cross-impl` — all 13 rows of langsys-php's `custom-id-reference.json`, vendored @ `8862841`. Per row: the vendored codepoints are checked FIRST (so a normalising editor can't mangle the file into agreement), then canonical string, then UTF-8 bytes vs `serialized_hex`, then `generateCustomId` vs `custom_id`. Two independently written serializers in different languages agreeing byte-for-byte, so implementation error is excluded and only spec-level error remains. Mutation-checked: escaping non-ASCII (the 2-flag equivalent) fails 10/13, swapping the envelope order fails 13/13 Token derivation feeding the hash is covered by `tokenizer-cross-impl` (all 17 rows of `tokenizer-reference.json`) and `content-block-identity`, where adding `clone.normalize()` to `tokenizeElement` reds three; that evidence was previously filed under CID-4. |
+| CID-2 | implemented | n/a (pure) | `custom-id` — `generateCustomId` coalesces `category \|\| ''` on this branch. **This is NOT a cross-SDK divergence and produces no id change**: on `origin/main` and published 0.6.5 the function itself does not coalesce, but every internal caller already passes `''` (`iContentBlock.category` is non-optional; `translate.ts` destructures `const { category = '' }` at `:107`, `:135`, `:271`), so every SDK-generated id already matches PHP. The guard closes a third-party-caller hole in the *export*, not a behaviour gap. See the note below Mutation: not yet recorded (CONF-3). |
+| CID-3 | partial | - | On lookup only, `Translate` tries two historical shapes (the corrected hash over pre-fix tokens, and the code-unit hash) and registers only the CID-1 form. Missing: the rule names the 20-row shared fixture at blob dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce as the authoritative list, including the two PHP pipe-join shapes and the null and uncategorised slot shapes. This SDK tries none of those, the fixture is not vendored, and no test seeds a historical id and resolves its block. |
+| CID-4 | not implemented | - | After a historical-id lookup resolves, `Translate` attaches on id presence alone and does not compare the found block (category, phrases) with the current one, so a UTF-16 packing collision would attach the wrong block text. This row previously carried tokenizer-identity evidence, which proves a different rule and now sits under CID-1. |
+| TOK-1 | implemented | n/a (pure) | **Now five: `['script','style','template','noscript','math']`.** `<math>` was the 8.0.1 addition and this SDK shipped v8 without it — measured, `<p>Area <math><mi>x</mi><mo>+</mo><mn>2</mn></math> units</p>` gave `['Area','x','+','2','units']`, registering a bare variable and an OPERATOR as translatable phrases and sending them for machine translation. Not merely wasteful like harvesting CSS: translating an operator corrupts the expression rather than mislocalising a sentence. Fixed with the operator's go, the `custom_id` shift for blocks containing `<math>` accepted on a measured-negligible production blast radius. `tokenizer-convergence` carries TOK-1's own specified shape, now FOUR excluded elements plus the surviving ordinary copy in ONE document with exactly one phrase produced — the form that cannot be satisfied by an implementation which tokenizes nothing, which is why the surviving control is load-bearing. **`<svg>` is conformant on all three of 8.0.1's behavioural clauses, each measured:** its `<text>` IS harvested; an inline svg never costs its parent block the parent's own direct text (`<p>Click <svg><text>go</text><path/></svg> to continue</p>` → `['Click','go','to continue']`, order included); and translation replaces the text NODE in place so `<path d>` geometry survives a render (`translate`). That last clause needs a render, not a token comparison — a writer setting `textContent` on the nearest element produces correct tokens and a destroyed drawing, the same defect class as the single-token `innerText` path. Mutants, both directions: removing `math` reds **5**, adding `svg` reds **5** — the second being a pin on an ABSENCE, since the structural reading of this rule is what regressed PHP. `<template>` stays named though it is a no-op for this parser: libxml2 puts its children in the ordinary tree and Ruby measured text leaking through exactly that path, so 8.0.1 states the split rather than calling the exclusion free. Fixture rows `math-subtree`, `svg-inline-icon`, both agreeing with langsys-php-sdk, measured at its tip `e28972c` Paths: the content-block walk (`tokenizeElement`) and the Translate apply walk, which looks up by token and skips excluded and phrase-marked subtrees (eight walk-agreement vectors measured). There is no page path. The Phrase encoder applies no exclusion, and whether TOK-1 binds that path is unruled. |
+| TOK-2 | held (strip ruling) | n/a (pure) | Held: the C0 control-character clause, pending the operator ruling. Asserted meanwhile on the collapse function in `tokenizer-convergence`: 23 members and 4 non-members built from code points, the three vectors and control, and the Phrase path; narrowing the class to ASCII reds 22 and widening it to take U+0085 and U+180E reds 2. `tokenizer-convergence` + `canonicalization-agreement` — satisfied with no code: JavaScript's `\s` IS the set 8.0.1 enumerates, this SDK being named the identity authority for it. Verified per codepoint rather than assumed: U+00A0, U+2028, U+000B, U+000C and **U+FEFF** match `\s` and collapse; **U+0085, U+180E**, U+200B and U+2060 do not match and survive — all nine agreeing with the enumeration. Narrowing the class to `[ \t\n\r]` reds 7; widening it to swallow U+0085/U+180E reds 2. Fixture rows `feff-in-text`, `nel-in-text`, `mvs-in-text` |
+| TOK-3 | implemented | n/a (pure) | `tokenizer-convergence` + `pure-subpath` — the 27 verified against `langsys-php/src/Html/HtmlParser.php` directly, appended never inserted, with a case asserting list order beats document order. Langsys's point is the sharp one: the same set in a different order agrees on every single-attribute element and diverges only where nobody looks Mutation: not yet recorded (CONF-3). |
+| TOK-4 | implemented | n/a (pure) | `tokenizer-convergence` — one normaliser shared by both paths, so "same content, same id" holds by construction. Before: `<img alt="A long\n  description">` kept its newlines while the same sentence in a `<p>` collapsed Registration and lookup now derive the key through one function (`translate` "register and lookup agree on every path"). Mutation: in `src/translate.ts`, set `translateAttribute`'s `originalValue` back to `.trim()`; 3 tests go red. |
+| TOK-5 | implemented | n/a (pure) | `tokenizer-convergence` + `interpolate` + `canonicalization-agreement` — `%name%` resolves at RENDER, conditional on the key being supplied, so prose containing percent signs is untouched; and 8.0.1's capture clause holds, `<p>Hello %name%</p>` reaching the same id as `<p>Hello {name}</p>` (`1e4b462c…`). Removing the capture-time rewrite reds 3. Fixture rows `percent-name-in-markup` and its counterpart `brace-name-in-markup`, which is what makes the equality cross-lane DATA rather than one SDK asserting it — both reach `1e4b462c…` and langsys-php agrees on both spellings. `findUnusedParamKeys` was corrected to accept both spellings for the same reason: the predicate and the renderer must agree on what a placeholder is |
+| MARK-1 | implemented | n/a (pure) | `translate` — the stamp is compared against an id **re-derived by running the tokenizer over the same subtree**, not read back from the attribute just written, which is what MARK-1's test asks for and would otherwise prove only that a write happened. Mutations: dropping the stamp and stamping a constant each red four |
+| MARK-2 | implemented | n/a (pure) | `content-block-identity` — behavioural and cross-module: the attribute `Phrase` exports is the one the tokenizer skips on, and PHP's spelling is accepted alongside it Scope, measured: both spellings of a phrase host are honoured on the block walk and on the Translate apply walk, which leaves a `data-ls-phrase` span untouched. The core does not read content-block host identity while tokenizing, so a nested `data-ls-contentblock` host is folded into the outer block (outer ["A","B"] `13ac7a86…`, inner ["B"] `fb9ed17f…`, child-first and parent-first alike). That sits inside this rule Why and outside its test as written; whether MARK-2 reaches content-block hosts is routed to the operator, and excising them would move ids for every nested block. Mutation: not yet recorded (CONF-3). |
+| SSR-1 | implemented | n/a (pure) | `ssr-strategy-isolation`: client collects nothing, server collects, auto collects to its threshold of 5, each case in its own Node process against the built dist. A control shows one shared process contaminates (after the grant case, the same server case collects nothing), and resetting the singleton in that shared case reds the control. Mutation: not yet recorded (CONF-3). |
+| SSR-2 | partial | - | Degrading to client when a grant is configured is asserted (`ssr-strategy-isolation` grant case collects nothing). Missing: loudly. The only signal is a debug-gated `debug.log`, silent in production, and no test asserts a warning. |
+| SSR-3 | partial | - | No test. Missing: the precondition stated in its own callout and asserted by an artifact check with a positive control. |
+| SRV-1 | n/a (profile: server, binding) | - | Profiles `server; and a binding for any render it performs inside a server request scope`. This SDK is neither. |
+| SRV-2 | n/a (profile: server, binding) | - | Profiles `server; and a binding for any render it performs inside a server request scope`. This SDK is neither. |
+| SRV-3 | n/a (profile: server, binding) | - | Profiles `server; and a binding for any render it performs inside a server request scope`. This SDK is neither. |
+| SRV-4 | implemented | n/a (pure) | `seed-catalog` — `t()` resolves on the line after `seedCatalog()`; returns `undefined`, not a promise; an actual deferral (`await Promise.resolve()`) reds 4 of 9; a bare `async` keyword reds only 1 — the return-type assertion — which is why that assertion exists. The body states the split this lane reported: *"Exposing the synchronous seed is the core's half and is provable there."* At `1493dea0` the Profiles line reads `server; **browser core** for the synchronous seed it exposes; and a binding for any render…` — corrected after this lane reported that the body assigned the core a half its profile line denied it. The binding half (calling the seed before hydration, and the hydration-mismatch control) remains not ours |
+| SRV-5 | n/a (profile: server, binding) | - | Profiles `server; and a binding for any render it performs inside a server request scope`. This SDK is neither. |
+| BIND-1 | n/a (profile: binding) | - | Profile `binding`; this SDK is the core. Its side of the contract, no ECMAScript #private fields so bindings may forward methods unbound, is pinned by `no-private-fields`. |
+| BIND-2 | n/a (profile: binding) | - | Profile `binding`; this SDK is the core. Its side of the contract, no ECMAScript #private fields so bindings may forward methods unbound, is pinned by `no-private-fields`. |
+| BIND-3 | n/a (profile: binding) | - | Profile `binding`; this SDK is the core. Its side of the contract, no ECMAScript #private fields so bindings may forward methods unbound, is pinned by `no-private-fields`. |
+| BIND-4 | n/a (profile: binding) | - | Profile `binding`; this SDK is the core. Its side of the contract, no ECMAScript #private fields so bindings may forward methods unbound, is pinned by `no-private-fields`. |
+| BIND-5 | n/a (profile: binding) | - | Profile `binding`; this SDK is the core. Its side of the contract, no ECMAScript #private fields so bindings may forward methods unbound, is pinned by `no-private-fields`. |
+| BIND-6 | n/a (profile: binding) | - | Profile `binding`; this SDK is the core. Its side of the contract, no ECMAScript #private fields so bindings may forward methods unbound, is pinned by `no-private-fields`. |
+| GRANT-1 | partial | - | Provider callbacks are accepted and resolved per request (`grant-lane`). Missing: "documented as the default form" is not asserted by any test. |
+| GRANT-2 | implemented | n/a (pure) | `grant-lane` asserts the provider is re-resolved per request, not cached. Mutation: not yet recorded (CONF-3). |
+| GRANT-3 | implemented | n/a (pure) | `grant-lane` "setWriteGrant re-authorizes". Mutation: in `src/langsys-app.ts`, make `setWriteGrant` return immediately after setting its config, before `LangsysAppAPI.validate`; 4 tests go red, including "issues a fresh authorization carrying the grant". |
+| GRANT-4 | implemented | n/a (pure) | `grant-lane` X-Write-Grant header assertions. Mutation: not yet recorded (CONF-3). |
+| CACHE-1 | implemented | n/a (pure) | `cache-scope` — the catalog is keyed `langsys:translations:<projectid>:<locale>` and hydrated only once `init()` knows both, so a mismatch is a cache MISS rather than foreign content. Was keyed by neither: a page load restored whatever was stored and `t()` served it before anything could check whose it was. Mutation-checked twice — never-clear-on-scope-change turns the cross-project and cross-locale tests red; module-load hydration turns the superseded-key test red. Superseded keys are removed on first scoping A scoping property, which a stateful fixture could neither prove nor disprove. |
+| OBS-1 | provisional | mock | `obs-notice` — a `write`/`ip_write` key resolving `write_enabled: false` warns once, ABOVE debug level, naming the key type and the remedy. Latched on the outcome, so a re-authorization that changes the answer speaks again and one that changes nothing stays quiet. Deliberately silent for a `read` key resolving read-only, which is correct behaviour and would otherwise make this the notice everyone silences. Mutation-checked: dropping the expected-to-write guard turns the read-key test red, dropping the latch turns the repeat test red An unusable capability is what the server returns. Waits on: conf-2 shared contract fixture. |
+| WIRE-1 | implemented | n/a (pure) | `api-reachability` WIRE-1 block: X-Authorization on every request, plus the ICU capability header. Mutation: not yet recorded (CONF-3). |
+| WIRE-2 | provisional | mock | `api` suite; 204 handled by status rather than content type. Which endpoints answer empty is the API answer. Waits on: conf-2 shared contract fixture. |
+| WIRE-3 | implemented | n/a (pure) | `locale` WIRE-3 block + `api` wire assertion. Lowercase `xx-yy` internally and on the wire. **Deliberately supersedes main's BCP 47 casing** (operator ruling); CLAUDE.md invariant 1a and the CHANGELOG carry the reason and the migration note Mutation: not yet recorded (CONF-3). |
+| WIRE-4 | partial | - | No test. t() guards `window.location?.href`. Missing: a test that t() and the inline catalog fetch do not throw when the API is unreachable, and that a failed catalog fetch queues no registrations. |
+| WIRE-5 | implemented | n/a (pure) | `api-reachability` — redirect **observed** at the double, plus the ordering failure proven A configuration property, observable at the double. Mutation: not yet recorded (CONF-3). |
+| CONF-1 | not implemented | - | API-dependent rows whose only evidence is a spy or an outgoing payload: REG-1 (a spy seeing no call), GATE-6, GATE-7 and HINT-9 (reports captured by a mocked sender). Missing: assertions on server acceptance, which needs a double that can refuse and hold state. |
+| CONF-2 | implemented | n/a (pure) | Every row records a tier. `_dev_/tally-conformance.mjs` checks the canonical format and status against tier, and `conformance-structure` runs it against planted defects that must each fail. A meta-rule discharged by this document and its checker. |
+| CONF-3 | partial | - | SSR strategy cases now run one process each (`ssr-strategy-isolation`, with a control that reds). A specific re-applicable mutation is recorded for: HINT-10, HINT-12, ICU-5, CID-1, TOK-1, TOK-4, TOK-5, MARK-1, SRV-4, GRANT-3, CACHE-1, OBS-1. Missing a recorded mutation: GATE-1, GATE-2, GATE-5, GATE-6, GATE-7, GATE-8, CAT-1, CAT-2, REG-1, REG-2, REG-3, REG-4, REG-5, REG-6, REG-7, REG-8, REG-9, REG-10, REG-11, HINT-1, HINT-3, HINT-4, HINT-6, HINT-8, HINT-9, HINT-11, ICU-1, ICU-2, ICU-3, ICU-4, CID-2, TOK-3, MARK-2, SSR-1, GRANT-2, GRANT-4, WIRE-1, WIRE-2, WIRE-3, WIRE-5. |
 
 ---
 
@@ -292,19 +314,17 @@ All four previously-unconfirmed mappings were correct, and are now confirmed **a
 bodies** rather than against the author's summary of them. TOK-1..5 and MARK-1/2 are profiled
 `all`, so they bind this SDK.
 
-| Rule | Status | Evidence |
-|---|---|---|
-| SRV-4 (synchronous seed) | **core half implemented; the Profiles line now includes this SDK** | `seed-catalog` — `t()` resolves on the line after `seedCatalog()`; returns `undefined`, not a promise; an actual deferral (`await Promise.resolve()`) reds 4 of 9; a bare `async` keyword reds only 1 — the return-type assertion — which is why that assertion exists. The body states the split this lane reported: *"Exposing the synchronous seed is the core's half and is provable there."* At `1493dea0` the Profiles line reads `server; **browser core** for the synchronous seed it exposes; and a binding for any render…` — corrected after this lane reported that the body assigned the core a half its profile line denied it. The binding half (calling the seed before hydration, and the hydration-mismatch control) remains not ours |
-| SRV-1..3, SRV-5 | profile-n/a | All five SRV rules are profiled `server; and a binding…`. Serving translated HTML is the server's half of the hand-off; none of them bind a browser core by their Profiles lines |
-| MARK-1 (content-block stamp) | implemented | `translate` — the stamp is compared against an id **re-derived by running the tokenizer over the same subtree**, not read back from the attribute just written, which is what MARK-1's test asks for and would otherwise prove only that a write happened. Mutations: dropping the stamp and stamping a constant each red four |
-| MARK-2 (phrase stamp, both spellings read) | implemented | `content-block-identity` — behavioural and cross-module: the attribute `Phrase` exports is the one the tokenizer skips on, and PHP's spelling is accepted alongside it |
-| TOK-3 (27 attributes, order normative) | implemented | `tokenizer-convergence` + `pure-subpath` — the 27 verified against `langsys-php/src/Html/HtmlParser.php` directly, appended never inserted, with a case asserting list order beats document order. Langsys's point is the sharp one: the same set in a different order agrees on every single-attribute element and diverges only where nobody looks |
-| TOK-1 (the exclusion set, and `<svg>`) | implemented | **Now five: `['script','style','template','noscript','math']`.** `<math>` was the 8.0.1 addition and this SDK shipped v8 without it — measured, `<p>Area <math><mi>x</mi><mo>+</mo><mn>2</mn></math> units</p>` gave `['Area','x','+','2','units']`, registering a bare variable and an OPERATOR as translatable phrases and sending them for machine translation. Not merely wasteful like harvesting CSS: translating an operator corrupts the expression rather than mislocalising a sentence. Fixed with the operator's go, the `custom_id` shift for blocks containing `<math>` accepted on a measured-negligible production blast radius. `tokenizer-convergence` carries TOK-1's own specified shape, now FOUR excluded elements plus the surviving ordinary copy in ONE document with exactly one phrase produced — the form that cannot be satisfied by an implementation which tokenizes nothing, which is why the surviving control is load-bearing. **`<svg>` is conformant on all three of 8.0.1's behavioural clauses, each measured:** its `<text>` IS harvested; an inline svg never costs its parent block the parent's own direct text (`<p>Click <svg><text>go</text><path/></svg> to continue</p>` → `['Click','go','to continue']`, order included); and translation replaces the text NODE in place so `<path d>` geometry survives a render (`translate`). That last clause needs a render, not a token comparison — a writer setting `textContent` on the nearest element produces correct tokens and a destroyed drawing, the same defect class as the single-token `innerText` path. Mutants, both directions: removing `math` reds **5**, adding `svg` reds **5** — the second being a pin on an ABSENCE, since the structural reading of this rule is what regressed PHP. `<template>` stays named though it is a no-op for this parser: libxml2 puts its children in the ordinary tree and Ruby measured text leaking through exactly that path, so 8.0.1 states the split rather than calling the exclusion free. Fixture rows `math-subtree`, `svg-inline-icon`, both agreeing with langsys-php-sdk, measured at its tip `e28972c` |
-| TOK-2 (the collapse set) | implemented | `tokenizer-convergence` + `canonicalization-agreement` — satisfied with no code: JavaScript's `\s` IS the set 8.0.1 enumerates, this SDK being named the identity authority for it. Verified per codepoint rather than assumed: U+00A0, U+2028, U+000B, U+000C and **U+FEFF** match `\s` and collapse; **U+0085, U+180E**, U+200B and U+2060 do not match and survive — all nine agreeing with the enumeration. Narrowing the class to `[ \t\n\r]` reds 7; widening it to swallow U+0085/U+180E reds 2. Fixture rows `feff-in-text`, `nel-in-text`, `mvs-in-text` |
-| TOK-4 (attribute values collapse as text does) | implemented | `tokenizer-convergence` — one normaliser shared by both paths, so "same content, same id" holds by construction. Before: `<img alt="A long\n  description">` kept its newlines while the same sentence in a `<p>` collapsed |
-| TOK-5 (`{name}` with `%name%` accepted) | implemented | `tokenizer-convergence` + `interpolate` + `canonicalization-agreement` — `%name%` resolves at RENDER, conditional on the key being supplied, so prose containing percent signs is untouched; and 8.0.1's capture clause holds, `<p>Hello %name%</p>` reaching the same id as `<p>Hello {name}</p>` (`1e4b462c…`). Removing the capture-time rewrite reds 3. Fixture rows `percent-name-in-markup` and its counterpart `brace-name-in-markup`, which is what makes the equality cross-lane DATA rather than one SDK asserting it — both reach `1e4b462c…` and langsys-php agrees on both spellings. `findUnusedParamKeys` was corrected to accept both spellings for the same reason: the predicate and the renderer must agree on what a placeholder is |
-| Side-effect-free identity subpath | implemented | `pure-subpath` — bare Node under a trapping `globalThis`, import and every call clean for ESM and CJS, main entry as the positive control, export list pinned, and `/pure` proven to share function identity with the DOM path rather than re-implementing it. Now also carries `encodeRichPhrase` (the whole `<Phrase>` encoding, generic over the host's node type) and `findUnusedParamKeys`. No rule id was reported for this; it may be unruled |
-| `<Phrase>` key reproducible without a DOM | implemented | `rich-phrase-identity` — the encoder moved to `identity.ts` and `encodeRichText` is now a node-shape mapping over it, so there is one implementation of a string that IS the catalog key. Expectations are the PRE-REFACTOR values, measured on the old single-function encoder over 22 inputs and pasted as literals, so they can catch the refactor having moved a key. Mutants: post-order slot numbering reds 8, collapsing per text node instead of once over the assembled string reds 19 (a per-node collapse WITHOUT the trim is an equivalent mutant, 0 red, and is recorded as one — the final collapse runs over the whole assembly, so an earlier one cannot change its output). Expectations are measured under happy-dom and the server lane's under parse5, neither being Chromium; audited as immaterial for these 22 inputs, which contain no raw-text element, no foster-parenting context and no implied-close construct — the three families where parse models disagree. The JS-family half of that gap is now CLOSED by the JS Server lane (`8105faab`): Chromium 153 against parse5 over raw-text, foster-parenting and implied-close families, 9 agree / 0 diverge, with a control proving Chromium demonstrably transformed the input so the agreement is structural. libxml2 is now measured too, by the PHP lane (`db4941a`): **3 of 7** against the JS family's values — implied close agrees 3/3, raw text diverges 0/2 and foster parenting diverges 0/2, because the tokenizer faithfully encodes a different tree and no TOK rule reaches that. The two identity paths have DIFFERENT exposure, measured here: foster parenting splits the `<Phrase>` key while leaving the content-block `custom_id` intact (tokens `['stray','cell']`, arity 2, under both trees — hoisting `<b>` out of the table does not change document order), whereas a raw-text body containing markup splits BOTH, and the content-block half is an ARITY split (libxml2 `['a','b','Keep']` against the JS family's `['a <b>b</b>','Keep']`) which per CID-1 re-keys every block containing one. So "a `<Phrase>` spanning a table is not portable" is right and is not the whole exposure. No rule id covers the `<Phrase>` encoding; `custom_id` rules do not apply to it, since it keys by string and never computes one |
+The TOK, MARK and SRV rows now sit in the Status table above, one row per rule id.
+
+### Beyond the spec
+
+Two properties this SDK commits to that no rule id names. They are graded on the same terms, but
+they are not rule rows, so they sit outside the Status table and the tally does not count them.
+
+| Property | Status | Tier | Evidence |
+|---|---|---|---|
+| Side-effect-free identity subpath | implemented | n/a (pure) | `pure-subpath` — bare Node under a trapping `globalThis`, import and every call clean for ESM and CJS, main entry as the positive control, export list pinned, and `/pure` proven to share function identity with the DOM path rather than re-implementing it. Now also carries `encodeRichPhrase` (the whole `<Phrase>` encoding, generic over the host's node type) and `findUnusedParamKeys`. No rule id was reported for this; it may be unruled |
+| `<Phrase>` key reproducible without a DOM | implemented | n/a (pure) | `rich-phrase-identity` — the encoder moved to `identity.ts` and `encodeRichText` is now a node-shape mapping over it, so there is one implementation of a string that IS the catalog key. Expectations are the PRE-REFACTOR values, measured on the old single-function encoder over 22 inputs and pasted as literals, so they can catch the refactor having moved a key. Mutants: post-order slot numbering reds 8, collapsing per text node instead of once over the assembled string reds 19 (a per-node collapse WITHOUT the trim is an equivalent mutant, 0 red, and is recorded as one — the final collapse runs over the whole assembly, so an earlier one cannot change its output). Expectations are measured under happy-dom and the server lane's under parse5, neither being Chromium; audited as immaterial for these 22 inputs, which contain no raw-text element, no foster-parenting context and no implied-close construct — the three families where parse models disagree. The JS-family half of that gap is now CLOSED by the JS Server lane (`8105faab`): Chromium 153 against parse5 over raw-text, foster-parenting and implied-close families, 9 agree / 0 diverge, with a control proving Chromium demonstrably transformed the input so the agreement is structural. libxml2 is now measured too, by the PHP lane (`db4941a`): **3 of 7** against the JS family's values — implied close agrees 3/3, raw text diverges 0/2 and foster parenting diverges 0/2, because the tokenizer faithfully encodes a different tree and no TOK rule reaches that. The two identity paths have DIFFERENT exposure, measured here: foster parenting splits the `<Phrase>` key while leaving the content-block `custom_id` intact (tokens `['stray','cell']`, arity 2, under both trees — hoisting `<b>` out of the table does not change document order), whereas a raw-text body containing markup splits BOTH, and the content-block half is an ARITY split (libxml2 `['a','b','Keep']` against the JS family's `['a <b>b</b>','Keep']`) which per CID-1 re-keys every block containing one. So "a `<Phrase>` spanning a table is not portable" is right and is not the whole exposure. No rule id covers the `<Phrase>` encoding; `custom_id` rules do not apply to it, since it keys by string and never computes one |
 
 **And this repo's test environment cannot see the raw-text split, which is a limit on our own
 measurements rather than on the rule.** happy-dom, reached through `innerHTML`, builds a
@@ -325,13 +345,7 @@ Two consequences, both recorded rather than worked around:
   diverge below the tokenizer, so no implementation can make them agree — and worse, here they
   would *falsely agree*, because our harness builds the libxml2 tree. A row that passes for the
   wrong reason is worse than no row.
-- **An assertion about JS-family raw-text tokens cannot be made from this repo.** When this lane
-  reported the arity split to the PHP lane it named `['a <b>b</b>','Keep']` as the JS-family value,
-  which is the spec's raw-text model and the fleet's measurement but was *derived* here, not
-  measured — and this environment would have produced the opposite. The provenance caveat was
-  attached to the foster-parenting derivation and not to this one, which is the inconsistency worth
-  recording: the caveat belongs on every claim the harness cannot check, not on the one that
-  happened to be noticed.
+- **JS-family raw-text tokens were derived here, and have since been measured.** When this lane reported the arity split to the PHP lane it named `['a <b>b</b>','Keep']` as the JS-family value for the title input. That value was *derived* here, not measured, and this environment would have produced the opposite; the provenance caveat sat on the foster-parenting derivation and not on this one, which was the inconsistency worth recording. The Reviewer has since measured the parse-model rows on **parse5 7.3.0** through `langsys-js-server`'s own `tokenizeHtml()` (`parseFragment` with scripting enabled, the path `blockId()` uses), with controls: `tokenizer-reference.json` cases 2, 4, 9, 12 and 14 match, and `skipCodeElements: false` gives case 12 `["Keep","var a=1;",".a{}"]`. Every array they report equals the derivation: raw-text-textarea `["Keep","a <b>b</b>"]` `526f61b1…`, raw-text-title `["a <b>b</b>","Keep"]` `196856a6…`, foster-stray-element `["stray","cell"]` `c9a556e3…`, foster-loose-text `["loose text","x"]` `0a1f1ae9…`, implied-close `["one","two"]` `499d5997…`, all under category `'UI'`, with the JS and PHP hashers agreeing on every id. Chromium still covers only the phrase keys, and this harness still cannot see the raw-text split, so the vector file is unchanged.
 
 **A related precision on that comparison.** The foster-parenting block id this lane derived,
 `c9a556e320152d0bd3fc239bbb2b6d40`, matches langsys-php's measurement — but both sides used
@@ -340,6 +354,24 @@ category `'UI'`, which neither fixture states. Under no category the same tokens
 **token arrays** agree across two languages and two parsers, which is the finding; the **id**
 agreement additionally required a shared assumption that was never written down. Measured here at
 the Reviewer's prompting.
+
+**Three more facts about this harness, measured here on happy-dom 20.10.2**, because the test
+DOM's parser is part of every measurement made through it. The parse5 side of each is the
+Reviewer's measurement.
+
+- **Carriage returns are not normalised.** A lone CR stays U+000D and a CRLF stays U+000D U+000A,
+  where parse5 and libxml2 2.14+ normalise both to LF. Id-neutral: both characters are in the
+  collapse set, so the token comes out the same either way.
+- **NUL is kept.** U+0000 in text survives into the token in this harness, where a browser and
+  parse5 drop it. That is **not** id-neutral: a vector carrying NUL would derive a different id
+  here than in a browser, so none is written.
+- **C0 controls are kept, as parse5 keeps them.** U+0001 and U+001C survive in text and in
+  attribute values, whether written raw or as `&#x1C;`. U+000B still collapses to a space,
+  unchanged, since control-character handling is held pending the strip ruling.
+
+Spec 5c5c0723 says parse5 and happy-dom keep these characters "the same way" as libxml2 2.14. That
+holds for keeping C0 controls and not for CR normalisation. It changes no id, and was reported to
+the Reviewer as a wording note.
 
 SSR-1..3 keep their ids and bodies; Langsys reports only their families-table row moved from
 `server (JS)` to `browser`, which does not change what this SDK owes.
@@ -434,11 +466,10 @@ it ruled for this SDK's behaviour:
   SDK being named the identity authority. U+FEFF is a member (collapses); U+0085 and U+180E are
   named as non-members that must survive. Previously: this SDK dropped U+FEFF and PHP kept it;
   PHP collapsed U+0085 and U+180E and this SDK kept them. **This SDK was conformant on all three
-  before the rule existed** — `\s` already matched that set — and the rule now warns that a
-  hand-written character class would silently drop U+FEFF.
+  before the rule existed** — `\s` already matched that set — and the rule now names POSIX and PCRE classes, Ruby's `[[:space:]]` and PCRE with the unicode flag, as rejecting U+FEFF, which is how a hand-written class under-collapses it.
 - **`%name%` inside markup** normalises to `{name}` BEFORE the id is derived. Previously: this SDK
   normalised at capture (`Hello {name}`, `1e4b462c…`) and PHP tokenized the raw markup
-  (`Hello %name%`, `bb74011a…`). The spec **at blob `8e2527b9`** quotes both ids and rules for the normalising path. Scoped to the blob deliberately: the pending follow-up removes those two ids from the prose on the ground that they belong in the fixture row rather than recalled in the spec, so an unscoped “the spec quotes” would become false on publication while looking like it still held.
+  (`Hello %name%`, `bb74011a…`). The spec at blob `8e2527b9` quoted both ids and ruled for the normalising path. From `5c5c0723` it rules the same way but names neither id, saying they belong in the fixture row the JS core derives, which is where they now live (`percent-name-in-markup`, `brace-name-in-markup`).
 
 **Four rows were then specified by Langsys and derived here as the fixture's owner** — the CID-3
 precedent for who specifies versus who derives. Inputs and expected behaviour from the spec, ids
@@ -453,12 +484,7 @@ that a divergence carries a *note*, not that it is still true. Re-measuring is t
 catches it, which is why the lane measurements are now re-derived on every write alongside the
 spec revision.
 
-**The all-agree result was positive-controlled before being believed**, because 23-of-23 is exactly
-what a broken comparison produces. Three controls, recorded in the vector file under
-`harness_control`: `<p>a\u000Bb</p>` and `<p>a\u000Cb</p>` both DIVERGE — libxml2 drops VT and FF
-from DOM text where a JS DOM keeps them and collapses them to a space, independently reproducing
-the parser-level split 8.0.1 names — and feeding the two sides different input DIVERGES, proving the
-comparison is not structurally returning agreement. Those two characters are **not** fixture rows:
+**The all-agree result was positive-controlled before being believed**, because 23-of-23 is exactly what a broken comparison produces. Three controls, recorded in the vector file under `harness_control`: `<p>a\u000Bb</p>` and `<p>a\u000Cb</p>` both DIVERGE — langsys-php-sdk's libxml2 2.9.13, a pre-2.14 libxml2, drops VT and FF from DOM text where a JS DOM keeps them and collapses them to a space, reproducing what spec 5c5c0723 records as a libxml2 version boundary. libxml2 2.14 and newer keep them, so this control holds only while that host runs a pre-2.14 libxml2, and a replacement has to be chosen rather than the expectation flipped when it upgrades — and feeding the two sides different input DIVERGES, proving the comparison is not structurally returning agreement. Those two characters are **not** fixture rows:
 they diverge below the tokenizer, so no implementation can make them agree, and a row whose
 expectation can never be met would sit here failing forever and teach a reader to ignore failures.
 
@@ -507,11 +533,11 @@ that matters — the two halves must never ship apart.
    conceded, and the two concerns that had been sharing one function were separated. Nothing
    outstanding.
 
-2. **CONF-1 — the hint lanes assert on what the SDK sent.** They prove outgoing behaviour
-   and say nothing about whether discovery received anything. This is the failure CONF-1
-   exists to prevent, present in my own suite. Closing it needs a
-   `discovery_render_targets` assertion or the shared fixture.
-3. **A page whose URL carries a credential-shaped query param is never discovered.** Deliberate,
+2. **CID-4, not implemented: a historical-id match is attached without checking its content.** After a legacy lookup resolves, `Translate` attaches on the id being present and never compares the found block's `(category, phrases)` with the current one. The historical id spaces are not injective (a UTF-16 packing collision is reachable in ordinary Polish, Czech and Slovak text), so a collision attaches the wrong block's translations, silently. Ranked first among open items because the failure is wrong text on a live page. The row previously carried tokenizer-identity evidence, which belongs to CID-1 and now sits there.
+
+3. **CID-3, partial: most historical id shapes are not tolerated.** The fallback tries two shapes, the corrected hash over pre-fix tokens and the code-unit hash. The rule names a 20-row shared fixture at blob `dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce` as the authoritative list, including the two PHP pipe-join shapes and the null and uncategorised slot shapes. This SDK tries none of those, the fixture is not vendored, and no test seeds a historical id and resolves its block. A site that moves from the PHP SDK to this one orphans its existing translations, and machine translation refills the blocks, so the page still looks right.
+
+4. **A page whose URL carries a credential-shaped query param is never discovered.** Deliberate,
    and the cost is real: `?sig=`, `?otp=`, `?nonce=`, `?auth=`, anything containing `token`,
    `secret`, `password`, `apikey`, `authoriz`, `session`, `signature`, `credential`, `email`,
    `oauth`, `authcode` or `accesscode` (separator-insensitively), and `?code=` when an OAuth
@@ -558,36 +584,42 @@ that matters — the two halves must never ship apart.
    from outside; ranked below CONF-1 because the class of affected pages is small and, unlike
    CONF-1, it is now stated rather than assumed.
 
-4. **Everything graded `mock`.** Not fixable in this repo alone — it needs the shared
-   stateful contract fixture (CONF-2, Open). Until then no row here can honestly claim
-   better, however confident the behaviour.
-5. **GATE-3, GATE-4, WIRE-4, CAT-3, REG-12, SSR-3 have no test at all.** I believe each is
-   satisfied and can point at the code, which is exactly the standard of evidence CONF-1
-   rejects. Low cost individually; the aggregate is that six rules rest on my reading.
-   (WIRE-1 was the seventh and is now covered — the reviewer picked it as the cheapest and
-   most load-bearing of the set.)
-6. **REG-11 — the permitted suppression half is not implemented.** The warning is in and nothing is skipped, which conforms. The optional second signal — suppress when a longer catalog entry shares the prefix — would need a prefix scan of the catalog on every miss, and buys only the pollution case the warning already surfaces. Recorded as a deliberate omission rather than a gap.
-7. **OBS-1's notice covers capability, not every inert state.** The write-capability warning is now above debug on both channels. HINT-9's reporting-disabled case stays debug-only deliberately — the customer chose that setting, so it is a configuration, not a fault.
-8. **CONF-3 — runtime rules are not proven by mutation.** The `setWriteGrant` tests would
-   have caught the original inert version, but I have not verified that by reverting the
-   fix and watching them fail.
+5. **Thirteen rows are `provisional`.** GATE-1, GATE-2, GATE-5 to GATE-8, REG-1, REG-8 to REG-10, HINT-9, OBS-1 and WIRE-2 govern properties that depend on what the API answers, and their doubles cannot refuse or hold state. Not fixable in this repo alone: each waits on the shared stateful contract fixture (CONF-2, Open), which the spec says gates `implemented` in every SDK.
+
+6. **CONF-1, not implemented.** REG-1 is proven by a spy seeing no call, and GATE-6, GATE-7 and HINT-9 by reports captured from a mocked sender. Those are API-dependent properties asserted on what the SDK sent, not on what the server accepted.
+
+7. **Six rules have no test at all: GATE-3, GATE-4, CAT-3, REG-12, SSR-3, WIRE-4.** I believe each is satisfied and can point at the code, which is exactly the standard of evidence CONF-1 rejects. Low cost individually.
+
+8. **Four clauses have no test: HINT-5, HINT-7, SSR-2, GRANT-1.** HINT-5's 5 to 30 second jitter bounds are unasserted (the lane tests advance 31 seconds and would pass with no jitter). HINT-7 has no test that a failed report is not retried. SSR-2's "loudly" is not implemented at all: degrading the SSR lane when a grant is configured calls only a debug-gated `debug.log`, silent in production. GRANT-1's "documented as the default form" is unasserted.
+
+9. **CONF-3, partial: 40 of the 52 runtime rows record no mutation.** The rows that do are listed in the CONF-3 row. The `setWriteGrant` gap once recorded here is closed: making `setWriteGrant` return right after setting its config turns 4 `grant-lane` tests red. SSR strategy cases now run one Node process each (`ssr-strategy-isolation`), with a control showing that one shared process really does contaminate.
 
    One place this was done, recorded because the result was counter-intuitive: the logger's
-   React-Native detection is covered by a pair of tests, and under mutation only the BROWSER
-   one kills a latched implementation. The RN test passes either way — the test environment
-   is `node`, so `window` is undefined at import and a latched check yields plain text for
-   the wrong reason. The test that looks like it verifies the fix does not; the control does.
-   A negative result is only evidence once the search has been shown able to return a
-   positive, and which half of a pair carries that proof is not always the obvious one.
-9. **REG-12 — a redundant 32-hex guard remains** in the queue path. The primary mechanism
+      React-Native detection is covered by a pair of tests, and under mutation only the BROWSER
+      one kills a latched implementation. The RN test passes either way — the test environment
+      is `node`, so `window` is undefined at import and a latched check yields plain text for
+      the wrong reason. The test that looks like it verifies the fix does not; the control does.
+      A negative result is only evidence once the search has been shown able to return a
+      positive, and which half of a pair carries that proof is not always the obvious one.
+
+10. **A nested content-block host is folded into the outer block. Routed to the operator.** The tokenizer does not read content-block host identity, so `<div><p>A</p><div data-ls-contentblock="…"><p>B</p></div></div>` gives the outer block `["A","B"]` (`13ac7a86…`) and the inner `["B"]` (`fb9ed17f…`), registering `B` twice, in either render order. Excising stamped hosts would move the id of every nested block. Measured blast radius in fleet code is zero: no browser binding, example or doc nests `<Translate>` inside `<Translate>`. Customer usage is unmeasured.
+
+11. **React Native reaches no teardown flush. Routed to the operator.** `installTeardownFlush` returns early without `document`, so on React Native anything still queued when the app is killed is lost, worst under REG-8 backoff. An injected teardown signal in the `setPersistStorage` style is proposed with the React Native lane: the binding adapts the lifecycle event, and the core keeps the send.
+
+12. **TOK-2 is held.** Its control-character clause waits on the operator's ruling on stripping C0 controls. The rest of the rule is asserted on the collapse function directly.
+
+13. **REG-11 — the permitted suppression half is not implemented.** The warning is in and nothing is skipped, which conforms. The optional second signal — suppress when a longer catalog entry shares the prefix — would need a prefix scan of the catalog on every miss, and buys only the pollution case the warning already surfaces. Recorded as a deliberate omission rather than a gap.
+
+14. **OBS-1's notice covers capability, not every inert state.** The write-capability warning is now above debug on both channels. HINT-9's reporting-disabled case stays debug-only deliberately — the customer chose that setting, so it is a configuration, not a fault.
+
+15. **REG-12 — a redundant 32-hex guard remains** in the queue path. The primary mechanism
    is already structural, so the guard can only ever be wrong (it would reject a
    legitimate 32-hex phrase). Removing it needs confirmation that a content-block id never
    reaches `t()`.
 
 ## Not applicable
 
-`HINT-2` (server profile) and `BIND-1`..`BIND-6` (binding profile) — this package is the
-core browser implementation, so neither profile applies. Recorded with a revision because
+`HINT-2` (`n/a (profile: server)`), `SRV-1`, `SRV-2`, `SRV-3` and `SRV-5` (`n/a (profile: server, binding)`) and `BIND-1` to `BIND-6` (`n/a (profile: binding)`), one row each in the Status table. This package is the core browser implementation, so none of those profiles applies. Recorded with a revision because
 an `n/a` claim is a claim about the rule's Profiles line: a stale `implemented` row has a
 test that will eventually fail, whereas a stale `n/a` row has nothing that can ever
 contradict it.
