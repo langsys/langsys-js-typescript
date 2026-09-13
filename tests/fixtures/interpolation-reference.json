@@ -192,5 +192,35 @@
         "locale": "en-US",
         "expected": "Price: $5 and $&",
         "requires_intl": false
+    },
+    {
+        "description": "select: no params at all falls to other",
+        "template": "{name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}}",
+        "locale": "es-ES",
+        "expected": "Bienvenide",
+        "requires_intl": false
+    },
+    {
+        "description": "select: empty params falls to other",
+        "template": "{name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}}",
+        "params": {},
+        "locale": "es-ES",
+        "expected": "Bienvenide",
+        "requires_intl": false
+    },
+    {
+        "description": "plural: no params at all keeps sentence, shows gap",
+        "template": "{count, plural, one {# mensaje} other {# mensajes}}",
+        "locale": "es-ES",
+        "expected": "{count} mensajes",
+        "requires_intl": false
+    },
+    {
+        "description": "plural: empty params keeps sentence, shows gap",
+        "template": "{count, plural, one {# mensaje} other {# mensajes}}",
+        "params": {},
+        "locale": "es-ES",
+        "expected": "{count} mensajes",
+        "requires_intl": false
     }
 ]

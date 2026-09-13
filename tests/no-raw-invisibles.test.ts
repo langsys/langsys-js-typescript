@@ -78,7 +78,7 @@ const MUST_BE_ESCAPED: Record<number, string> = {
 const VENDORED: Record<string, string> = {
     'tests/fixtures/custom-id-reference.json': '60dc9b33ecfd5fa3256fca7d36063ceb8ef1a00a',
     'tests/fixtures/tokenizer-reference.json': '5689f3c1425502f3a2c4afd4b48e9bdbfc25a32d',
-    'tests/fixtures/interpolation-reference.json': 'd369bd185ca284ba75843431e4302c08628f2245',
+    'tests/fixtures/interpolation-reference.json': '725e7908ffacb63a7f93efdcd5fae893d800e659',
     'tests/fixtures/legacy-custom-id-reference.json': 'dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce',
 };
 

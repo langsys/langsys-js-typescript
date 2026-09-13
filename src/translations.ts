@@ -144,6 +144,11 @@ export class Translations {
     /** Phrases already reported under REG-11, so the warning fires once each. */
     private warnedEllipsis = new Set<string>();
     private timer: ReturnType<typeof setInterval> | null = null;
+    /**
+     * Catalog fetches still in flight. While any is, queued tokens are held: the flush
+     * deduplicates against the catalog, and the catalog being fetched is not there yet.
+     */
+    private catalogFetchesInFlight = 0;
     private flushScheduled = false;
     private updateInFlight = false;
     private debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -341,8 +346,12 @@ export class Translations {
             return this.debug.warn(`Received undefined or null token for category: ${category}`);
         }
 
-        // Skip content-block id lookups (32-hex md5 strings).
-        if (/^[0-9a-f]{32}$/.test(token)) return;
+        // No id-shape test here (REG-12). A block is recognised by structure: its catalog
+        // value is a nested map, which `t()` counts as known by key presence, so a stored
+        // block never reaches this method, and no caller hands `t()` a custom id (core,
+        // bindings and JS Server searched). A `/^[0-9a-f]{32}$/` guard used to sit here,
+        // and with the structure in hand it could only reject a legitimate phrase that
+        // happens to look like a hash.
         if (token === 'toJSON') {
             this.debug.error(`Received toJSON as token ${category}:${token}`, token);
             return;
@@ -744,7 +753,16 @@ export class Translations {
 
         this.debug.log('Locale change detected!', locale);
         this.locale = locale;
-        await this.getTranslations();
+        this.catalogFetchesInFlight += 1;
+        try {
+            await this.getTranslations();
+        } finally {
+            this.catalogFetchesInFlight -= 1;
+        }
+        // Tokens held while the catalog was in flight can be checked against it now.
+        // Without this they would wait for the next backstop tick, and SSR has no
+        // backstop at all.
+        if (this.missingTokens.length && !catalogUnavailable.get()) this.scheduleTokenFlush();
         return true;
     }
 
@@ -801,6 +819,16 @@ export class Translations {
         // it already holds. Applies to the teardown flush too, which has no dedup either.
         if (catalogUnavailable.get()) {
             this.debug.log('Holding queued tokens: the catalog fetch failed, so they cannot be deduplicated');
+            return false;
+        }
+        // The same hold while a catalog fetch is still in flight. A write-enabled cold
+        // visit flushed its first misses after the debounce against a catalog that had
+        // not arrived, and POSTed phrases the backend already held whenever the fetch
+        // outlasted the debounce (measured at 1s and 5s, not at 300ms). A locale switch
+        // has the same window, because the new scope starts empty. Arrival schedules
+        // the flush, so nothing waits for the backstop.
+        if (this.catalogFetchesInFlight > 0) {
+            this.debug.log('Holding queued tokens until the catalog in flight arrives');
             return false;
         }
         if (!this.canWrite()) {

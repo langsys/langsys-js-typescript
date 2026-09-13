@@ -160,10 +160,13 @@ export function warnUnmatchedParams(
  *
  * `locale` is required for ICU formatting (drives plural-rule selection).
  * Falls back to `'en'` if absent — simple-interpolation path ignores it.
+ *
+ * `params` may be omitted, and behaves as an empty map: a select or plural renders
+ * its `other` branch (ICU-1). Omitting it used to throw a TypeError inside recovery.
  */
 export function interpolate(
     template: string,
-    params: Record<string, unknown>,
+    params: Record<string, unknown> = {},
     locale?: string,
 ): string {
     template = adoptPercentPlaceholders(template, params);

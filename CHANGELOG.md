@@ -47,6 +47,12 @@ heading records the INTENT rather than the number. There is no summary-regenerat
 
 - **An ICU phrase renders its `other` branch when no params are passed, instead of its raw source.** `t('{g, select, male {He} female {She} other {They}} left')` returned the template itself, and so did `<Translate>` over the same text: both interpolated only when params were supplied, and a `<Translate>` block at the base locale was not walked at all without them. It now renders "They left", and a plural with no count shows `{count}` where `#` was. Plain text containing braces is unchanged, and `<Translate>` with params still chooses by them.
 
+- **A write-enabled first visit no longer re-registers phrases while its catalog is still loading.** A miss recorded before the first catalog arrived was flushed after the 400ms debounce and checked against a catalog that was not there yet, so a phrase the backend already held was sent again whenever the catalog took longer than that. A locale switch had the same window. Registration now waits for the catalog in flight and sends as soon as it arrives.
+
+- **`interpolate(template)` no longer throws when `params` is omitted.** It threw a `TypeError` from inside recovery. An omitted argument now behaves as an empty map, so a select or plural renders its `other` branch.
+
+- **A phrase that looks like a 32-character hex id is registered like any other.** A shape check refused to queue any phrase of 32 lowercase hex digits in case it was a content-block id, so a legitimate one, such as an order reference shown to a user, never reached the Translation Manager. Content blocks are recognised by their catalog entry instead, which is how they were already told apart.
+
 ### Changed — BREAKING
 
 - **Locale identifiers are now lowercase `xx-yy` everywhere, not BCP 47 canonical casing.** `canonicalizeLocale('en-US')` returns `en-us`; `zh-Hant-TW` returns `zh-hant-tw`. This is a public export, and `currentlyLoadedLocale` carries the same form — so any binding or application comparing against cased strings (`locale === 'en-US'`) stops matching. Compare against the normalized form, or run your own value through `canonicalizeLocale` first. Note this is breaking against **0.6.5**, which is published and emits the canonical form.
