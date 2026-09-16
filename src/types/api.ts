@@ -22,6 +22,13 @@ export interface ResponseObject {
      */
     write_enabled?: boolean;
 
+    /**
+     * Project setting: record a miss only while the loaded locale is the base locale.
+     * A top-level sibling of `data` on both catalog routes, and inside `data` on
+     * `authorize-project`. Absent means off.
+     */
+    discovery_base_locale_only?: boolean;
+
     /** Catalog size counters returned alongside `data` on `/translations`. */
     words?: number;
     untranslated_words?: number;

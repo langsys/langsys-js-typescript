@@ -308,6 +308,9 @@ describe('the export list is a contract', () => {
         'PHRASE_MARKER_ATTR',
         'PHRASE_MARKER_ATTRS',
         'PHRASE_MARKER_ATTR_LEGACY',
+        'RESOLVED_MARKER_ATTR',
+        'RESOLVED_MARKER_ATTRS',
+        'RESOLVED_MARKER_ATTR_LEGACY',
         'TRANSLATABLE_ATTRIBUTES',
         'canonicalContentBlockJson',
         'canonicalizeLocale',
@@ -333,10 +336,10 @@ describe('the export list is a contract', () => {
         // Not a parallel copy: if /pure re-implemented any of these, the server
         // and the browser would agree right up until one of them changed.
         //
-        // All twelve, not a sample. The first version asserted three, so
+        // All fifteen, not a sample. The first version asserted three, so
         // wrapping `generateLegacyCustomId` stayed green — and a sampled
-        // identity check is exactly as good as no identity check for the nine it
-        // does not look at.
+        // identity check is exactly as good as no identity check for the twelve
+        // it does not look at.
         const contentBlock = await import('../src/content-block.js');
         const shared = [
             'canonicalContentBlockJson',
@@ -351,9 +354,12 @@ describe('the export list is a contract', () => {
             'CONTENT_BLOCK_MARKER_ATTR',
             'CONTENT_BLOCK_MARKER_ATTR_LEGACY',
             'CONTENT_BLOCK_MARKER_ATTRS',
+            'RESOLVED_MARKER_ATTR',
+            'RESOLVED_MARKER_ATTR_LEGACY',
+            'RESOLVED_MARKER_ATTRS',
         ] as const;
 
-        expect(shared).toHaveLength(12);
+        expect(shared).toHaveLength(15);
         for (const name of shared) {
             expect(
                 (pure as unknown as Record<string, unknown>)[name],

@@ -53,6 +53,10 @@ export {
     CONTENT_BLOCK_MARKER_ATTR,
     CONTENT_BLOCK_MARKER_ATTR_LEGACY,
     CONTENT_BLOCK_MARKER_ATTRS,
+    // A producer's "already resolved" mark: never treated as source, never registered
+    RESOLVED_MARKER_ATTR,
+    RESOLVED_MARKER_ATTR_LEGACY,
+    RESOLVED_MARKER_ATTRS,
 } from './identity.js';
 
 export { canonicalizeLocale, maximizedLangScript } from './locale.js';

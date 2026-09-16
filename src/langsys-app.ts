@@ -1,13 +1,7 @@
 import { LangsysAppAPI } from './api.js';
 import { canonicalizeLocale, maximizedLangScript } from './locale.js';
 import { Logger, logger } from './logger.js';
-import {
-    autoDiscovery,
-    batchLimit,
-    config as configStore,
-    currentlyLoadedLocale,
-    sTranslations,
-} from './stores.js';
+import { autoDiscovery, batchLimit, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations } from './stores.js';
 import { noticeUnusableWriteCapability, Translations } from './translations.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig, iLangsysInitConfig, WriteGrant } from './types/config.js';
@@ -86,6 +80,7 @@ class LangsysAppClass {
             key_type?: string;
             write_enabled?: boolean;
             auto_discovery?: boolean;
+            discovery_base_locale_only?: boolean;
             langsys_settings?: { translatable_items?: { batch_limit?: number } };
         };
 
@@ -126,6 +121,15 @@ class LangsysAppClass {
                     `'${authData.key_type ?? 'unknown'}' => ${legacy}. Upgrade the API for IP-gated and grant-based writes.`
             );
             this.Translations.applyWriteEnabled(legacy);
+        }
+
+        // Project policy: register and hint only while rendering the base locale. Read
+        // here as well as on every catalog fetch, because a read-only session may never
+        // fetch a catalog and would otherwise never learn the setting. Absent means off,
+        // and no client config can override it — the handshake is the one source of truth.
+        if (typeof authData.discovery_base_locale_only === 'boolean') {
+            discoveryBaseLocaleOnly.set(authData.discovery_base_locale_only);
+            this.debug.log(`Discovery limited to the base locale (${context}):`, authData.discovery_base_locale_only);
         }
 
         // Server-authoritative batch cap. Honour it rather than assuming ours.

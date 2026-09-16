@@ -114,6 +114,27 @@ export const catalogUnavailable = createSignal<boolean>(false);
 export const autoDiscovery = createSignal<boolean | undefined>(undefined);
 
 /**
+ * Project setting: while true, a miss is recorded only when the loaded locale IS the
+ * base locale. It gates BOTH lanes — the registration queue and the discovery hint.
+ *
+ * The catalog is keyed by source text, and a server SDK renders a page in the visitor's
+ * language, so every string in that page is a translation. Without this, a write-enabled
+ * session browsing in Spanish files Spanish sentences as new SOURCE phrases, and a
+ * read-only one hints a localized URL, which sends the renderer to the same translated
+ * text. Legacy servers already send translated text and cannot be made to stop.
+ *
+ * Delivered in the handshake — `authorize-project` beside `key_type`, and the catalog
+ * envelope beside `words` — and honoured with no local override, so there is one source
+ * of truth. Absent or non-boolean means off, which is also the state until a backend
+ * ships the field. A PROJECT setting rather than a key-derived one like `autoDiscovery`,
+ * so it is the same answer for every key on the project.
+ *
+ * Off by default because it has a real cost: with it on, an English fallback appearing on
+ * a localized page is no longer discovered from that page.
+ */
+export const discoveryBaseLocaleOnly = createSignal<boolean>(false);
+
+/**
  * Server-authoritative cap on items per `/translatable-items` request, from
  * `langsys_settings.translatable_items.batch_limit` on the authorization
  * response. Never hardcode it: if the server lowers its limit, an SDK sending

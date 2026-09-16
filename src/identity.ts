@@ -163,6 +163,31 @@ export const CONTENT_BLOCK_MARKER_ATTRS = [
 ] as const;
 
 /**
+ * A producer's statement that text inside this element is ALREADY RESOLVED: rendered by
+ * a server SDK in the visitor's language, not authored as source. A reader records no
+ * miss for it — neither a registration nor a discovery hint — because the catalog is
+ * keyed by source text and this is a translation.
+ *
+ * Distinct from the identity markers on purpose, and agreed that way with the PHP and
+ * Laravel lanes. A MARK stamp answers "which block is this", and a stamped block inside a
+ * resolved scope keeps its id and still translates on a later render; this attribute says
+ * only "never treated as source". It is also not `translate="no"`, which tells a browser
+ * not to machine-translate and would block a legitimate later render.
+ *
+ * The value is the locale it was resolved into, canonical lowercase, and is informational:
+ * presence decides. A bare attribute means the same, because a binding writing it into a
+ * layout often does not know the locale at that point. `="false"` and `="0"` opt a subtree
+ * back out, the convention `isPhraseMarked` already uses in both SDKs; `="no"` and
+ * `="off"` are NOT opt-outs under that shared rule.
+ */
+export const RESOLVED_MARKER_ATTR = 'data-ls-resolved';
+
+/** PHP's spelling, accepted on read for the same reason the other markers' is (MARK-2). */
+export const RESOLVED_MARKER_ATTR_LEGACY = 'data-langsys-resolved';
+
+export const RESOLVED_MARKER_ATTRS = [RESOLVED_MARKER_ATTR, RESOLVED_MARKER_ATTR_LEGACY] as const;
+
+/**
  * Canonical form of one token's text, applied identically to a TEXT NODE and to
  * an ATTRIBUTE VALUE.
  *

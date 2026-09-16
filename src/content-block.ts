@@ -37,6 +37,7 @@ import {
     NON_TRANSLATABLE_ELEMENTS,
     normalizeTokenText,
     PHRASE_MARKER_ATTRS,
+    RESOLVED_MARKER_ATTRS,
     TRANSLATABLE_ATTRIBUTES,
 } from './identity.js';
 
@@ -57,6 +58,9 @@ export {
     PHRASE_MARKER_ATTR,
     PHRASE_MARKER_ATTR_LEGACY,
     PHRASE_MARKER_ATTRS,
+    RESOLVED_MARKER_ATTR,
+    RESOLVED_MARKER_ATTR_LEGACY,
+    RESOLVED_MARKER_ATTRS,
     TRANSLATABLE_ATTRIBUTES,
 } from './identity.js';
 
@@ -121,6 +125,31 @@ export function isPhraseMarked(element: Element): boolean {
         const value = (element.getAttribute(attr) ?? '').trim().toLowerCase();
         return value !== 'false' && value !== '0';
     });
+}
+
+/**
+ * True when an element sits inside a scope a producer marked as already resolved.
+ *
+ * Inherited, and the NEAREST marked ancestor decides — so a document marked at `<html>`
+ * can be opted back out of on a subtree with `="false"` or `="0"`. That inheritance is
+ * what makes the attribute usable at all on the paths that need it: text a server printed
+ * inline has no element of its own to carry a marker, so the only place a producer can
+ * state the fact is an ancestor it does own, usually the document root.
+ *
+ * Both spellings are read (MARK-2), and the first marked ancestor's value decides even if
+ * an outer one disagrees.
+ */
+export function isInResolvedScope(element: Element | null | undefined): boolean {
+    let el: Element | null = element ?? null;
+    while (el) {
+        for (const attr of RESOLVED_MARKER_ATTRS) {
+            if (!el.hasAttribute(attr)) continue;
+            const value = (el.getAttribute(attr) ?? '').trim().toLowerCase();
+            return value !== 'false' && value !== '0';
+        }
+        el = el.parentElement;
+    }
+    return false;
 }
 
 export const VALUE_TRANSLATABLE_ELEMENTS = ['button'];

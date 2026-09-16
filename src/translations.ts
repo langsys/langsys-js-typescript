@@ -4,7 +4,7 @@ import { interpolate } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
 import { Logger, logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
-import { batchLimit, catalogUnavailable, currentlyLoadedLocale, scopeCatalogCache, sTranslations, setWriteEnabled, writeEnabled } from './stores.js';
+import { batchLimit, catalogUnavailable, currentlyLoadedLocale, discoveryBaseLocaleOnly, scopeCatalogCache, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
 import type { TFunction } from './types/translation-fn.js';
@@ -407,6 +407,20 @@ export class Translations {
         if (catalogUnavailable.get()) {
             this.debug.log('Not recording a miss: the catalog fetch failed, so a miss cannot be told from a hit', { category, token });
             return;
+        }
+
+        // The base-locale gate, a project setting delivered in the handshake. On a page a
+        // server SDK rendered in another language every string is a translation, so
+        // registering one files a Spanish sentence as a SOURCE phrase, and hinting sends
+        // the renderer to a localized URL to find the same text. Both lanes, so neither
+        // happens. The loaded locale is empty until the first catalog publishes, so the
+        // locale being fetched stands in for it.
+        if (discoveryBaseLocaleOnly.get()) {
+            const loaded = currentlyLoadedLocale.get() || this.locale;
+            if (loaded !== canonicalizeLocale(this.config.baseLocale || '')) {
+                this.debug.log('Not recording a miss: discovery is limited to the base locale', { category, token, loaded });
+                return;
+            }
         }
 
         // Recorded before the queue dedup below: the discovery lane keys on the
@@ -1002,6 +1016,14 @@ export class Translations {
         // fetch so a capability change (a grant arriving, an IP allow-list
         // edit) is picked up without re-running init.
         this.applyWriteEnabled(response.write_enabled);
+
+        // Project policy, re-read on every fetch so a mid-session flip is picked up
+        // without re-running `init()`. A top-level sibling of `data` on both catalog
+        // routes, so it never reaches the cache. Absent or non-boolean means off: a
+        // server predating the field must not read as having turned it on.
+        if (typeof response.discovery_base_locale_only === 'boolean') {
+            discoveryBaseLocaleOnly.set(response.discovery_base_locale_only);
+        }
 
         if (response.errors) {
             this.debug.error('Error', response.errors[0]);

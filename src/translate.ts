@@ -2,15 +2,16 @@ import {
     CONTENT_BLOCK_MARKER_ATTR,
     generateCustomId,
     isContentBlockKnown,
+    isInResolvedScope,
     isPhraseMarked,
     isTranslationExcluded,
     legacyTokenizeElement,
     registerContentBlock,
+    resolveHistoricalBlockId,
     tokenizeElement,
     TRANSLATABLE_ATTRIBUTES,
     VALUE_TRANSLATABLE_ELEMENTS,
     VALUE_TRANSLATABLE_INPUT_TYPES,
-    resolveHistoricalBlockId,
 } from './content-block.js';
 import { interpolate, isICU, normalizeMarkupPlaceholders, warnUnmatchedParams } from './interpolate.js';
 import { historicalCustomIds, normalizeTokenText } from './identity.js';
@@ -158,10 +159,17 @@ export class Translate {
             category: string,
             params: Record<string, unknown>
         ) => string;
-        const resolved =
-            fromBlock === null || fromBlock === undefined
-                ? tWithParams(token, category, this.options.params ?? {})
-                : this.applyParams(fromBlock);
+        let resolved: string;
+        if (fromBlock !== null && fromBlock !== undefined) {
+            resolved = this.applyParams(fromBlock);
+        } else if (isInResolvedScope(this.element)) {
+            // The producer says this text is already resolved, so it is a translation and
+            // not a source phrase: render from the catalog if we happen to hold it, else
+            // leave what the server served, and record nothing on either lane.
+            resolved = this.applyParams(LangsysApp.Translations.lookup(token, category) ?? token);
+        } else {
+            resolved = tWithParams(token, category, this.options.params ?? {});
+        }
 
         // Write the ONE text node. Never `innerText`, which replaces every
         // child of the host element: a single-token block still commonly wraps
@@ -350,7 +358,15 @@ export class Translate {
         // doesn't depend on the POST completing — translations are looked up
         // from sTranslations on every render, which updates reactively when
         // the GET response arrives.
-        void registerContentBlock(contentBlock);
+        if (isInResolvedScope(this.element)) {
+            // The same rule one level up: a block inside a resolved scope holds translated
+            // text, so registering it would file a translation as source, and the hint lane
+            // inside `registerContentBlock` would report the localized page. Identity is
+            // untouched — the marker stamped above still names this block.
+            logger.log('Skipping content block registration: the host sits in a resolved scope');
+        } else {
+            void registerContentBlock(contentBlock);
+        }
 
         // Not `tokens.length > 1`: an attribute-only block has ONE token and
         // still belongs here, and that guard is what would silently skip its

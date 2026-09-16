@@ -11,6 +11,7 @@ import type { ParamPrimitive } from './types/translation-fn.js';
  * where the tokenizer that has to recognise it also lives.
  */
 export { PHRASE_MARKER_ATTR } from './content-block.js';
+import { isInResolvedScope } from './content-block.js';
 
 export interface PhraseOptions {
     /** Category the phrase registers under (disambiguation for translators). */
@@ -98,7 +99,9 @@ export class Phrase {
         // We ignore t()'s interpolated return — Phrase renders itself so it can
         // supply the markup-token sentinel values and reconstitute real elements.
         await LangsysApp.Translations.ready();
-        LangsysApp.Translations.t(this.phrase, this.category);
+        // Not inside a resolved scope: there the host's text is a translation a server
+        // produced, and `t()` is the call that would register it as a source phrase.
+        if (!isInResolvedScope(this.host)) LangsysApp.Translations.t(this.phrase, this.category);
 
         this.ready = true;
         this._render();
