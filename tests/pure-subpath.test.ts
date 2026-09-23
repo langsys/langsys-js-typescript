@@ -326,6 +326,7 @@ describe('the export list is a contract', () => {
         'md5Legacy',
         'normalizeMarkupPlaceholders',
         'normalizeTokenText',
+        'stripC0Controls',
     ];
 
     it('exports exactly the documented set', () => {
@@ -366,6 +367,13 @@ describe('the export list is a contract', () => {
                 `/pure's ${name} must BE content-block's, not a copy of it`
             ).toBe((contentBlock as unknown as Record<string, unknown>)[name]);
         }
+    });
+
+    it('the C0 strip is the one the tokenizer runs, not a copy', async () => {
+        // `normalizeTokenText` strips through it, so a /pure copy would let a
+        // server's keys drift from the browser's the first time the set changed.
+        const identity = await import('../src/identity.js');
+        expect(pure.stripC0Controls).toBe(identity.stripC0Controls);
     });
 
     it('the moved placeholder rewriter is one object on all three surfaces', async () => {

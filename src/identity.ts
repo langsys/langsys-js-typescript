@@ -203,10 +203,29 @@ export const RESOLVED_MARKER_ATTRS = [RESOLVED_MARKER_ATTR, RESOLVED_MARKER_ATTR
  * id" is true by construction rather than by two call sites agreeing.
  *
  * `\s` in JavaScript already covers U+00A0, so a non-breaking space collapses
- * like any other whitespace without special handling.
+ * like any other whitespace without special handling. The C0 controls are
+ * removed first (`stripC0Controls`), so VT and FF never reach the collapse.
  */
 export function normalizeTokenText(value: string): string {
-    return value.replace(/\s+/g, ' ').trim();
+    return stripC0Controls(value).replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Remove the 28 C0 control characters TOK-2 deletes before anything collapses:
+ * U+0001–U+0008, U+000B, U+000C and U+000E–U+001F. Applied to every string that becomes an
+ * id input or a catalog key — text nodes, translatable attributes, `t()` keys — on register
+ * and on lookup alike, and first: strip, then collapse, then trim.
+ *
+ * Removed rather than mapped to a space, because that is the only treatment every parser can
+ * agree with: libxml2 before 2.14 deletes these from DOM text before any SDK code runs, while
+ * libxml2 2.14+, parse5 and happy-dom keep them. So VT and FF, which are also in the collapse
+ * set, are deleted here before the collapse can see them: `a` VT `b` is `ab`, not `a b`.
+ *
+ * TAB, LF and CR are not in the set; they reach the collapse and become one space. NUL, U+007F
+ * and the C1 range, U+0085 included, are kept.
+ */
+export function stripC0Controls(value: string): string {
+    return value.replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F]/g, '');
 }
 
 /**

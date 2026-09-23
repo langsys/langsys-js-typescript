@@ -1,6 +1,7 @@
 import { LangsysAppAPI } from './api.js';
 import { recordMissForDiscovery } from './discovery.js';
 import { _registerTeardownFlush } from './teardown.js';
+import { stripC0Controls } from './identity.js';
 import { interpolate } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
 import { Logger, logger } from './logger.js';
@@ -307,7 +308,8 @@ export class Translations {
     public lookup(phrase: string, category: string): string | null {
         const cats = sTranslations.get();
         const lookupCat = category || '__uncategorized__';
-        const value = cats[lookupCat]?.[phrase];
+        // The catalog key never carries a C0 control (TOK-2), on lookup as on register.
+        const value = cats[lookupCat]?.[stripC0Controls(phrase)];
         return typeof value === 'string' && value.length > 0 ? value : null;
     }
 
@@ -350,15 +352,19 @@ export class Translations {
             // JSON.parse and so inherits Object.prototype, and `in` walks the
             // chain — `t('toString')` and `t('constructor')` would read as
             // already-known and never register.
-            const known = !!bucket && Object.prototype.hasOwnProperty.call(bucket, phrase);
-            const value = known ? bucket[phrase] : undefined;
+            // The catalog key is the phrase with TOK-2's C0 controls removed, on lookup and on
+            // registration alike. What renders when there is no translation is the phrase as
+            // the caller wrote it: the strip governs identity, not output.
+            const key = stripC0Controls(phrase);
+            const known = !!bucket && Object.prototype.hasOwnProperty.call(bucket, key);
+            const value = known ? bucket[key] : undefined;
 
             let translated: string;
             if (typeof value === 'string' && value.length > 0) {
                 this.debug.log('TRANSLATION FOUND', [lookupCat, phrase, value]);
                 translated = value;
             } else {
-                if (!known) this.missingToken(category, phrase);
+                if (!known) this.missingToken(category, key);
                 translated = phrase;
             }
 

@@ -43,6 +43,7 @@ export {
     encodeRichPhrase,
     // What the tokenizer is built from
     normalizeTokenText,
+    stripC0Controls,
     normalizeMarkupPlaceholders,
     TRANSLATABLE_ATTRIBUTES,
     NON_TRANSLATABLE_ELEMENTS,

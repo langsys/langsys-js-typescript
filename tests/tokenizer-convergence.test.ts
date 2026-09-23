@@ -277,9 +277,9 @@ describe('(b2) TOK-2 at spec 5c5c0723: membership on the collapse function, and 
      * the character itself.
      *
      * DELIBERATELY ABSENT: the C0 controls U+0001-U+0008, U+000B, U+000C and
-     * U+000E-U+001F. TOK-2's control-character handling is HELD pending the
-     * operator's ruling on stripping them, and VT and FF keep today's behaviour
-     * (they collapse). TAB, LF and CR are not in the held range and are asserted.
+     * U+000E-U+001F. TOK-2 strips them before the collapse runs, so VT and FF
+     * never reach it; `c0-strip` asserts the strip. TAB, LF and CR are not in the
+     * strip set, collapse, and are asserted here.
      */
     const hex = (cp: number) => 'U+' + cp.toString(16).toUpperCase().padStart(4, '0');
     const ch = (cp: number) => String.fromCodePoint(cp);

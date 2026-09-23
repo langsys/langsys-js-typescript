@@ -84,10 +84,10 @@ describe('the file is internally consistent about who agrees', () => {
      * cannot fail. A bare `diverging.every(...)` over an empty array is `true`
      * forever — the same defect that let `leaves the default host in place when
      * apiUrl is absent` sit green in this suite with no request ever issued. So
-     * every assertion below is either over all 23 rows or guarded by a count.
+     * every assertion below is either over every row or guarded by a count.
      */
     it('every row called agreed really does agree, per its own measured block', () => {
-        // Over all 23 rows, and the assertion that catches the realistic error:
+        // Over every row, and the assertion that catches the realistic error:
         // a re-measure pasted into `measured` while `agree` stayed true.
         let checked = 0;
         for (const row of doc.cases) {
@@ -108,9 +108,12 @@ describe('the file is internally consistent about who agrees', () => {
         // silently. Anchored to the ROWS, not to `doc.agreement.rows` — a header
         // the file supplies cannot be the guard on a loop over that same file, and
         // `cases: []` with `rows: 0` satisfied the header form while asserting
-        // nothing. Two measuring lanes per row; the server has no minter.
+        // nothing. Two measuring lanes per agreed row; the server has no minter.
+        // The agreed count comes from the rows' `agree` flags, which the header
+        // test below ties to the divergent rows' notes, so it cannot shrink
+        // without a divergence being written down.
         expect(doc.cases.length).toBeGreaterThanOrEqual(20);
-        expect(checked).toBe(doc.cases.length * 2);
+        expect(checked).toBe(doc.cases.filter((c) => c.agree).length * 2);
     });
 
     it('a row that does NOT agree carries a note naming the lane', () => {
@@ -120,6 +123,18 @@ describe('the file is internally consistent about who agrees', () => {
         expect(diverging).toHaveLength(doc.agreement.diverge);
         for (const row of diverging) {
             expect(row.divergence, `${row.id} is marked divergent with no explanation`).toBeTruthy();
+            // The JS core is the identity authority, so a divergence is always
+            // another lane's: this lane's own measurement must still be the
+            // expectation, and the other lane's must really differ from it.
+            const js = row.measured['langsys-js-typescript'];
+            expect(js?.custom_id, `${row.id}: the JS lane itself diverges`).toBe(row.expected_custom_id);
+            const others = Object.entries(row.measured).filter(
+                ([lane, m]) => lane !== 'langsys-js-typescript' && m !== null
+            ) as [string, LaneMeasurement][];
+            expect(
+                others.some(([, m]) => m.custom_id !== row.expected_custom_id),
+                `${row.id} is marked divergent but every lane agrees`
+            ).toBe(true);
         }
     });
 

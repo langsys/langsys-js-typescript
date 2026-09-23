@@ -181,33 +181,45 @@ export function interpolate(
         // which tests this explicitly. A genuine 0 is untouched and still
         // renders "0 items".
         const hasNullParam = !!params && Object.values(params).some((value) => value === null);
+        let formatterError: unknown;
         if (!hasNullParam) {
             try {
                 return new IntlMessageFormat(template, resolved).format(params) as string;
-            } catch {
-                // fall through to recovery below
+            } catch (error) {
+                formatterError = error;
             }
         }
-        {
-            // A missing argument throws. Recover the sentence rather than
-            // dumping ICU source to the page — see `_recoverMissingArgs`.
+        // `.ast` is typed private but is the parsed message the library formats
+        // from, and `IntlMessageFormat` accepts an AST in place of a string.
+        // Reaching for it avoids taking a second runtime dependency on the
+        // parser just to re-parse what's already parsed. A phrase that does not
+        // parse has no branches to select, so it takes the simple path.
+        let ast: unknown;
+        try {
+            ast = (new IntlMessageFormat(template, resolved) as unknown as { ast?: unknown }).ast;
+        } catch {
+            return simpleInterpolate(template, params, locale);
+        }
+        if (!Array.isArray(ast)) return simpleInterpolate(template, params, locale);
+
+        // A missing argument throws. Recover the sentence rather than dumping
+        // ICU source to the page — see `_recoverMissingArgs`.
+        const defaulted: string[] = [];
+        const recovered = _recoverMissingArgs(JSON.parse(JSON.stringify(ast)) as IcuNode[], params, defaulted);
+        if (defaulted.length) noteDefaultedArgs(template, resolved, defaulted);
+        if (defaulted.length || formatterError === undefined) {
             try {
-                // `.ast` is typed private but is the parsed message the library
-                // formats from, and `IntlMessageFormat` accepts an AST in place
-                // of a string. Reaching for it avoids taking a second runtime
-                // dependency on the parser just to re-parse what's already
-                // parsed. Guarded: anything unexpected falls through to the
-                // simple path, which is the pre-0.6.4 behavior.
-                const ast = (new IntlMessageFormat(template, resolved) as unknown as { ast?: unknown }).ast;
-                if (!Array.isArray(ast)) return simpleInterpolate(template, params, locale);
-                const defaulted: string[] = [];
-                const recovered = _recoverMissingArgs(JSON.parse(JSON.stringify(ast)) as IcuNode[], params, defaulted);
-                if (defaulted.length) noteDefaultedArgs(template, resolved, defaulted);
                 return new IntlMessageFormat(recovered as never, resolved).format(params) as string;
-            } catch {
-                return simpleInterpolate(template, params, locale);
+            } catch (error) {
+                formatterError = error;
             }
         }
+
+        // Nothing was missing, or the recovered message still would not format:
+        // the formatter itself failed on this phrase (ICU-6). Render it without
+        // the formatter, and say so at every log level.
+        noteFormatterFailure(template, resolved, formatterError);
+        return renderWithoutFormatter(ast as IcuNode[], params, resolved);
     }
     return simpleInterpolate(template, params, locale);
 }
@@ -228,6 +240,8 @@ interface IcuNode {
     value?: string;
     options?: Record<string, { value: IcuNode[] }>;
     children?: IcuNode[];
+    offset?: number;
+    pluralType?: 'cardinal' | 'ordinal';
 }
 
 /**
@@ -348,6 +362,101 @@ function _recoverMissingArgs(
     }
 
     return out;
+}
+
+/** Templates whose formatter failure has been reported, keyed by template+locale. */
+const notifiedFailures = new Set<string>();
+
+/**
+ * A formatter failure warns whether or not debug logging is on, unlike the
+ * defaulted-argument notice above: a missing argument is normal, while a phrase
+ * the formatter cannot render is a defect somebody has to fix. Deduped per
+ * (template, locale) because this runs on every render.
+ */
+function noteFormatterFailure(template: string, locale: string, error: unknown): void {
+    const key = `${locale}\0${template}`;
+    if (notifiedFailures.has(key)) return;
+    notifiedFailures.add(key);
+
+    const reason = error instanceof Error ? error.message : String(error);
+    logger.warn(
+        `The message formatter failed on a '${locale}' phrase, so it was rendered by the SDK's own branch ` +
+            `selection. Fix the phrase: ${JSON.stringify(template)}. Formatter error: ${reason}`
+    );
+}
+
+/**
+ * Render a parsed ICU message without the formatter (ICU-6), the way
+ * `_recoverMissingArgs` treats a missing argument: each `select` or `plural`
+ * takes the branch for its supplied value and the construct itself is dropped,
+ * supplied values are filled in, and an unsupplied one stays visible as
+ * `{argName}`. Never returns the raw construct.
+ *
+ * Plural branch order is ICU's: an exact `=N` on the value first, then the
+ * value's CLDR category in the render locale (after the offset), then `other`.
+ */
+function renderWithoutFormatter(nodes: IcuNode[], params: Record<string, unknown>, locale: string, pound?: number | string): string {
+    let out = '';
+    for (const node of nodes) {
+        const name = node.value;
+        const value = name !== undefined && params && name in params ? params[name] : undefined;
+        const supplied = value !== undefined && value !== null;
+
+        switch (node.type) {
+            case ICU_LITERAL:
+                out += node.value ?? '';
+                break;
+            case ICU_POUND:
+                out += pound === undefined ? '#' : typeof pound === 'string' ? pound : formatScalar(pound, locale);
+                break;
+            case ICU_TAG:
+                out += `<${name}>${renderWithoutFormatter(node.children ?? [], params, locale, pound)}</${name}>`;
+                break;
+            case ICU_SELECT: {
+                const options = node.options ?? {};
+                const branch = (supplied ? options[String(value)] : undefined) ?? options.other;
+                out += branch ? renderWithoutFormatter(branch.value, params, locale, pound) : `{${name}}`;
+                break;
+            }
+            case ICU_PLURAL: {
+                const options = node.options ?? {};
+                const count = supplied ? Number(value) : NaN;
+                if (Number.isNaN(count)) {
+                    const other = options.other;
+                    // `#` has no count to render, so show the argument name instead.
+                    out += other ? renderWithoutFormatter(other.value, params, locale, `{${name}}`) : `{${name}}`;
+                    break;
+                }
+                const adjusted = count - (node.offset ?? 0);
+                let branch = options[`=${count}`];
+                if (!branch) {
+                    try {
+                        branch = options[new Intl.PluralRules(locale, { type: node.pluralType ?? 'cardinal' }).select(adjusted)];
+                    } catch {
+                        // no CLDR rules for this locale: `other` below
+                    }
+                }
+                branch = branch ?? options.other;
+                out += branch ? renderWithoutFormatter(branch.value, params, locale, adjusted) : `{${name}}`;
+                break;
+            }
+            default:
+                // Plain, number, date and time arguments.
+                out += supplied ? formatScalar(value, locale) : `{${name}}`;
+        }
+    }
+    return out;
+}
+
+/** A supplied value as the simple path renders it: CLDR numbers and medium dates. */
+function formatScalar(value: unknown, locale: string): string {
+    try {
+        if (value instanceof Date) return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(value);
+        if (typeof value === 'number' || typeof value === 'bigint') return new Intl.NumberFormat(locale).format(value);
+    } catch {
+        // an invalid locale tag: the locale-blind rendering below
+    }
+    return value instanceof Date ? value.toISOString() : String(value);
 }
 
 function simpleInterpolate(template: string, params: Record<string, unknown>, locale?: string): string {
