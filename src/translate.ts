@@ -2,6 +2,7 @@ import {
     CONTENT_BLOCK_MARKER_ATTR,
     generateCustomId,
     isContentBlockKnown,
+    isContentBlockMarked,
     isInResolvedScope,
     isPhraseMarked,
     isTranslationExcluded,
@@ -245,6 +246,10 @@ export class Translate {
                         if (found) return false;
                         found = child;
                     }
+                } else if (child.nodeType === 1 && isContentBlockMarked(child as Element)) {
+                    // An excised nested block is not part of this unit (MARK-4), so its text
+                    // does not stop the unit's own single text node from being its only one.
+                    continue;
                 } else if (!walk(child)) {
                     return false;
                 }
@@ -398,6 +403,9 @@ export class Translate {
                 if (isTranslationExcluded(element)) return;
                 // A <Phrase> subtree manages its own rendering — don't recurse.
                 if (isPhraseMarked(element)) return;
+                // Nor does a nested content block (MARK-4): its own Translate renders it,
+                // and this walk would overwrite that with text this block does not hold.
+                if (isContentBlockMarked(element)) return;
                 this.translateAttributes(node as iElement);
             }
 

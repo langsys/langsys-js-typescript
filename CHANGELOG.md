@@ -29,6 +29,12 @@ heading records the INTENT rather than the number. There is no summary-regenerat
 
 ### Changed — BREAKING (content-block ids)
 
+- **A content block nested inside another is no longer folded into the outer block, and the outer block's `custom_id` moves.** An element carrying `data-ls-contentblock` or `data-langsys-contentblock` — a stamped id, or a bare or `true` declaration — is a block of its own: an enclosing `<Translate>` takes no words from it, no longer writes into it when it renders, and does not count its text when deciding whether it holds a single phrase. Previously the inner block's words registered twice, once in each block, and the outer id depended on the inner content. `false` or `0` opts an element out, and its text belongs to the enclosing block as before.
+
+  **Blast radius.** Only blocks that contain a nested block host move; a block without one keeps its id. The fleet's own bindings, examples and docs nest no `<Translate>` inside another. Production usage is not measured. A moved block re-registers under its new id and shows source text until re-translated, and its old entry remains as an orphan: no legacy-id tolerance covers this move.
+
+  **Order.** A `<Translate>` stamps its host while it is being constructed, so a nested block is recognised when it is constructed before the one around it. Component frameworks mount children first, so this holds with every binding. Vanilla code must construct the inner `Translate` first.
+
 - **The tokenizer converges with `langsys-php`, and this changes `custom_id` for affected blocks.** Those blocks re-register under the new id and show source text until re-translated; their previous catalog entries remain as orphans. Tolerance for these moved ids was considered and deliberately not added, so there is no migration — re-registration is the accepted path. The historical-id lookup added in this release is a different thing: it covers older hash shapes, and a block whose tokens changed below still re-registers. What changed:
 
   - **`<script>`, `<style>`, `<template>`, `<noscript>` and `<math>` contents are no longer harvested.** They were: `<style>.plan{color:#fff}</style>` registered `.plan{color:#fff}` as a translatable phrase and `<script>window.dataLayer.push(1)</script>` registered the statement, both then sent for machine translation.

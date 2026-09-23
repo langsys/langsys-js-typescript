@@ -34,6 +34,7 @@ import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
 import {
     blockContentMatches,
+    CONTENT_BLOCK_MARKER_ATTRS,
     NON_TRANSLATABLE_ELEMENTS,
     normalizeTokenText,
     PHRASE_MARKER_ATTRS,
@@ -121,6 +122,24 @@ export function isTranslationExcluded(element: Element): boolean {
  */
 export function isPhraseMarked(element: Element): boolean {
     return PHRASE_MARKER_ATTRS.some((attr) => {
+        if (!element.hasAttribute(attr)) return false;
+        const value = (element.getAttribute(attr) ?? '').trim().toLowerCase();
+        return value !== 'false' && value !== '0';
+    });
+}
+
+/**
+ * True when an element is a content-block host: it carries `data-ls-contentblock` or PHP's
+ * `data-langsys-contentblock` with any value other than `false` or `0` (MARK-3). A stamped id
+ * and a bare declaration both count; `false` and `0` opt out, trimmed and case-insensitive —
+ * the convention every marker attribute in the fleet shares.
+ *
+ * Such an element is a unit of its own, so an enclosing walk excises it (MARK-4): it
+ * contributes no tokens to the enclosing block, the enclosing render does not write into it,
+ * and it does not count toward the enclosing unit's single text node.
+ */
+export function isContentBlockMarked(element: Element): boolean {
+    return CONTENT_BLOCK_MARKER_ATTRS.some((attr) => {
         if (!element.hasAttribute(attr)) return false;
         const value = (element.getAttribute(attr) ?? '').trim().toLowerCase();
         return value !== 'false' && value !== '0';
@@ -471,6 +490,11 @@ function _walkForTokens(
             // A <Phrase> subtree is its own self-managed rich phrase — skip it
             // here so the content block doesn't tokenize its inner text.
             if (isPhraseMarked(el)) return;
+            // A nested content-block host is a unit of its own (MARK-4), whether stamped
+            // with an id or declared by a bare marker, so its words are not this block's.
+            // Without this they registered twice, once in each block, and the outer id
+            // depended on the inner content.
+            if (isContentBlockMarked(el)) return;
         }
 
         if (applyStyles && node.hasChildNodes()) {
