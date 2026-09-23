@@ -22,6 +22,7 @@ src/
     api.ts                  # LangsysAppAPI — singleton HTTP client (validate, getTranslations, post/get/delete/patch/put with [projectid] path substitution)
     signal.ts               # Signal<T> + createSignal + getValue
     persist.ts              # persist<T>(key, initial) — Signal backed by localStorage with SSR-safe fallback
+    teardown.ts             # setTeardownSignal — a host-supplied "app is going away" signal for hosts with no document (React Native)
     stores.ts               # Module-scoped state: sTranslations (persist), currentlyLoadedLocale, writeEnabled, autoDiscovery, batchLimit, shared config
     interpolate.ts          # {name}-style + ICU MessageFormat placeholder substitution (CLDR number/date formatting in both paths)
     locale.ts               # canonicalizeLocale (lowercase xx-yy form) + maximizedLangScript (CLDR likely-subtags matching)
@@ -66,6 +67,7 @@ notifyNavigation()                      // Route changed: re-look-up mounted con
 createSignal<T>(initial): Signal<T>
 getValue<T>(signal): T
 persist<T>(key, initial): Signal<T>     // localStorage-backed Signal
+setTeardownSignal(subscribe)            // Host teardown signal where there is no document (React Native)
 
 // Reactive stores (also exported for direct subscription)
 sTranslations                           // Signal<iCategories>
@@ -198,7 +200,7 @@ Target: ES2021. Module resolution: bundler. Strict TypeScript with `verbatimModu
 
 ## Testing approach
 
-`npm test` runs vitest over `tests/` — 54 files, 932 tests (`api`, `api-reachability`, `base-locale-gate`, `cache-scope`, `canonicalization-agreement`, `catalog-block-shape`, `catalog-envelope`, `catalog-failure`, `catalog-failure-window`, `catalog-in-flight`, `changelog-completeness`, `conformance-structure`, `content-block-identity`, `contract-fixture`, `contract-hint-lane`, `contract-write-lane`, `custom-id`, `custom-id-cross-impl`, `discovery`, `ellipsis-warning`, `grant-documentation`, `grant-lane`, `icu-no-params`, `init-settle`, `interpolate`, `interpolation-cross-impl`, `langsys-app`, `legacy-id-tolerance`, `locale`, `logger`, `marker-exports`, `navigation`, `nested-host-excision`, `never-attempt`, `no-private-fields`, `no-raw-invisibles`, `obs-notice`, `persist`, `pure-subpath`, `resolved-marker`, `rich-phrase-identity`, `richtext`, `seed-catalog`, `ssr-precondition-doc`, `ssr-strategy-isolation`, `structural-block-detection`, `tfunction-identity`, `tokenizer-convergence`, `tokenizer-cross-impl`, `translate`, `translations`, `write-decision-cache`, `write-decision-persistence`, `write-lane`).
+`npm test` runs vitest over `tests/` — 55 files, 940 tests (`api`, `api-reachability`, `base-locale-gate`, `cache-scope`, `canonicalization-agreement`, `catalog-block-shape`, `catalog-envelope`, `catalog-failure`, `catalog-failure-window`, `catalog-in-flight`, `changelog-completeness`, `conformance-structure`, `content-block-identity`, `contract-fixture`, `contract-hint-lane`, `contract-write-lane`, `custom-id`, `custom-id-cross-impl`, `discovery`, `ellipsis-warning`, `grant-documentation`, `grant-lane`, `icu-no-params`, `init-settle`, `interpolate`, `interpolation-cross-impl`, `langsys-app`, `legacy-id-tolerance`, `locale`, `logger`, `marker-exports`, `navigation`, `nested-host-excision`, `never-attempt`, `no-private-fields`, `no-raw-invisibles`, `obs-notice`, `persist`, `pure-subpath`, `resolved-marker`, `rich-phrase-identity`, `richtext`, `seed-catalog`, `ssr-precondition-doc`, `ssr-strategy-isolation`, `structural-block-detection`, `teardown-signal`, `tfunction-identity`, `tokenizer-convergence`, `tokenizer-cross-impl`, `translate`, `translations`, `write-decision-cache`, `write-decision-persistence`, `write-lane`).
 
 `content-block-identity` pins `custom_id` **identity** rather than output: text-node arity, comment skipping, and attribute emission order. Those are wire values shared with every other SDK. It is mutation-checked — adding `clone.normalize()` to `tokenizeElement` turns three of its tests red. It also pins the **opposite** rule on the `<Phrase>` path: `encodeRichText` coalesces adjacent text nodes by design, because the phrase string is the key and a sentence must survive whole. The two paths are not meant to agree — the realistic bug is someone applying the content-block contract to `richtext.ts`. A failure there is a breaking change, not a stale expectation; never repin a literal to make it green. `npm run test:watch` for watch mode.
 

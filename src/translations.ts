@@ -1,5 +1,6 @@
 import { LangsysAppAPI } from './api.js';
 import { recordMissForDiscovery } from './discovery.js';
+import { _registerTeardownFlush } from './teardown.js';
 import { interpolate } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
 import { Logger, logger } from './logger.js';
@@ -166,6 +167,8 @@ export class Translations {
     /** Epoch ms before which no send may be attempted. See RETRY_BACKOFF_*. */
     private retryNotBefore = 0;
     private teardownInstalled = false;
+    /** Unregisters this instance from an injected teardown signal (`setTeardownSignal`). */
+    private releaseTeardownFlush: (() => void) | null = null;
     private isFirstClientRun = true;
     /** Process-level write decision for the SSR lane. See `canWrite`. */
     private ssrWriteEnabled: boolean | undefined = undefined;
@@ -658,6 +661,8 @@ export class Translations {
      */
     public destroy(): void {
         this.stopBackstop();
+        this.releaseTeardownFlush?.();
+        this.releaseTeardownFlush = null;
     }
 
     /**
@@ -697,6 +702,11 @@ export class Translations {
      * unreliable on mobile and block bfcache.
      */
     private installTeardownFlush(): void {
+        // Registered with an injected teardown signal on every host, before the document
+        // check: a host with no `document` — React Native — has no other way to flush.
+        // Re-registered after `destroy()` released it; the document listeners below are
+        // installed once per instance, so a second setup never doubles them.
+        if (!this.releaseTeardownFlush) this.releaseTeardownFlush = _registerTeardownFlush(() => this.flushOnTeardown());
         if (this.teardownInstalled) return;
         if (typeof document === 'undefined' || typeof window === 'undefined') return;
         this.teardownInstalled = true;

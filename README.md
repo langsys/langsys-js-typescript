@@ -571,6 +571,7 @@ import type {
 - `LangsysApp.getCurrencies(inLocale?)` / `.getCurrencyName(code, inLocale?)`
 - `LangsysApp.getLocales(inLocale?)` / `.getLocalesFlat(inLocale?)` / `.getLocalesData(inLocale?, force?)`
 - `LangsysApp.getLocaleName(code, short?, inLocale?)` / `.getLocaleNameWithLookup(...)`
+- `setTeardownSignal(subscribe)` — on a host with no `document` (React Native), supply the "app is going away" signal: `subscribe(fire)` returns an unsubscribe, and the SDK flushes what is queued when `fire` is called.
 - Top-level: `t`, `tSignal`, `notifyNavigation`, `currentlyLoadedLocale`, `sTranslations`, `LangsysAppAPI`, `Translate`, `createSignal`, `getValue`, `persist`, `interpolate`, `Logger`, `logger`, `md5`, `isEmpty`.
 
 ## License

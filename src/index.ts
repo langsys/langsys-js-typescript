@@ -55,6 +55,7 @@ export {
 // Reactive primitives
 export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber, type Updater } from './signal.js';
 export { persist, setPersistStorage, type PersistStorage } from './persist.js';
+export { setTeardownSignal, type TeardownSubscribe } from './teardown.js';
 
 // Stores (advanced usage — direct subscription to translations / locale)
 // `writeEnabled` is the server-computed write capability for this session and
