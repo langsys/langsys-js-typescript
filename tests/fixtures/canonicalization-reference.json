@@ -2,11 +2,11 @@
  "": "Canonicalization + identity agreement across Langsys SDKs. AUTHORED in langsys-js-typescript, not vendored from another lane.",
  "purpose": "Proof that the SDKs mint the SAME custom_id for the same content. Covers the TOK batch's canonicalization rules — the collapse set, attribute values collapsing like text nodes, the fixed twenty-seven attributes in order — the three collapse-set boundary characters, the %name%-at-capture rule, TOK-1's <math> exclusion and the <svg> behavioural clause it is paired with, and TOK-2's C0 strip: the 28 stripped controls removed before collapse, TAB collapsed, DEL kept, and the strip applied to attribute values as well as text.",
  "how_to_row_against_it": "Tokenize the html field, compare to expected_tokens, then hash (category, tokens) and compare to expected_custom_id. Compare CODEPOINTS, not display strings: several cases differ only by U+00A0 or U+2028, which render identically to a space — the html_codepoints and expected_tokens_codepoints fields exist so a mismatch is readable instead of looking like two identical strings with two different hashes.",
- "expected_is": "What langsys-js-typescript produces. Every row matches spec blob 5fa32cb980b91bec41f40677638f47139a0fbfbb (specVersion 8.2.7). Every row marked agree is also matched by langsys-php-sdk; a row that is not carries a divergence note naming the lane. It is not an invitation to change the expectation: the JS core is the identity authority per TOK-2, so a lane that disagrees records a divergence here and fixes its own side.",
+ "expected_is": "What langsys-js-typescript produces. Every row matches spec blob 5fa32cb980b91bec41f40677638f47139a0fbfbb (specVersion 8.2.7), and every row is also matched by langsys-php-sdk. A row a lane disagrees with carries a divergence note naming the lane. It is not an invitation to change the expectation: the JS core is the identity authority per TOK-2, so a lane that disagrees records a divergence here and fixes its own side.",
  "spec_blob": "5fa32cb980b91bec41f40677638f47139a0fbfbb (langsys2 54c79ab4, specVersion 8.2.7). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 54c79ab4 docs/sdk-spec.mdx` at this write, and checked against the CONFORMANCE header by `npm run verify:spec`, which fails when the two disagree. What the spec supplies: the three collapse-set rows by code point and expected behaviour (membership shown as an id equal to the plain-space row, non-membership as a distinct id). It quotes no ids for them, and from this revision it quotes none for TOK-5 either, saying they belong in this file. Every id here was derived with the core tokenizer, per the CID-3 split between who specifies and who derives.",
  "measured_at": {
   "langsys-js-typescript": "this repo, tokenizeElement + generateCustomId, re-measured at this write",
-  "langsys-php-sdk": "HtmlParser::extractPhrases + HtmlParser::generateCustomId, PHP 8.3.19. The rows added for TOK-2's C0 strip were measured at tip 4199089; every earlier row at tip e28972c, where the change that made them agree is 717673d (`git log -S`), which adds src/Html/Canonical.php. Its parser is libxml2 2.9.13 (LIBXML_DOTTED_VERSION on this host), a pre-2.14 libxml2, which drops C0 controls from DOM text but not from attribute values — the parser_dependent note on fs-in-text and vt-in-text, and the divergence on fs-in-attr.",
+  "langsys-php-sdk": "HtmlParser::extractPhrases + HtmlParser::generateCustomId, PHP 8.3.19. The rows added for TOK-2's C0 strip were measured at tip 3121404, which carries its C0 strip; every earlier row at tip e28972c, where the change that made them agree is 717673d (`git log -S`), which adds src/Html/Canonical.php. Its parser is libxml2 2.9.13 (LIBXML_DOTTED_VERSION on this host), a pre-2.14 libxml2, which drops C0 controls from DOM text but not from attribute values — the parser_dependent note on fs-in-text and vt-in-text.",
   "langsys2 (server)": "NO MINTER EXISTS. Searched by hashing call and by canonical-serialization signature, with the same searches positive-controlled against langsys-php-sdk (4 hits there, 0 here). The backend stores ids clients send; it does not compute them."
  },
  "harness_control": {
@@ -16,22 +16,17 @@
     "input": "JS fed <p>LEFT</p>, PHP fed <p>RIGHT</p>",
     "result": "DIVERGE",
     "note": "Proves the comparison is not structurally returning AGREE regardless of input."
-   },
-   {
-    "input": "row fs-in-attr",
-    "result": "DIVERGE",
-    "note": "A live divergence in this file, recorded against langsys-php-sdk and asserted by the agreement test: a row marked divergent must carry a note, and the JS lane must still produce the expected id. It stops being a control when PHP's C0 strip lands and the row agrees; the LEFT/RIGHT control remains."
    }
   ],
   "parser_boundary": "libxml2 before 2.14 drops U+000B, U+000C and the other C0 controls from DOM text before any tokenizer sees it; 2.14 and newer keep them. TOK-2's strip makes the two agree on text, since the SDK removes what the older parser drops. Attribute values are where the parser does not drop them, so fs-in-attr is the row that proves an SDK strips rather than relies on its parser."
  },
  "agreement": {
   "rows": 32,
-  "agree": 31,
-  "diverge": 1
+  "agree": 32,
+  "diverge": 0
  },
  "resolved_divergences": {
-  "note": "Six rows recorded a langsys-php-sdk divergence at the previous write and all six now agree, re-measured rather than assumed. The PHP fix is 717673d (collapse set and the code-bearing-subtree exclusion); the measurement was taken at tip e28972c. Kept as a record so the next reader does not have to wonder whether anyone checked.",
+  "note": "Rows where langsys-php-sdk once minted a different id and now agrees, each re-measured rather than assumed. The first six changed with PHP 717673d (collapse set and the code-bearing-subtree exclusion), measured at tip e28972c. fs-in-attr changed with PHP 3121404 (the C0 strip), measured at that tip. Kept so the next reader does not have to wonder whether anyone checked.",
   "rows": [
    {
     "row": "nbsp-in-text",
@@ -68,6 +63,12 @@
     "was": "36441b5c714067bdd3088a54b004f00e",
     "now": "f92e4c22ed4f05658dd5640c41fd58a8",
     "note": "PHP does not collapse U+2028/U+2029 either. Same root cause as the NBSP rows. Worth noting the consequence for the three-flag json_encode work: in a DOM-tokenized path these never reach the serializer on the JS side because they collapse to spaces first, so the flags matter for a caller hashing its own token array, not for tokenized content."
+   },
+   {
+    "row": "fs-in-attr",
+    "was": "5d2089cc4c6cce4f4d5140b031f1e2c1",
+    "now": "41b13b0f29232e1c3a87a5e223ecfced",
+    "note": "libxml2 keeps a raw U+001C in an attribute value, so PHP kept it in the token until its own C0 strip ran on every phrase."
    }
   ]
  },
@@ -2557,7 +2558,7 @@
     "langsys2 (server)": null
    },
    "agree": true,
-   "parser_dependent": "langsys-php-sdk agrees here because its parser, libxml2 2.9.13 (pre-2.14), drops the character from DOM text before any tokenizer sees it, not because it strips it. On libxml2 2.14 or newer the character reaches the tokenizer, and only an SDK-side strip keeps this id. fs-in-attr is the row that tells the two apart.",
+   "parser_dependent": "Under a libxml2 older than 2.14, langsys-php-sdk's parser drops the character from DOM text before its strip runs, so on that parser this row agrees without exercising the strip. fs-in-attr is the row that exercises it on every parser, because libxml2 keeps C0 controls in attribute values.",
    "added_by": "spec 8.2.7 TOK-2 C0 strip"
   },
   {
@@ -2635,7 +2636,7 @@
     "langsys2 (server)": null
    },
    "agree": true,
-   "parser_dependent": "langsys-php-sdk agrees here because its parser, libxml2 2.9.13 (pre-2.14), drops the character from DOM text before any tokenizer sees it, not because it strips it. On libxml2 2.14 or newer the character reaches the tokenizer, and only an SDK-side strip keeps this id. fs-in-attr is the row that tells the two apart.",
+   "parser_dependent": "Under a libxml2 older than 2.14, langsys-php-sdk's parser drops the character from DOM text before its strip runs, so on that parser this row agrees without exercising the strip. fs-in-attr is the row that exercises it on every parser, because libxml2 keeps C0 controls in attribute values.",
    "added_by": "spec 8.2.7 TOK-2 C0 strip"
   },
   {
@@ -2867,14 +2868,13 @@
     },
     "langsys-php-sdk": {
      "tokens": [
-      "A\u001clong description"
+      "Along description"
      ],
-     "custom_id": "5d2089cc4c6cce4f4d5140b031f1e2c1"
+     "custom_id": "41b13b0f29232e1c3a87a5e223ecfced"
     },
     "langsys2 (server)": null
    },
-   "agree": false,
-   "divergence": "langsys-php-sdk (measured at 4199089, PHP 8.3.19, libxml2 2.9.13) keeps U+001C in the attribute value, because libxml2 drops C0 controls only from text content and the SDK has no strip of its own. Its C0 strip is PHP's TOK-2 slice; the fix is on the PHP side, and the expectation here does not move.",
+   "agree": true,
    "added_by": "spec 8.2.7 TOK-2 C0 strip"
   }
  ]
