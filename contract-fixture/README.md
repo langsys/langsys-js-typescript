@@ -30,8 +30,8 @@ The real API routes an SDK calls:
 
 | Route | Behaviour |
 |---|---|
-| `GET /api/authorize-project/{project}` | Key type, computed `write_enabled`, `auto_discovery`, the batch limit in `langsys_settings.translatable_items.batch_limit`. |
-| `GET /api/translations`, `GET /api/translations/data` | The flat catalog for `project_id` and `locale`, `write_enabled` on the envelope. An empty project answers `data: []`. |
+| `GET /api/authorize-project/{project}` | Key type, computed `write_enabled`, `auto_discovery`, the project's `discovery_base_locale_only`, the batch limit in `langsys_settings.translatable_items.batch_limit`. |
+| `GET /api/translations`, `GET /api/translations/data` | The flat catalog for `project_id` and `locale`, with `write_enabled` and `discovery_base_locale_only` as top-level siblings of `data`. An empty project answers `data: []`. |
 | `POST /api/translatable-items` | Registers phrases and content blocks. `200 {status:true}` on success. |
 | `POST /api/discovery/hint` | Always `204` once past the rate limit and URL validation. |
 
@@ -78,10 +78,11 @@ else registers, and re-sending an item is idempotent. A registered phrase reads 
 present with a `null` translation; a registered block reads back as an object whose phrases
 are `null`.
 
-A content block with no category registers. Its key in the flat catalog is not yet settled by
-the backend, so such a block appears in `GET /__fixture/state` and is omitted from catalog
-reads. The seed option `drop_uncategorized_blocks` reproduces the backend's current behaviour,
-which answers `200` and stores nothing, for a regression test.
+A content block with no category registers, and the flat catalog serves it under
+`__uncategorized__`, the key uncategorised phrases use. The literal `__uncategorized__` is
+never accepted as a category on registration, so the key only ever appears on the read side.
+The seed option `drop_uncategorized_blocks` reproduces the backend's former behaviour, which
+answered `200` and stored nothing, for a regression test.
 
 **Hints are accepted by the backend's rules, in its order.** The request is limited per source
 address (`hint_rate_per_minute`, `429`) and its `page_url` must be a URL of at most 2048
@@ -103,6 +104,8 @@ fragment kept only when it is a route (`#/…` or `#!/…`).
   qualifies.
 - **App attestation** (`X-App-Attestation`), an arm of the write decision for mobile SDKs.
 - **Machine translation.** Translations exist only where the seed supplies them.
+- **Routes outside the conformance contract**, such as the locale display data an SDK may
+  request at start-up (`/locales/{locale}/data`). They answer `404`.
 - **Word counts** in the catalog envelope count whitespace-separated words, which is close to
   the backend's count and never asserted on.
 

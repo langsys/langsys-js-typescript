@@ -102,7 +102,7 @@ class LangsysAppClass {
         const serverSpeaksCapability = typeof authData.write_enabled === 'boolean';
 
         if (serverSpeaksCapability) {
-            this.Translations.applyWriteEnabled(authData.write_enabled as boolean);
+            this.Translations.applyWriteEnabled(authData.write_enabled as boolean, authData.key_type);
             this.debug.log(`Session write-enabled (${context}):`, authData.write_enabled);
             noticeUnusableWriteCapability(authData.write_enabled as boolean, authData.key_type);
         } else {
@@ -120,7 +120,7 @@ class LangsysAppClass {
                 `Server did not return write_enabled (${context}) — falling back to key_type ` +
                     `'${authData.key_type ?? 'unknown'}' => ${legacy}. Upgrade the API for IP-gated and grant-based writes.`
             );
-            this.Translations.applyWriteEnabled(legacy);
+            this.Translations.applyWriteEnabled(legacy, authData.key_type);
         }
 
         // Project policy: register and hint only while rendering the base locale. Read

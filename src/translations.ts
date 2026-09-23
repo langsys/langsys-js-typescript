@@ -149,6 +149,16 @@ export class Translations {
      * deduplicates against the catalog, and the catalog being fetched is not there yet.
      */
     private catalogFetchesInFlight = 0;
+    /**
+     * CACHE-2: a failed catalog fetch, remembered per project and locale. Until `retryAt` a
+     * lookup for that pair renders source text and nothing is fetched. The window follows
+     * REG-8's clock on the read side: 3s, doubling on each consecutive failure to 5 minutes,
+     * cleared by the first success. Held on this instance, so it lasts the page session in a
+     * browser and the life of the server object on a server, and is never written anywhere.
+     */
+    private catalogFailures = new Map<string, { failures: number; retryAt: number }>();
+    /** CACHE-2: a catalog request in flight per project and locale, shared by concurrent fetches. */
+    private catalogRequests = new Map<string, Promise<boolean>>();
     private flushScheduled = false;
     private updateInFlight = false;
     private debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -468,8 +478,12 @@ export class Translations {
      * Record the server's write decision from an `authorize-project` or catalog
      * response. Browser: updates the shared signal. Server: keeps a
      * process-level copy used only when no grant is configured (see `canWrite`).
+     *
+     * `keyType` is the key type the same response describes. The authorization path
+     * passes it, because it runs before `init()` hands this instance the new config:
+     * reading `this.config` there would describe the PREVIOUS init's key on a re-init.
      */
-    public applyWriteEnabled(value: boolean | undefined): void {
+    public applyWriteEnabled(value: boolean | undefined, keyType: string | undefined = this.config.key_type): void {
         if (typeof value !== 'boolean') return;
         setWriteEnabled(value);
         if (typeof window === 'undefined') this.ssrWriteEnabled = value;
@@ -479,7 +493,7 @@ export class Translations {
         // allow-list mid-session is exactly the silent failure OBS-1 names. The
         // notice was previously wired only to `authorize-project`, so that
         // transition said nothing at all.
-        noticeUnusableWriteCapability(value, this.config.key_type);
+        noticeUnusableWriteCapability(value, keyType);
     }
 
     /**
@@ -767,9 +781,30 @@ export class Translations {
 
         this.debug.log('Locale change detected!', locale);
         this.locale = locale;
+        const scope = `${this.config.projectid}:${locale}`;
+
+        // CACHE-2: inside the window after a failure, keep rendering source text for this pair
+        // and fetch nothing, so an outage is not paid again on every locale emission. An
+        // explicit refresh (`force`) is a deliberate request rather than a lookup, and still
+        // goes out.
+        const failure = this.catalogFailures.get(scope);
+        if (!force && failure && Date.now() < failure.retryAt) {
+            this.debug.log('Catalog fetch skipped: the last one for this project and locale failed', {
+                scope,
+                retryInMs: failure.retryAt - Date.now(),
+            });
+            this.markCatalogUnavailable();
+            return false;
+        }
+
+        let request = this.catalogRequests.get(scope);
+        if (!request) {
+            request = this.fetchCatalog(scope).finally(() => this.catalogRequests.delete(scope));
+            this.catalogRequests.set(scope, request);
+        }
         this.catalogFetchesInFlight += 1;
         try {
-            await this.getTranslations();
+            await request;
         } finally {
             this.catalogFetchesInFlight -= 1;
         }
@@ -778,6 +813,19 @@ export class Translations {
         // backstop at all.
         if (this.missingTokens.length && !catalogUnavailable.get()) this.scheduleTokenFlush();
         return true;
+    }
+
+    /** One catalog request for a project and locale, recording the outcome for CACHE-2's window. */
+    private async fetchCatalog(scope: string): Promise<boolean> {
+        const ok = await this.getTranslations();
+        if (ok) {
+            this.catalogFailures.delete(scope);
+            return true;
+        }
+        const failures = (this.catalogFailures.get(scope)?.failures ?? 0) + 1;
+        const windowMs = Math.min(RETRY_BACKOFF_BASE_MS * 2 ** (failures - 1), RETRY_BACKOFF_MAX_MS);
+        this.catalogFailures.set(scope, { failures, retryAt: Date.now() + windowMs });
+        return false;
     }
 
     /**
@@ -992,7 +1040,8 @@ export class Translations {
         this.readyResolve();
     }
 
-    private async getTranslations(): Promise<void> {
+    /** Fetch and publish the catalog for `this.locale`. Resolves false when it could not. */
+    private async getTranslations(): Promise<boolean> {
         if (!LangsysAppAPI.config.projectid && this.config.projectid) {
             LangsysAppAPI.setup(this.config);
         }
@@ -1007,7 +1056,7 @@ export class Translations {
             // rejection has no caller to land on.
             this.debug.error('Catalog fetch threw', err);
             this.markCatalogUnavailable();
-            return;
+            return false;
         }
         this.debug.log('GET TRANSLATIONS API RESPONSE', response);
 
@@ -1028,7 +1077,7 @@ export class Translations {
         if (response.errors) {
             this.debug.error('Error', response.errors[0]);
             this.markCatalogUnavailable();
-            return;
+            return false;
         }
 
         // An empty project serializes `data` as `[]`, not `{}`. Left as an
@@ -1076,6 +1125,7 @@ export class Translations {
         setTimeout(() => currentlyLoadedLocale.set(this.locale), 100);
         this.lastLoaded[this.locale] = new Date().getTime() / 1000;
         this.readyResolve();
+        return true;
     }
 }
 

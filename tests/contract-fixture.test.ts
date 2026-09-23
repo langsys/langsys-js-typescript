@@ -168,11 +168,17 @@ describe('it holds state: a second read observes the first write', () => {
         expect((await catalog('k-read')).body.data.Home).toEqual({ b1: { A: null, B: null } });
     });
 
-    it('an uncategorised block registers, and is held in state rather than given an invented catalog key', async () => {
-        await register('k-write', [{ type: 'content_block', custom_id: 'b0', category: '', phrases: [{ phrase: 'Loose' }] }]);
-        const blocks = (await fx.state()).projects.p1.blocks;
-        expect(blocks.map((b) => [b.category, b.custom_id])).toEqual([[null, 'b0']]);
-        expect(JSON.stringify((await catalog('k-read')).body.data)).not.toContain('b0');
+    it('an uncategorised block registers and reads back under __uncategorized__, beside uncategorised phrases', async () => {
+        await register('k-write', [
+            { type: 'content_block', custom_id: 'b0', category: '', phrases: [{ phrase: 'Loose' }] },
+            { type: 'content_block', custom_id: 'b1', phrases: [{ phrase: 'No key at all' }] },
+            phrase('Plain', null),
+        ]);
+        expect((await catalog('k-read')).body.data.__uncategorized__).toEqual({
+            Plain: null,
+            b0: { Loose: null },
+            b1: { 'No key at all': null },
+        });
     });
 
     it('the regression knob reproduces the backend dropping that block: 200 and nothing stored', async () => {
@@ -231,16 +237,21 @@ describe('write_enabled is computed from key, address and grant', () => {
         const auth = (await api('/authorize-project/p1', { key: 'k-write' })).body.data;
         expect(auth).not.toHaveProperty('write_enabled');
         expect(auth).not.toHaveProperty('auto_discovery');
+        expect(auth).not.toHaveProperty('discovery_base_locale_only');
         expect(auth.key_type).toBe('write');
         expect((await catalog('k-write')).body).not.toHaveProperty('write_enabled');
     });
 
-    it('delivers discovery_base_locale_only on both handshakes only when told to', async () => {
-        expect((await api('/authorize-project/p1', { key: 'k-read' })).body.data).not.toHaveProperty('discovery_base_locale_only');
+    it('serves discovery_base_locale_only inside authorize data and beside data on both catalog routes, default false', async () => {
+        expect((await api('/authorize-project/p1', { key: 'k-read' })).body.data.discovery_base_locale_only).toBe(false);
         const projects = [{ ...BASE_SEED.projects[0], discovery_base_locale_only: true }, BASE_SEED.projects[1]];
-        await fx.seed({ ...BASE_SEED, projects, config: { ...BASE_SEED.config, send_discovery_base_locale_only: true } });
+        await fx.seed({ ...BASE_SEED, projects });
         expect((await api('/authorize-project/p1', { key: 'k-read' })).body.data.discovery_base_locale_only).toBe(true);
-        expect((await catalog('k-read')).body.discovery_base_locale_only).toBe(true);
+        for (const route of ['/translations', '/translations/data']) {
+            const body = (await api(`${route}?project_id=p1&locale=es-es`, { key: 'k-read' })).body;
+            expect(body.discovery_base_locale_only, route).toBe(true);
+            expect(body.data, `${route}: never inside the cached map`).not.toHaveProperty('discovery_base_locale_only');
+        }
     });
 });
 

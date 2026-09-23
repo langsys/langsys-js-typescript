@@ -32,8 +32,7 @@ const DEFAULT_CONFIG = Object.freeze({
     hint_rate_per_minute: 120, // config content_discovery.hint_rate_per_minute
     hint_dedup_ttl_seconds: 60, // config content_discovery.hint_dedup_ttl_seconds
     renderer_egress_ips: [], // config content_discovery.renderer_egress_ips
-    legacy_omit_capability: false, // a server that predates write_enabled / auto_discovery
-    send_discovery_base_locale_only: false, // GATE-9's field, ahead of the backend shipping it
+    legacy_omit_capability: false, // a server that predates write_enabled, auto_discovery and discovery_base_locale_only
     // Reproduces the backend's current drop of an uncategorised content block, which
     // answers 200 and stores nothing. Off by default: the double models the decided
     // behaviour, under which such a block registers. For a regression row only.
@@ -268,10 +267,6 @@ function catalog(project, locale) {
         if (value === null) untranslated += words(p.phrase);
     }
     for (const b of project.blocks.values()) {
-        // Where an uncategorised block appears in the flat catalog is not yet settled by
-        // the backend, so the double does not invent a key for it: such a block is held in
-        // accepted state (`GET /__fixture/state`) and omitted from catalog reads.
-        if (b.category === null) continue;
         const inner = {};
         for (const p of b.phrases) {
             const value = p.translations[loc] ?? null;
@@ -279,7 +274,8 @@ function catalog(project, locale) {
             total += words(p.phrase);
             if (value === null) untranslated += words(p.phrase);
         }
-        place(b.category)[b.custom_id] = inner;
+        // An uncategorised block is served under the same key uncategorised phrases use.
+        place(b.category ?? '__uncategorized__')[b.custom_id] = inner;
     }
     const empty = Object.keys(data).length === 0;
     return {
@@ -388,10 +384,11 @@ function authorizeProject(req, projectId, url) {
         key_type: auth.key.type,
         ...(state.config.legacy_omit_capability
             ? {}
-            : { write_enabled: auth.writeEnabled, auto_discovery: auth.key.report_discovered_content }),
-        ...(state.config.send_discovery_base_locale_only
-            ? { discovery_base_locale_only: project.discovery_base_locale_only }
-            : {}),
+            : {
+                  write_enabled: auth.writeEnabled,
+                  auto_discovery: auth.key.report_discovered_content,
+                  discovery_base_locale_only: project.discovery_base_locale_only,
+              }),
         langsys_settings: { translatable_items: { batch_limit: state.config.batch_limit } },
     };
     return [200, { status: true, data }];
@@ -411,8 +408,9 @@ function translations(req, query, url) {
     if (!query.locale) return [422, errorBody('The locale field is required.')];
     const { data, additional } = catalog(project, query.locale);
     const envelope = { status: true, ...additional };
-    if (!state.config.legacy_omit_capability) envelope.write_enabled = auth.writeEnabled;
-    if (state.config.send_discovery_base_locale_only) {
+    if (!state.config.legacy_omit_capability) {
+        envelope.write_enabled = auth.writeEnabled;
+        // Top-level, beside write_enabled and never inside `data`, on both catalog routes.
         envelope.discovery_base_locale_only = project.discovery_base_locale_only;
     }
     envelope.data = data;
