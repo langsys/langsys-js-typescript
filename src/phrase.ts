@@ -2,7 +2,7 @@ import { interpolate, warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { encodeRichText, markupTokenValues, reconstitute, type RichSlot } from './richtext.js';
 import type { Unsubscriber } from './signal.js';
-import { currentlyLoadedLocale, sTranslations } from './stores.js';
+import { currentlyLoadedLocale, navigationEpoch, sTranslations } from './stores.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
 
 /**
@@ -66,6 +66,21 @@ export class Phrase {
         };
         this.unsubscribers.push(currentlyLoadedLocale.subscribe(rerender));
         this.unsubscribers.push(sTranslations.subscribe(rerender));
+
+        // HINT-13: after a navigation, look the phrase up again so a miss is recorded at the
+        // new URL — only while the host is attached to the document, and never inside a
+        // resolved scope. `subscribe` fires once with the current value first.
+        let initialNavigation = true;
+        this.unsubscribers.push(
+            navigationEpoch.subscribe(() => {
+                if (initialNavigation) {
+                    initialNavigation = false;
+                    return;
+                }
+                if (!this.ready || !this.phrase || !this.host.isConnected || isInResolvedScope(this.host)) return;
+                LangsysApp.Translations.t(this.phrase, this.category);
+            })
+        );
     }
 
     /** Update interpolation params (e.g. a changed count) and re-render. */

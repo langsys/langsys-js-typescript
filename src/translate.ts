@@ -18,7 +18,7 @@ import { interpolate, isICU, normalizeMarkupPlaceholders, warnUnmatchedParams } 
 import { historicalCustomIds, normalizeTokenText } from './identity.js';
 import { LangsysApp } from './langsys-app.js';
 import { logger } from './logger.js';
-import { currentlyLoadedLocale, sTranslations, config as configStore } from './stores.js';
+import { config as configStore, currentlyLoadedLocale, navigationEpoch, sTranslations } from './stores.js';
 import type { Unsubscriber } from './signal.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -69,6 +69,8 @@ export class Translate {
     private unsubscribers: Unsubscriber[] = [];
     /** Sorted params key-set already checked, so value-only updates don't re-warn. */
     private checkedParamKeys: string | null = null;
+    /** The block this host registered as, kept so a navigation can re-record its miss. */
+    private contentBlock: iContentBlock | null = null;
 
     constructor(element: HTMLElement, options: TranslateOptions = {}) {
         this.element = element;
@@ -103,6 +105,40 @@ export class Translate {
                 this.translateUpdate(locale);
             })
         );
+
+        // HINT-13. `subscribe` fires once with the current value; only later advances mean
+        // a navigation.
+        let initialNavigation = true;
+        this.unsubscribers.push(
+            navigationEpoch.subscribe(() => {
+                if (initialNavigation) {
+                    initialNavigation = false;
+                    return;
+                }
+                this.reenterAfterNavigation();
+            })
+        );
+    }
+
+    /**
+     * HINT-13: after `notifyNavigation()`, re-enter the lookup as a re-render would, so a miss is
+     * recorded at the page's new URL — only while the host is attached to the document. An
+     * instance whose node was removed but never destroyed stays subscribed, and re-entering it
+     * would report the old page's content for the new one.
+     */
+    private reenterAfterNavigation(): void {
+        if (!this.parseComplete || !this.element?.isConnected) return;
+        const { category = '' } = this.options;
+        if (this.usesSingleTextNodeFastPath()) {
+            this.renderSingleToken(category);
+            return;
+        }
+        // A block that is still unknown is recorded again; `registerContentBlock` applies
+        // every lane rule. A registered or resolved one records nothing, and a block inside
+        // a resolved scope never did.
+        if (this.contentBlock && !isContentBlockKnown(this.contentBlock.category, this.custom_id) && !isInResolvedScope(this.element)) {
+            void registerContentBlock({ ...this.contentBlock, custom_id: this.custom_id });
+        }
     }
 
     /** Update interpolation params (e.g. a changed count) and re-render. Mirrors `Phrase.setParams`. */
@@ -306,6 +342,7 @@ export class Translate {
     }
 
     private async handleContentBlock(contentBlock: iContentBlock) {
+        this.contentBlock = contentBlock;
         const derivedId = isEmpty(this.custom_id);
         if (derivedId) {
             this.custom_id = generateCustomId(contentBlock.category, contentBlock.tokens);

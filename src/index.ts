@@ -114,6 +114,13 @@ export const t: TFunction = ((phrase: string, ...rest: unknown[]): string => {
 export const tSignal = _LangsysApp.Translations.tSignal;
 
 /**
+ * Tell the SDK the route changed (HINT-13). Call it from your router's after-navigation hook,
+ * so content that stays mounted across routes — a persistent layout — is looked up again and
+ * its misses are recorded for the new URL. Framework bindings wire this for you.
+ */
+export const notifyNavigation = (): void => _LangsysApp.Translations.notifyNavigation();
+
+/**
  * Standalone alias for `LangsysApp.setWriteGrant` — supply the write grant
  * after `init()`, e.g. once the user logs in. Not the refresh path: the token
  * is resolved fresh before every request and never cached, so pass a provider

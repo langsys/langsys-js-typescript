@@ -147,6 +147,13 @@ export const discoveryBaseLocaleOnly = createSignal<boolean>(false);
 export const batchLimit = createSignal<number>(200);
 
 /**
+ * Advanced by `notifyNavigation()` (HINT-13). The core's own DOM classes subscribe to it and
+ * re-enter their lookup, as a re-render would, while their host is attached to the document.
+ * Bindings need nothing from it: the same call publishes a fresh `t` through `tSignal`.
+ */
+export const navigationEpoch = createSignal<number>(0);
+
+/**
  * Record the server's write decision. No-ops during SSR — see the
  * browser-authoritative note on `writeEnabled`.
  */

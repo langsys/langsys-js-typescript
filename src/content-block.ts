@@ -28,8 +28,9 @@
 import { LangsysAppAPI } from './api.js';
 import { recordMissForDiscovery } from './discovery.js';
 import { normalizeMarkupPlaceholders } from './interpolate.js';
+import { canonicalizeLocale } from './locale.js';
 import { logger } from './logger.js';
-import { catalogUnavailable, config as configStore, sTranslations, writeEnabled } from './stores.js';
+import { catalogUnavailable, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations, writeEnabled } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
 import {
@@ -280,6 +281,19 @@ export async function registerContentBlock(
             });
         }
         return { status: true };
+    }
+
+    // GATE-9 on the content-block path, as on the `t()` miss path: with the project setting
+    // on, a block is neither registered nor reported unless the loaded locale is the base
+    // locale. Before the first catalog publishes, the locale being requested stands in.
+    if (discoveryBaseLocaleOnly.get()) {
+        const loaded = currentlyLoadedLocale.get() || canonicalizeLocale(configStore.sUserLocale?.get() ?? '');
+        if (loaded !== canonicalizeLocale(configStore.baseLocale || '')) {
+            if (configStore.debug) {
+                logger.log('Skipping content block: discovery is limited to the base locale', { custom_id: contentBlock.custom_id, loaded });
+            }
+            return { status: true };
+        }
     }
 
     // Server-computed capability, never inferred from `key_type`. This is the

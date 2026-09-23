@@ -214,6 +214,24 @@ describe('GATE-9: the base-locale gate the handshake sends', () => {
     });
 });
 
+describe('GATE-9 on the content-block path', () => {
+    it('on: a block in a non-base locale is not registered, although the server would accept it', async () => {
+        await fx.seed({ ...SEED, projects: [{ ...SEED.projects[0], discovery_base_locale_only: true }] });
+        await session('k-write');
+        const block = { custom_id: 'b-gated', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['Gated A', 'Gated B'] };
+        await registerContentBlock(block as never);
+        await sleep(300);
+        expect((await fx.state()).projects.p1.blocks.map((b) => b.custom_id)).not.toContain('b-gated');
+    });
+
+    it('control: off, the same block is registered', async () => {
+        await session('k-write');
+        const block = { custom_id: 'b-open', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['Open A', 'Open B'] };
+        await registerContentBlock(block as never);
+        expect((await fx.state()).projects.p1.blocks.map((b) => b.custom_id)).toContain('b-open');
+    });
+});
+
 describe('WIRE-3: an uncategorised block is read back under __uncategorized__', () => {
     it('a block registered with no category is known to the next session, so it is not registered again', async () => {
         await session('k-write');

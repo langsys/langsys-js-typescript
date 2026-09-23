@@ -235,6 +235,24 @@ Use the dedicated [`langsys-js-svelte`](https://github.com/langsys/langsys-js-sv
 
 The same pattern: subscribe to `tSignal` for invalidation, call the current `TFunction` for values. ~5-10 lines of binding code per framework.
 
+### Route changes: `notifyNavigation()`
+
+Call `notifyNavigation()` after every client-side route change. Content that stays mounted across routes — a layout, a header, a sidebar — is otherwise never looked up again, so a phrase missing from it is reported for the first page only, and never for the pages the visitor moves to.
+
+The call publishes a fresh `t` through `tSignal`, so anything bound to it re-renders, and each miss is recorded at the new URL. `Translate` and `Phrase` instances re-run their lookup too, but only while their element is still attached to the page. The call sends nothing itself, and a phrase already registered is not registered again.
+
+```ts
+import { notifyNavigation } from 'langsys-js-typescript';
+
+router.afterEach(() => notifyNavigation());        // Vue Router
+afterNavigate(() => notifyNavigation());           // SvelteKit
+router.events.subscribe((e) => {                   // Angular
+    if (e instanceof NavigationEnd) notifyNavigation();
+});
+```
+
+Framework bindings wire this for you from their router's after-navigation hook.
+
 ## The `Translate` class
 
 For larger blocks of HTML — articles, help text, multi-sentence markup — use `Translate` to wrap an existing DOM element. It tokenizes text nodes and translatable attributes, registers the block with the Translation Manager (so translators see your styled markup), and re-translates on locale change.
@@ -544,6 +562,7 @@ import type {
 
 - `LangsysApp.init(config)` — initialize, returns an `iLangsysResponse`.
 - `LangsysApp.refresh()` — force-refetch translations for the current locale.
+- `LangsysApp.notifyNavigation()` — tell the SDK the route changed, so mounted content is looked up again for the new URL.
 - `LangsysApp.t` — current `TFunction` (getter; reads fresh state on every call).
 - `LangsysApp.translationsLoadingPromise` — resolves when the current locale's translations are ready.
 - `LangsysApp.detectPreferredLocale(header?, supported?)` — locale detection.
@@ -552,7 +571,7 @@ import type {
 - `LangsysApp.getCurrencies(inLocale?)` / `.getCurrencyName(code, inLocale?)`
 - `LangsysApp.getLocales(inLocale?)` / `.getLocalesFlat(inLocale?)` / `.getLocalesData(inLocale?, force?)`
 - `LangsysApp.getLocaleName(code, short?, inLocale?)` / `.getLocaleNameWithLookup(...)`
-- Top-level: `t`, `tSignal`, `currentlyLoadedLocale`, `sTranslations`, `LangsysAppAPI`, `Translate`, `createSignal`, `getValue`, `persist`, `interpolate`, `Logger`, `logger`, `md5`, `isEmpty`.
+- Top-level: `t`, `tSignal`, `notifyNavigation`, `currentlyLoadedLocale`, `sTranslations`, `LangsysAppAPI`, `Translate`, `createSignal`, `getValue`, `persist`, `interpolate`, `Logger`, `logger`, `md5`, `isEmpty`.
 
 ## License
 

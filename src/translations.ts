@@ -4,7 +4,7 @@ import { interpolate } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
 import { Logger, logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
-import { batchLimit, catalogUnavailable, currentlyLoadedLocale, discoveryBaseLocaleOnly, scopeCatalogCache, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
+import { batchLimit, catalogUnavailable, currentlyLoadedLocale, discoveryBaseLocaleOnly, navigationEpoch, scopeCatalogCache, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
 import type { TFunction } from './types/translation-fn.js';
@@ -251,6 +251,23 @@ export class Translations {
      */
     public settle(): void {
         this.readyResolve();
+    }
+
+    /**
+     * A route change re-enters the SDK (HINT-13). Call it from the router's after-navigation
+     * hook. It publishes a fresh `t` through `tSignal` — the same dependency a locale change
+     * advances — so a component bound to `t` re-renders its mounted nodes, and each miss is
+     * recorded at the URL the page is now on. The core's own `Translate` and `Phrase` re-enter
+     * too, but only while their host is attached to the document, so an instance left
+     * undestroyed on a removed node records nothing.
+     *
+     * It sends nothing itself. What follows is the ordinary miss path: one report per URL,
+     * the jitter, the decline rules, GATE-9 and GATE-10 all apply, and a phrase already queued
+     * or registered is not queued again. Calling it twice for the same URL reports nothing more.
+     */
+    public notifyNavigation(): void {
+        navigationEpoch.set(navigationEpoch.get() + 1);
+        this.tSignal.set(this.buildTFn());
     }
 
     /** Current translation function. Reads fresh state on every call. */

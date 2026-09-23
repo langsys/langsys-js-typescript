@@ -154,6 +154,11 @@ class LangsysAppClass {
         }
     }
 
+    /** A route change re-enters the SDK (HINT-13). See `Translations.notifyNavigation`. */
+    public notifyNavigation(): void {
+        this.Translations.notifyNavigation();
+    }
+
     /**
      * Put a catalog in place SYNCHRONOUSLY, with no network and no await.
      *

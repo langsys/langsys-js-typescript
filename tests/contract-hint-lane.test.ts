@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerContentBlock } from '../src/content-block.js';
+import { LangsysApp } from '../src/langsys-app.js';
 import { autoDiscovery, discoveryBaseLocaleOnly, writeEnabled } from '../src/stores.js';
 import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
 import { installBrowser, resetSdk, session as startSession, setHref, sleep, t, until } from './helpers/sdk-session.js';
@@ -173,6 +174,44 @@ describe('GATE-9: the base-locale gate covers the report lane too', () => {
         await session('k-public');
         await missAndRunOutJitter('New on this page');
         await until(async () => (await hints()).includes(PAGE));
+    });
+});
+
+describe('HINT-13: a route change re-enters the SDK, so a persistent layout is reported for the new page', () => {
+    // A persistent layout: bound to `t`, it re-renders whenever `tSignal` publishes, and never
+    // because the route changed. That is the shape bindings measured as never reporting page B.
+    function mountPersistentLayout(): () => void {
+        return LangsysApp.Translations.tSignal.subscribe((tFn) => {
+            (tFn as unknown as (p: string, c: string) => string)('Layout phrase', 'UI');
+        });
+    }
+
+    it('after notifyNavigation, the miss in the layout is stored for page B', async () => {
+        await session('k-public');
+        setHref('https://site.local/a');
+        const unsubscribe = mountPersistentLayout();
+        await missAndRunOutJitter();
+        await until(async () => (await hints()).includes('https://site.local/a'));
+
+        setHref('https://site.local/b');
+        LangsysApp.notifyNavigation();
+        await missAndRunOutJitter();
+        await until(async () => (await hints()).includes('https://site.local/b'));
+        unsubscribe();
+    });
+
+    it('without the call, the same layout records nothing for page B, although the double would store it', async () => {
+        await session('k-public');
+        setHref('https://site.local/a');
+        const unsubscribe = mountPersistentLayout();
+        await missAndRunOutJitter();
+        await until(async () => (await hints()).includes('https://site.local/a'));
+
+        setHref('https://site.local/b');
+        await missAndRunOutJitter();
+        await settle();
+        expect(await hints()).toEqual(['https://site.local/a']);
+        unsubscribe();
     });
 });
 
