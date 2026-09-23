@@ -222,5 +222,25 @@
         "locale": "es-ES",
         "expected": "{count} mensajes",
         "requires_intl": false
+    },
+    {
+        "description": "plural: formatter failure renders the other branch, value filled. ICU-6's vector: on PHP 8.3.19 with ICU 76.1, {count} inside a branch of its own plural parses and then fails to format (U_ARGUMENT_TYPE_MISMATCH), so on that formatter this row exercises the SDK's own branch selection; a formatter that renders the pattern passes it directly.",
+        "template": "You have {count, plural, one {{count} car} other {{count} cars}}",
+        "params": {
+            "count": 3
+        },
+        "locale": "en",
+        "expected": "You have 3 cars",
+        "requires_intl": false
+    },
+    {
+        "description": "plural: formatter failure renders the one branch, value filled. ICU-6's vector: on PHP 8.3.19 with ICU 76.1, {count} inside a branch of its own plural parses and then fails to format (U_ARGUMENT_TYPE_MISMATCH), so on that formatter this row exercises the SDK's own branch selection; a formatter that renders the pattern passes it directly.",
+        "template": "You have {count, plural, one {{count} car} other {{count} cars}}",
+        "params": {
+            "count": 1
+        },
+        "locale": "en",
+        "expected": "You have 1 car",
+        "requires_intl": false
     }
 ]

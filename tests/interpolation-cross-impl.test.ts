@@ -8,10 +8,10 @@ import fixture from './fixtures/interpolation-reference.json';
 
 /**
  * Cross-implementation assertion for interpolation, against langsys-php's
- * shared fixture. Vendored from `langsys-php-sdk` @ `4c51eae`,
- * `tests/fixtures/interpolation-reference.json`, blob `725e7908ffac`.
+ * shared fixture. Vendored from `langsys-php-sdk` @ `c11a711`,
+ * `tests/fixtures/interpolation-reference.json`, blob `017bffdd1d83`.
  *
- * This is what takes ICU-1..5 off in-repo-only evidence. The recovery rules —
+ * This is what takes ICU-1..6 off in-repo-only evidence. The recovery rules —
  * `other`-branch selection, null-as-missing, `#` → `{argName}`, and the
  * recovered literal surviving the formatter — were previously proven only by
  * tests I wrote against code I wrote. Agreement with a PHP implementation of
@@ -21,7 +21,7 @@ import fixture from './fixtures/interpolation-reference.json';
  * present. JavaScript always has the formatter, so every row is asserted here
  * — the flag is recorded rather than used to skip.
  *
- * The last four rows call a select and a plural with no params: two omit the
+ * Four rows call a select and a plural with no params: two omit the
  * `params` key, and two pass an empty map. Where a row omits `params` the harness
  * omits the argument, so the case exercised is the missing argument itself, not
  * an empty map standing in for it. Every row also runs through `t()`, because
@@ -43,7 +43,7 @@ const hasParams = (row: Row) => Object.prototype.hasOwnProperty.call(row, 'param
 
 describe('interpolation agrees with langsys-php', () => {
     it('vendored the whole fixture', () => {
-        expect(rows).toHaveLength(23);
+        expect(rows).toHaveLength(25);
     });
 
     it('asserts every row, including the ones PHP gates on its intl extension', () => {
