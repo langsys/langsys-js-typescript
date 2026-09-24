@@ -2,6 +2,7 @@ import { LangsysAppAPI } from './api.js';
 import { canonicalizeLocale, maximizedLangScript } from './locale.js';
 import { Logger, logger } from './logger.js';
 import { autoDiscovery, batchLimit, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations } from './stores.js';
+import { DEFAULT_SERVER_MESSAGE_CATEGORY, type ServerMessage } from './server-messages.js';
 import { noticeUnusableWriteCapability, Translations } from './translations.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig, iLangsysInitConfig, WriteGrant } from './types/config.js';
@@ -201,6 +202,30 @@ class LangsysAppClass {
         this.debug.log('Seeded catalog for locale', normalizedLocale);
     }
 
+    /**
+     * Render a server message entry (spec MSG-5): its `template` through `t()`
+     * under the messages category, filled from its `params`. When the catalog
+     * holds no translation for the template, the entry's own `message` is shown
+     * instead, which is the text the server filled and possibly localised.
+     * `message` is never used as a lookup key.
+     *
+     * The lookup still goes through `t()` on a miss, so the template is
+     * recorded like any other missing phrase. A plural in the translation
+     * renders from a numeric param through the catalog's ICU, with no ICU
+     * written by the caller.
+     */
+    public renderServerMessage(entry: ServerMessage, category?: string): string {
+        const messagesCategory = category || this.config.messagesCategory || DEFAULT_SERVER_MESSAGE_CATEGORY;
+        const translated = this.Translations.lookup(entry.template, messagesCategory) !== null;
+        const t = this.Translations.tSignal.get() as unknown as (
+            phrase: string,
+            category: string,
+            params: Record<string, unknown>
+        ) => string;
+        const rendered = t(entry.template, messagesCategory, entry.params ?? {});
+        return translated ? rendered : entry.message;
+    }
+
     /** Whether a catalog is already published for this locale. */
     private isAlreadySeeded(locale: string): boolean {
         if (currentlyLoadedLocale.get() !== canonicalizeLocale(locale)) return false;
@@ -292,6 +317,7 @@ class LangsysAppClass {
                 debug,
                 ssrTokenStrategy,
                 writeGrant,
+                messagesCategory: initConfig.messagesCategory || DEFAULT_SERVER_MESSAGE_CATEGORY,
             };
             // Keep the exported config singleton in sync (used by Translate + API).
             Object.assign(configStore, this.config);

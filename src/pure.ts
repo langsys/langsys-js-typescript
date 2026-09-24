@@ -66,6 +66,17 @@ export { findUnusedParamKeys, interpolate, isICU } from './interpolate.js';
 
 export { md5, md5Legacy, isEmpty } from './utils.js';
 
+// Server messages: finding entries in a response and the template grammar.
+// Rendering one needs `t()`, so `renderServerMessage` is on the main entry only.
+export {
+    DEFAULT_SERVER_MESSAGE_CATEGORY,
+    SERVER_MESSAGE_CODES,
+    fillTemplate,
+    resolveServerMessages,
+    templateMarkers,
+    toServerMessage,
+} from './server-messages.js';
+
 export type { EncodedRichPhrase, RichTextNode } from './identity.js';
 export type { ParamPrimitive, TranslationParams } from './types/translation-fn.js';
 export type { iContentBlock } from './types/content-block.js';

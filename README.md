@@ -460,6 +460,29 @@ Use it standalone, or nested inside a `Translate` block to protect specific runs
 
 If a translation drops or unbalances a markup token, rendering degrades to plain text with the markers stripped — the meaning survives even when the markup doesn't.
 
+## Server messages
+
+A validation error or system message from your server arrives as entries shaped `{ field?, code, message, template, params? }`: `template` is the source sentence, `params` fills its `{name}` markers, `message` is the template already filled, `code` is a slug for your logic, and `field` is a dotted path. The Langsys server SDKs produce them; the body around them is your app's own.
+
+```ts
+import { renderServerMessage, resolveServerMessages } from 'langsys-js-typescript';
+
+const res = await fetch('/api/signup', { method: 'POST', body });
+if (!res.ok) {
+    for (const entry of resolveServerMessages(await res.json())) {
+        showError(entry.field, renderServerMessage(entry));
+        if (entry.code === 'already_taken') focus(entry.field);
+    }
+}
+```
+
+- **`resolveServerMessages(body, options?)`** finds every entry in a response, wherever it sits: the Langsys envelope, a Laravel error map, a JSON:API `errors[]`, your own shape. Pass `{ key: 'data.errors' }` to look in one place only, or `{ resolver }` to map failures your API sends in another form. It accepts the parsed body or its JSON text.
+- **`renderServerMessage(entry, category?)`** renders the entry's `template` through `t()`, filled from its `params`, in the current locale. When the catalog has no translation for the template it shows the entry's `message`, which is what the server wrote. It never looks up `message`. A count param drives an ICU plural in the translation with no ICU in your code.
+- **Branch on `code`, never on text.** Codes stay stable when wording or language changes. `SERVER_MESSAGE_CODES` lists the shared validation vocabulary.
+- **Category.** Templates are registered and rendered under `Errors`. If your server uses another category, set the same one with `messagesCategory` in `LangsysApp.init`, or every lookup misses.
+
+`templateMarkers`, `fillTemplate`, `resolveServerMessages` and `toServerMessage` are also exported from `langsys-js-typescript/pure`, with no DOM.
+
 ## Server-Side Rendering
 
 Pre-fetch translations on the server and seed them through `initialTranslations` to skip the duplicate client fetch on hydration:
@@ -571,8 +594,10 @@ import type {
 - `LangsysApp.getCurrencies(inLocale?)` / `.getCurrencyName(code, inLocale?)`
 - `LangsysApp.getLocales(inLocale?)` / `.getLocalesFlat(inLocale?)` / `.getLocalesData(inLocale?, force?)`
 - `LangsysApp.getLocaleName(code, short?, inLocale?)` / `.getLocaleNameWithLookup(...)`
+- `LangsysApp.renderServerMessage(entry, category?)` — render a server message entry: its template through `t()`, or its `message` when there is no translation.
+- `resolveServerMessages(body, options?)` — the server message entries in a response body, wherever they sit.
 - `setTeardownSignal(subscribe)` — on a host with no `document` (React Native), supply the "app is going away" signal: `subscribe(fire)` returns an unsubscribe, and the SDK flushes what is queued when `fire` is called.
-- Top-level: `t`, `tSignal`, `notifyNavigation`, `currentlyLoadedLocale`, `sTranslations`, `LangsysAppAPI`, `Translate`, `createSignal`, `getValue`, `persist`, `interpolate`, `Logger`, `logger`, `md5`, `isEmpty`.
+- Top-level: `t`, `tSignal`, `notifyNavigation`, `renderServerMessage`, `resolveServerMessages`, `currentlyLoadedLocale`, `sTranslations`, `LangsysAppAPI`, `Translate`, `createSignal`, `getValue`, `persist`, `interpolate`, `Logger`, `logger`, `md5`, `isEmpty`.
 
 ## License
 

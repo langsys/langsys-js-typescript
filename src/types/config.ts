@@ -107,6 +107,14 @@ export interface iLangsysInitConfig {
     ssrTokenStrategy?: 'client' | 'server' | 'auto';
 
     /**
+     * The category server messages are registered and rendered under (spec
+     * MSG-6). It must be the same category the server registers templates
+     * under, or every lookup misses and falls back to the entry's `message`.
+     * @default 'Errors'
+     */
+    messagesCategory?: string;
+
+    /**
      * Pre-fetched translation data to bypass the initial API call.
      * Useful for SSR scenarios to avoid duplicate fetches.
      */
@@ -150,6 +158,9 @@ export interface iLangsysConfig {
 
     /** Short-lived write grant sent as `X-Write-Grant`. See `WriteGrant`. */
     writeGrant?: WriteGrant;
+
+    /** The category server messages render under (MSG-6). */
+    messagesCategory?: string;
 
     /**
      * Token creation behavior during SSR.

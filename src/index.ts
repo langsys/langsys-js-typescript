@@ -56,6 +56,16 @@ export {
 export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber, type Updater } from './signal.js';
 export { persist, setPersistStorage, type PersistStorage } from './persist.js';
 export { setTeardownSignal, type TeardownSubscribe } from './teardown.js';
+export {
+    DEFAULT_SERVER_MESSAGE_CATEGORY,
+    SERVER_MESSAGE_CODES,
+    fillTemplate,
+    resolveServerMessages,
+    templateMarkers,
+    toServerMessage,
+    type ResolveServerMessagesOptions,
+    type ServerMessage,
+} from './server-messages.js';
 
 // Stores (advanced usage — direct subscription to translations / locale)
 // `writeEnabled` is the server-computed write capability for this session and
@@ -104,6 +114,7 @@ export type { iCategories, iTranslations } from './types/translations.js';
 import { LangsysApp as _LangsysApp } from './langsys-app.js';
 import type { TFunction } from './types/translation-fn.js';
 import type { WriteGrant as WriteGrantType } from './types/config.js';
+import type { ServerMessage as ServerMessageType } from './server-messages.js';
 
 export const t: TFunction = ((phrase: string, ...rest: unknown[]): string => {
     // Forward all args verbatim; the underlying TFunction implementation
@@ -120,6 +131,14 @@ export const tSignal = _LangsysApp.Translations.tSignal;
  * its misses are recorded for the new URL. Framework bindings wire this for you.
  */
 export const notifyNavigation = (): void => _LangsysApp.Translations.notifyNavigation();
+
+/**
+ * Render a server message entry (MSG-5): its template through `t()` under the
+ * messages category, or the entry's `message` when there is no translation.
+ * Standalone alias for `LangsysApp.renderServerMessage`.
+ */
+export const renderServerMessage = (entry: ServerMessageType, category?: string): string =>
+    _LangsysApp.renderServerMessage(entry, category);
 
 /**
  * Standalone alias for `LangsysApp.setWriteGrant` — supply the write grant

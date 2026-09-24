@@ -327,6 +327,12 @@ describe('the export list is a contract', () => {
         'normalizeMarkupPlaceholders',
         'normalizeTokenText',
         'stripC0Controls',
+        'DEFAULT_SERVER_MESSAGE_CATEGORY',
+        'SERVER_MESSAGE_CODES',
+        'fillTemplate',
+        'resolveServerMessages',
+        'templateMarkers',
+        'toServerMessage',
     ];
 
     it('exports exactly the documented set', () => {
