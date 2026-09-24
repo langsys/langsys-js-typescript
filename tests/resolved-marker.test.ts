@@ -165,6 +165,34 @@ describe('text inside a resolved scope is never recorded', () => {
     });
 });
 
+describe('a bare t() is outside the rule: it has no subtree, and GATE-9 governs it', () => {
+    // The Test's negative control from spec 8.2.10. A reader that walked up from any
+    // call site would suppress these, and pass every case above; these fail it.
+    const bareT = () => LangsysApp.Translations.t as unknown as (phrase: string, category: string) => string;
+
+    it('records its miss under a resolved document root', async () => {
+        document.documentElement.setAttribute('data-ls-resolved', 'es-es');
+        bareT()('Pay now', 'UI');
+        await settle();
+        expect(queue()).toEqual(['Pay now']);
+    });
+
+    it('and on the read lane, reports the page', async () => {
+        document.documentElement.setAttribute('data-ls-resolved', 'es-es');
+        writeEnabled.set(false);
+        bareT()('Pay now', 'UI');
+        await vi.advanceTimersByTimeAsync(31_000);
+        expect(hinted).toHaveLength(1);
+    });
+
+    it('while a resolved host on the same page registers nothing', async () => {
+        await mount(`<p>${SPANISH}</p>`, { marker: 'es-es' });
+        bareT()('Pay now', 'UI');
+        await settle();
+        expect(queue()).toEqual(['Pay now']);
+    });
+});
+
 describe('how the marker is read', () => {
     it('the legacy spelling is accepted, as MARK-2 requires', async () => {
         await mount(`<p>${SPANISH}</p>`, { marker: 'es-es', markerAttr: 'data-langsys-resolved' });
