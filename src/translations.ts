@@ -3,6 +3,7 @@ import { recordMissForDiscovery } from './discovery.js';
 import { _registerTeardownFlush } from './teardown.js';
 import { stripC0Controls } from './identity.js';
 import { interpolate } from './interpolate.js';
+import { createLegacyKeys, type LegacyKeyFile, type LegacyKeys } from './legacy-keys.js';
 import { canonicalizeLocale } from './locale.js';
 import { Logger, logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
@@ -145,6 +146,9 @@ export class Translations {
     private missingTokens: iTokenUpdate[] = [];
     /** Phrases already reported under REG-11, so the warning fires once each. */
     private warnedEllipsis = new Set<string>();
+    /** The legacy-key mode (MIG-1): null unless configured, and then `t()` does no key lookup at all. */
+    private legacyKeys: LegacyKeys | null = null;
+    private warnedLegacy = new Set<string>();
     private timer: ReturnType<typeof setInterval> | null = null;
     /**
      * Catalog fetches still in flight. While any is, queued tokens are held: the flush
@@ -321,8 +325,12 @@ export class Translations {
         //   t(phrase, 'Category')                      → category='Category', params=undefined
         //   t(phrase, 'Category', {params...})         → category='Category', params={params}
         const fn = ((phrase: string, ...rest: unknown[]): string => {
-            const category = typeof rest[0] === 'string' ? rest[0] : '';
+            let category = typeof rest[0] === 'string' ? rest[0] : '';
             const params = (typeof rest[0] === 'object' ? rest[0] : rest[1]) as Record<string, unknown> | undefined;
+
+            // In the legacy-key mode the argument is resolved as a key first (MIG-2):
+            // a hit becomes the key's converted source value, never the key string.
+            if (this.legacyKeys) ({ phrase, category } = this.resolveLegacyKey(phrase, category));
 
             const cats = sTranslations.get();
             // '__uncategorized__' is a server-internal bucket name used only
@@ -375,6 +383,44 @@ export class Translations {
             return interpolate(translated, params ?? {}, currentlyLoadedLocale.get());
         }) as TFunction;
         return fn;
+    }
+
+    /**
+     * Turn on the legacy-key mode with the app's kept source-language files, or
+     * turn it off with null (MIG-1). Throws `LegacyFormatError` for a file this
+     * core does not read (MIG-7), before anything resolves through it.
+     */
+    public setLegacyKeys(files: LegacyKeyFile[] | null | undefined): void {
+        this.legacyKeys = files && files.length > 0 ? createLegacyKeys(files) : null;
+        this.warnedLegacy.clear();
+    }
+
+    /**
+     * A key hit is the key's converted value, and the key's namespace is the
+     * category unless the call passed one (MIG-3, MIG-5). A miss is the argument
+     * as literal source text, which Langsys `t()` does not convert (MIG-2), and
+     * is noted at debug so a mistyped or removed key is visible (MIG-6). A value
+     * the conversion does not recognise registers as written and warns at every
+     * log level, naming the file and the key (MIG-4).
+     */
+    private resolveLegacyKey(arg: string, category: string): { phrase: string; category: string } {
+        const hit = this.legacyKeys!.resolve(arg);
+        if (!hit) {
+            if (logger.debugEnabled && this.warnOnce(`miss\0${arg}`)) {
+                logger.warn(`"${arg}" is not a key in the legacy source files, so it registers as literal source text.`);
+            }
+            return { phrase: arg, category };
+        }
+        if (!hit.recognised && this.warnOnce(`value\0${hit.file}\0${hit.key}`)) {
+            logger.warn(`The legacy key "${hit.key}" in ${hit.file} ${hit.issue}, so its value registers exactly as written.`);
+        }
+        return { phrase: hit.phrase, category: category || hit.category || '' };
+    }
+
+    private warnOnce(key: string): boolean {
+        if (this.warnedLegacy.has(key)) return false;
+        this.warnedLegacy.add(key);
+        return true;
     }
 
     private missingToken(category: string, token: string | undefined | null) {

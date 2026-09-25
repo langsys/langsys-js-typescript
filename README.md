@@ -460,6 +460,39 @@ Use it standalone, or nested inside a `Translate` block to protect specific runs
 
 If a translation drops or unbalances a markup token, rendering degrades to plain text with the markers stripped — the meaning survives even when the markup doesn't.
 
+## Migrating from i18n keys
+
+An app on vue-i18n or i18next can move to Langsys without rewriting its call sites. Keep the source-language file, delete every other language's file, and hand the kept file to `init`:
+
+```ts
+import en from './locales/en.json';
+
+await LangsysApp.init({
+    projectid, key, UserLocaleStore,
+    legacyKeys: [{ name: 'locales/en.json', format: 'vue-i18n', data: en }],
+});
+
+t('checkout.submit');          // → "Pay now", registered under category "checkout"
+t('Welcome back!');            // not a key: literal source text, as always
+```
+
+`t()` resolves its argument as a key first. On a hit the key's value is the phrase — the key itself never reaches Langsys — so a later codemod can inline the English and delete the file without moving an id. The key's first segment is the category unless the call passes one.
+
+Values are converted to Langsys syntax as they are read:
+
+- **Placeholders**, whatever the format: `{{name}}`, `:name`, `%{name}` and `%(name)s` become `{name}`, and `%%` is a literal `%`.
+- **Plurals**, by the file's `format`:
+    - `vue-i18n`: `car | cars` becomes `{count, plural, =1 {car} other {cars}}`, and three forms add `=0`. This keeps vue's selection by exact count.
+    - `i18next`: `items_one` / `items_other` become one plural under `items`, by CLDR category. The older `items` / `items_plural` pair works too.
+    - `plain`, the default: no plurals, so a `|` is text.
+- **Anything the conversion cannot express**, such as a `|` in a `plain` file, `:Name`, or a formatted `%(amount).2f`, registers exactly as written and logs a warning naming the file and key.
+
+A plural's argument is `count`, so pass `{ count }` in params. `name` is what errors report. `namespace` makes a per-namespace file answer only keys under that prefix, with the namespace as their category. With several files, the first that holds a key answers.
+
+This core reads `i18next`, `vue-i18n` and `plain`. A file in another format (`laravel`, `rails-i18n`, `gettext`, or a name ending `.php`, `.yml`, `.po` or `.mo`) makes `init` throw `LegacyFormatError`, naming the format and the file. Leave `legacyKeys` unset once the migration is done, and `t()` does no key lookup at all.
+
+`convertLegacyValue`, `convertLegacyPluralForms`, `convertLegacyCall` and `createLegacyKeys` are exported from `langsys-js-typescript/pure` too, so a server or a framework bridge converts through the same code and registers the same phrase.
+
 ## Server messages
 
 A validation error or system message from your server arrives as entries shaped `{ field?, code, message, template, params? }`: `template` is the source sentence, `params` fills its `{name}` markers, `message` is the template already filled, `code` is a slug for your logic, and `field` is a dotted path. The Langsys server SDKs produce them; the body around them is your app's own.
@@ -595,6 +628,7 @@ import type {
 - `LangsysApp.getLocales(inLocale?)` / `.getLocalesFlat(inLocale?)` / `.getLocalesData(inLocale?, force?)`
 - `LangsysApp.getLocaleName(code, short?, inLocale?)` / `.getLocaleNameWithLookup(...)`
 - `LangsysApp.renderServerMessage(entry, category?)` — render a server message entry: its template through `t()`, or its `message` when there is no translation.
+- `createLegacyKeys(files)` — the legacy-key resolver `t()` uses in migrate mode, for a server or bridge that reads its own files.
 - `resolveServerMessages(body, options?)` — the server message entries in a response body, wherever they sit.
 - `setTeardownSignal(subscribe)` — on a host with no `document` (React Native), supply the "app is going away" signal: `subscribe(fire)` returns an unsubscribe, and the SDK flushes what is queued when `fire` is called.
 - Top-level: `t`, `tSignal`, `notifyNavigation`, `renderServerMessage`, `resolveServerMessages`, `currentlyLoadedLocale`, `sTranslations`, `LangsysAppAPI`, `Translate`, `createSignal`, `getValue`, `persist`, `interpolate`, `Logger`, `logger`, `md5`, `isEmpty`.

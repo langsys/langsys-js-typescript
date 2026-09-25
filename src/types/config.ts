@@ -1,3 +1,4 @@
+import type { LegacyKeyFile } from '../legacy-keys.js';
 import type { iCategories } from './translations.js';
 
 /**
@@ -105,6 +106,15 @@ export interface iLangsysInitConfig {
      * @default 'client'
      */
     ssrTokenStrategy?: 'client' | 'server' | 'auto';
+
+    /**
+     * Turn on the legacy-key mode (spec MIG): the app's kept source-language
+     * files, each parsed, as `{ name, format?, namespace?, data }`. `t()` then
+     * resolves its argument as a key first; a key's value is the phrase, never
+     * the key. Formats are `i18next`, `vue-i18n` and `plain` (the default); any
+     * other makes `init` throw, naming the file. Unset, `t()` does no key lookup.
+     */
+    legacyKeys?: LegacyKeyFile[];
 
     /**
      * The category server messages are registered and rendered under (spec

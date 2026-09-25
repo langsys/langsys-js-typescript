@@ -303,6 +303,10 @@ class LangsysAppClass {
         // stores and every internal cache key uses as the identity.
         baseLocale = canonicalizeLocale(baseLocale);
 
+        // The legacy-key mode is on only when configured, and a file this core
+        // cannot read throws here, before anything resolves through it (MIG-1, MIG-7).
+        this.Translations.setLegacyKeys(initConfig.legacyKeys);
+
         // Before `validate()`, deliberately: authorizing against the default
         // host and then switching is the exact failure `setBaseUrl`-after-init
         // produces, and it is silent.

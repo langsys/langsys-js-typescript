@@ -66,6 +66,19 @@ export { findUnusedParamKeys, interpolate, isICU } from './interpolate.js';
 
 export { md5, md5Legacy, isEmpty } from './utils.js';
 
+// Legacy-key migration: the conversion decides the registered phrase, so every
+// JS entry point converts through these rather than a copy (MIG-4, MIG-7).
+export {
+    LEGACY_FORMATS,
+    SUPPORTED_LEGACY_FORMATS,
+    convertLegacyCall,
+    convertLegacyPluralForms,
+    convertLegacyValue,
+} from './legacy-value.js';
+export { LegacyFormatError, createLegacyKeys } from './legacy-keys.js';
+export type { LegacyConversion, LegacyEntryPoint, LegacyFormat } from './legacy-value.js';
+export type { LegacyKeyFile, LegacyKeyHit, LegacyKeyProblem, LegacyKeys } from './legacy-keys.js';
+
 // Server messages: finding entries in a response and the template grammar.
 // Rendering one needs `t()`, so `renderServerMessage` is on the main entry only.
 export {

@@ -57,6 +57,24 @@ export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber
 export { persist, setPersistStorage, type PersistStorage } from './persist.js';
 export { setTeardownSignal, type TeardownSubscribe } from './teardown.js';
 export {
+    LEGACY_FORMATS,
+    SUPPORTED_LEGACY_FORMATS,
+    convertLegacyCall,
+    convertLegacyPluralForms,
+    convertLegacyValue,
+    type LegacyConversion,
+    type LegacyEntryPoint,
+    type LegacyFormat,
+} from './legacy-value.js';
+export {
+    LegacyFormatError,
+    createLegacyKeys,
+    type LegacyKeyFile,
+    type LegacyKeyHit,
+    type LegacyKeyProblem,
+    type LegacyKeys,
+} from './legacy-keys.js';
+export {
     DEFAULT_SERVER_MESSAGE_CATEGORY,
     SERVER_MESSAGE_CODES,
     fillTemplate,
