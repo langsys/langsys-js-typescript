@@ -163,11 +163,17 @@ export function warnUnmatchedParams(
  *
  * `params` may be omitted, and behaves as an empty map: a select or plural renders
  * its `other` branch (ICU-1). Omitting it used to throw a TypeError inside recovery.
+ *
+ * `options` routes the two notices to the caller instead of this module's logger,
+ * for a host with a logger of its own — a server with a per-instance debug
+ * setting, where this module's process-wide logger is the wrong switch. See
+ * `InterpolateOptions`.
  */
 export function interpolate(
     template: string,
     params: Record<string, unknown> = {},
     locale?: string,
+    options: InterpolateOptions = {},
 ): string {
     template = adoptPercentPlaceholders(template, params);
 
@@ -206,7 +212,10 @@ export function interpolate(
         // ICU source to the page — see `_recoverMissingArgs`.
         const defaulted: string[] = [];
         const recovered = _recoverMissingArgs(JSON.parse(JSON.stringify(ast)) as IcuNode[], params, defaulted);
-        if (defaulted.length) noteDefaultedArgs(template, resolved, defaulted);
+        if (defaulted.length) {
+            if (options.onDefaulted) options.onDefaulted([...new Set(defaulted)], template, resolved);
+            else noteDefaultedArgs(template, resolved, defaulted);
+        }
         if (defaulted.length || formatterError === undefined) {
             try {
                 return new IntlMessageFormat(recovered as never, resolved).format(params) as string;
@@ -218,10 +227,54 @@ export function interpolate(
         // Nothing was missing, or the recovered message still would not format:
         // the formatter itself failed on this phrase (ICU-6). Render it without
         // the formatter, and say so at every log level.
-        noteFormatterFailure(template, resolved, formatterError);
+        if (options.onFormatterFailure) options.onFormatterFailure(formatterError, template, resolved);
+        else noteFormatterFailure(template, resolved, formatterError);
         return renderWithoutFormatter(ast as IcuNode[], params, resolved);
     }
     return simpleInterpolate(template, params, locale);
+}
+
+/**
+ * The argument names `interpolate` would default for these params (ICU-4): each
+ * `select`, `plural` or plain argument the template uses and `params` does not
+ * supply (`null` counts as not supplied), once each, in the order the recovery
+ * meets them. Empty for a plain template or one that does not parse.
+ *
+ * The same walk `interpolate` recovers with, so a host that emits the notice
+ * through its own logger names exactly the arguments the render defaulted.
+ */
+export function defaultedArguments(template: string, params: Record<string, unknown> = {}, locale = 'en'): string[] {
+    template = adoptPercentPlaceholders(template, params);
+    if (!isICU(template)) return [];
+    let ast: unknown;
+    try {
+        ast = (new IntlMessageFormat(template, locale) as unknown as { ast?: unknown }).ast;
+    } catch {
+        return [];
+    }
+    if (!Array.isArray(ast)) return [];
+    const defaulted: string[] = [];
+    _recoverMissingArgs(JSON.parse(JSON.stringify(ast)) as IcuNode[], params, defaulted);
+    return [...new Set(defaulted)];
+}
+
+/**
+ * Where `interpolate` reports what it recovered from. Each handler, when given,
+ * replaces this module's logger for that notice and is called on EVERY
+ * occurrence: gating and deduplication are then the caller's, so a host applies
+ * its own debug switch and its own `(template, locale)` dedupe. What the core
+ * logger does, and what a handler should reproduce:
+ *
+ * - `onDefaulted` (ICU-4): a missing argument was recovered with its neutral
+ *   branch. Debug level only; names every defaulted argument, once each, and the
+ *   locale.
+ * - `onFormatterFailure` (ICU-6): the formatter failed and the SDK's own branch
+ *   selection rendered the phrase. At every log level, naming the phrase, the
+ *   locale and the error.
+ */
+export interface InterpolateOptions {
+    onDefaulted?: (names: string[], template: string, locale: string) => void;
+    onFormatterFailure?: (error: unknown, template: string, locale: string) => void;
 }
 
 /** ICU AST node types we care about (from `@formatjs/icu-messageformat-parser`). */

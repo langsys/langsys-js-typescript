@@ -119,7 +119,7 @@ export { Logger, logger } from './logger.js';
 
 // Utility exports
 export { md5, md5Legacy, isEmpty } from './utils.js';
-export { findUnusedParamKeys, interpolate, isICU, normalizeMarkupPlaceholders } from './interpolate.js';
+export { defaultedArguments, findUnusedParamKeys, interpolate, isICU, normalizeMarkupPlaceholders, type InterpolateOptions } from './interpolate.js';
 export { canonicalizeLocale } from './locale.js';
 
 // Type re-exports

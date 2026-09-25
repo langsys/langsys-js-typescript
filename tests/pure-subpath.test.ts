@@ -315,6 +315,7 @@ describe('the export list is a contract', () => {
         'canonicalContentBlockJson',
         'canonicalizeLocale',
         'encodeRichPhrase',
+        'defaultedArguments',
         'findUnusedParamKeys',
         'generateCustomId',
         'generateLegacyCustomId',

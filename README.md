@@ -643,6 +643,7 @@ import type {
 - `LangsysApp.getLocales(inLocale?)` / `.getLocalesFlat(inLocale?)` / `.getLocalesData(inLocale?, force?)`
 - `LangsysApp.getLocaleName(code, short?, inLocale?)` / `.getLocaleNameWithLookup(...)`
 - `LangsysApp.renderServerMessage(entry, category?)` — render a server message entry: its template through `t()`, or its `message` when there is no translation.
+- `interpolate(template, params?, locale?, options?)` — ICU and `{name}` interpolation; `options.onDefaulted` and `options.onFormatterFailure` hand its notices to a logger of your own. `defaultedArguments(template, params)` names the arguments a render would default.
 - `LangsysApp.loadSnapshot(snapshot, locale?)` — load a catalog snapshot synchronously as the preloaded catalog; the fetched catalog still replaces it.
 - `createLegacyKeys(files)` — the legacy-key resolver `t()` uses in migrate mode, for a server or bridge that reads its own files.
 - `resolveServerMessages(body, options?)` — the server message entries in a response body, wherever they sit.

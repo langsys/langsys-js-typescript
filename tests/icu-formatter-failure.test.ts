@@ -107,6 +107,19 @@ describe('the warning', () => {
         expect(warnings()).toHaveLength(2);
     });
 
+    it('onFormatterFailure receives the error, template and locale on every call, and the core logger stays silent', () => {
+        failure.force = true;
+        const template = fresh(VECTOR);
+        const calls: unknown[][] = [];
+        for (let i = 0; i < 2; i++) {
+            expect(interpolate(template, { count: 3 }, 'en', { onFormatterFailure: (...args) => calls.push(args) })).toMatch(/^You have 3 cars /);
+        }
+        expect(calls).toHaveLength(2);
+        expect(String(calls[0]![0])).toContain('FORCED_FORMATTER_FAILURE');
+        expect(calls[0]!.slice(1)).toEqual([template, 'en']);
+        expect(warnings()).toEqual([]);
+    });
+
     it('control: a missing argument the formatter recovers from is NOT this warning', () => {
         interpolate(fresh('{g, select, male {He} other {They}} left'), {}, 'en');
         expect(warnings()).toEqual([]);

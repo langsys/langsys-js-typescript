@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { findUnusedParamKeys, interpolate, isICU } from '../src/interpolate.js';
+import { defaultedArguments, findUnusedParamKeys, interpolate, isICU } from '../src/interpolate.js';
 import { logger } from '../src/logger.js';
 
 describe('isICU', () => {
@@ -417,5 +417,67 @@ describe('findUnusedParamKeys agrees with what interpolate actually resolves', (
         // Texts are joined on NUL; a key must match within one text, not across
         // two. `%` + NUL + `name%` must not count as `%name%`.
         expect(findUnusedParamKeys(['ends with %', 'name% starts'], { name: 'Ada' })).toEqual(['name']);
+    });
+});
+
+describe('interpolate — notices routed to the caller (ICU-4 and ICU-6 for a host with its own logger)', () => {
+    // A server with a per-instance debug setting cannot reach this module's
+    // process-wide logger. These show the notices reach its handlers instead,
+    // on every occurrence, and that the core logger then stays silent.
+    afterEach(() => {
+        logger.debugEnabled = false;
+        vi.restoreAllMocks();
+    });
+
+    const SELECT = (tag: string) => `{g, select, male {He ${tag}} other {They ${tag}}} left {count, plural, one {# day} other {# days}} ago`;
+
+    it('onDefaulted receives every defaulted name once, the template and the locale, on every call', () => {
+        const calls: unknown[][] = [];
+        const template = SELECT('a');
+        for (let i = 0; i < 2; i++) interpolate(template, {}, 'es', { onDefaulted: (...args) => calls.push(args) });
+        expect(calls).toEqual([
+            [['g', 'count'], template, 'es'],
+            [['g', 'count'], template, 'es'],
+        ]);
+    });
+
+    it('with a handler, the core logger stays silent even with debug on', () => {
+        logger.debugEnabled = true;
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        interpolate(SELECT('b'), {}, 'es', { onDefaulted: () => {} });
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('control: without a handler the core notice still fires under debug', () => {
+        logger.debugEnabled = true;
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        interpolate(SELECT('c'), {}, 'es');
+        expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('nothing is reported when every argument is supplied', () => {
+        const onDefaulted = vi.fn();
+        interpolate(SELECT('d'), { g: 'male', count: 2 }, 'es', { onDefaulted });
+        expect(onDefaulted).not.toHaveBeenCalled();
+    });
+
+    it('defaultedArguments names exactly what the render defaulted, null counting as missing', () => {
+        const cases: Array<[string, Record<string, unknown>]> = [
+            [SELECT('e'), {}],
+            [SELECT('e'), { g: 'male' }],
+            [SELECT('e'), { g: null, count: 3 }],
+            [SELECT('e'), { g: 'x', count: 1 }],
+            ['{name} has {n, plural, one {# car} other {# cars}}', { name: 'Ada' }],
+            ['Plain {name} text', {}],
+            ['{broken, select, ', {}],
+        ];
+        for (const [template, params] of cases) {
+            let reported: string[] = [];
+            interpolate(template, params, 'en', { onDefaulted: (names) => (reported = names) });
+            expect(defaultedArguments(template, params, 'en'), template).toEqual(reported);
+        }
+        expect(defaultedArguments(SELECT('e'), {})).toEqual(['g', 'count']);
+        expect(defaultedArguments(SELECT('e'), { g: null, count: 3 })).toEqual(['g']);
+        expect(defaultedArguments('Plain {name} text', {})).toEqual([]);
     });
 });

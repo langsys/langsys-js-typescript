@@ -62,7 +62,8 @@ export {
 
 export { canonicalizeLocale, maximizedLangScript } from './locale.js';
 
-export { findUnusedParamKeys, interpolate, isICU } from './interpolate.js';
+export { defaultedArguments, findUnusedParamKeys, interpolate, isICU } from './interpolate.js';
+export type { InterpolateOptions } from './interpolate.js';
 
 export { md5, md5Legacy, isEmpty } from './utils.js';
 
