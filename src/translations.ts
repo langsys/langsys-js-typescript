@@ -823,6 +823,17 @@ export class Translations {
     }
 
     /**
+     * A catalog is present for rendering, but it is not the catalog of record:
+     * a snapshot (SNAP-3). Unlike `markLoaded` nothing is recorded as fetched,
+     * so the next settle for the locale still fetches the catalog and replaces
+     * it. What waits on `ready()` renders from it now.
+     */
+    public markSeeded(): void {
+        catalogUnavailable.set(false);
+        this.readyResolve();
+    }
+
+    /**
      * React to a user-locale change. Fetches translations if we haven't
      * loaded this locale within the last 60s (or if forced).
      */

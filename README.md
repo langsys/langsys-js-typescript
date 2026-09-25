@@ -516,6 +516,21 @@ if (!res.ok) {
 
 `templateMarkers`, `fillTemplate`, `resolveServerMessages` and `toServerMessage` are also exported from `langsys-js-typescript/pure`, with no DOM.
 
+## Catalog snapshots
+
+A snapshot is a project's catalog for chosen locales and categories, exported to a file. A mobile bundle, a first paint or an offline session can then render translations without calling the API. Any Langsys SDK's export tool writes the same `langsys-catalog-snapshot` format, and this SDK loads it synchronously:
+
+```ts
+import snapshot from './langsys-snapshot.json';
+
+LangsysApp.loadSnapshot(snapshot);        // before first render; returns false if it has no catalog for the locale
+t('Save', 'UI');                          // → "Guardar", on the next line
+```
+
+The locale is the user's current one, else the snapshot's base locale, or pass it as the second argument. The snapshot is a cache, not the catalog of record. `init()` still fetches the catalog, which replaces it and supplies any phrase it lacked. With no network the snapshot keeps rendering, and anything it lacks shows its source text.
+
+Never edit a snapshot by hand; export it again. Its checksum covers the contents, so an edited file is refused with a `SnapshotError`, as are a different format, an unsupported version and a missing member. `buildSnapshot` writes the format for an export tool of your own. It and `parseSnapshot` are also on `langsys-js-typescript/pure`.
+
 ## Server-Side Rendering
 
 Pre-fetch translations on the server and seed them through `initialTranslations` to skip the duplicate client fetch on hydration:
@@ -628,6 +643,7 @@ import type {
 - `LangsysApp.getLocales(inLocale?)` / `.getLocalesFlat(inLocale?)` / `.getLocalesData(inLocale?, force?)`
 - `LangsysApp.getLocaleName(code, short?, inLocale?)` / `.getLocaleNameWithLookup(...)`
 - `LangsysApp.renderServerMessage(entry, category?)` — render a server message entry: its template through `t()`, or its `message` when there is no translation.
+- `LangsysApp.loadSnapshot(snapshot, locale?)` — load a catalog snapshot synchronously as the preloaded catalog; the fetched catalog still replaces it.
 - `createLegacyKeys(files)` — the legacy-key resolver `t()` uses in migrate mode, for a server or bridge that reads its own files.
 - `resolveServerMessages(body, options?)` — the server message entries in a response body, wherever they sit.
 - `setTeardownSignal(subscribe)` — on a host with no `document` (React Native), supply the "app is going away" signal: `subscribe(fire)` returns an unsubscribe, and the SDK flushes what is queued when `fire` is called.

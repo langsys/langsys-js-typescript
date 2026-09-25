@@ -79,6 +79,19 @@ export { LegacyFormatError, createLegacyKeys } from './legacy-keys.js';
 export type { LegacyConversion, LegacyEntryPoint, LegacyFormat } from './legacy-value.js';
 export type { LegacyKeyFile, LegacyKeyHit, LegacyKeyProblem, LegacyKeys } from './legacy-keys.js';
 
+// Catalog snapshots: the one file format every SDK writes and reads (SNAP-1).
+// Loading one into the SDK is `LangsysApp.loadSnapshot`, on the main entry.
+export {
+    SNAPSHOT_FORMAT,
+    SNAPSHOT_VERSION,
+    SnapshotError,
+    buildSnapshot,
+    canonicalSnapshotJson,
+    parseSnapshot,
+    snapshotChecksum,
+} from './snapshot.js';
+export type { CatalogSnapshot, SnapshotCatalog, SnapshotCategory, SnapshotPayload, SnapshotRefusal } from './snapshot.js';
+
 // Server messages: finding entries in a response and the template grammar.
 // Rendering one needs `t()`, so `renderServerMessage` is on the main entry only.
 export {

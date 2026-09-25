@@ -21,8 +21,31 @@
    "plain"
   ]
  },
+ "core_entry_points": {
+  "js": [
+   "t",
+   "vue-i18n",
+   "i18next"
+  ],
+  "php": [
+   "t",
+   "__",
+   "trans_choice"
+  ],
+  "python": [
+   "t",
+   "gettext",
+   "ngettext",
+   "pgettext",
+   "blocktranslate"
+  ],
+  "ruby": [
+   "t",
+   "I18n.t"
+  ]
+ },
  "how_to_row_against_it": {
-  "scope": "Every row names its format. A core runs the rows whose format is in its own set (core_formats, from MIG-7) and skips the rest; for file rows it expects a refusal instead, see refusals. Expected values in rows outside the JS set are derived from MIG-2 and MIG-4 and confirmed by the lane that runs them; a lane that disagrees records it and the owner reconciles, never the vendored copy.",
+  "scope": "Every row names its format. A core runs the rows whose format is in its own set (core_formats, from MIG-7) and records the rest n/a (format); for file rows it expects a refusal instead, see refusals. A calls row runs where its entry_point is one of the core's own (core_entry_points) and is recorded n/a (entry point) elsewhere: entry points belong to a core, not to a format, so a core that reads gettext files need not have Django's gettext() call. Expected values in rows outside the JS set are derived from MIG-2 and MIG-4 and confirmed by the lane that runs them; a lane that disagrees records it and the owner reconciles, never the vendored copy.",
   "value_conversion": "convert(value, format) must yield expected, with recognised as given. When recognised is false the phrase is the value exactly as written, and the SDK warns.",
   "plural_forms": "Forms keyed by category — i18next's suffix pairs, a rails-i18n count hash (zero, 0, 1, one, ..., other), a gettext msgid/msgid_plural pair — convert to expected. Exact branches first ascending, then zero, one, two, few, many, other; the number is # inside branches.",
   "calls": "A literal miss (MIG-2) through entry_point converts to expected. same_phrase_as names a row that must register the identical phrase. category, when present, is the category the call registers under.",

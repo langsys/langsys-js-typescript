@@ -3,6 +3,7 @@ import { canonicalizeLocale, maximizedLangScript } from './locale.js';
 import { Logger, logger } from './logger.js';
 import { autoDiscovery, batchLimit, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations } from './stores.js';
 import { DEFAULT_SERVER_MESSAGE_CATEGORY, type ServerMessage } from './server-messages.js';
+import { parseSnapshot, type CatalogSnapshot } from './snapshot.js';
 import { noticeUnusableWriteCapability, Translations } from './translations.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig, iLangsysInitConfig, WriteGrant } from './types/config.js';
@@ -181,6 +182,43 @@ class LangsysAppClass {
      * config cannot clobber a catalog a client entry put there first.
      */
     public seedCatalog(catalog: iCategories, locale: string): void {
+        this.publishSeed(catalog, locale);
+        // So a later `change()` for this locale is a cache hit rather than a
+        // fetch that overwrites what the server already sent, and so
+        // `ready()` resolves for consumers that await it before `init`.
+        this.Translations.markLoaded(canonicalizeLocale(locale));
+        this.debug.log('Seeded catalog for locale', canonicalizeLocale(locale));
+    }
+
+    /**
+     * Load a catalog snapshot (spec SNAP-2) SYNCHRONOUSLY as the preloaded
+     * catalog for `locale` — the current user locale by default, else the
+     * snapshot's base locale. A first render or an offline session then has
+     * its translations with no network call.
+     *
+     * The snapshot is a cache, never the catalog of record (SNAP-3): once
+     * `init()` runs, the catalog is fetched as usual and replaces it, and a
+     * phrase the snapshot lacks is found there. With no network the snapshot
+     * keeps rendering, and anything it lacks shows its source text.
+     *
+     * Throws `SnapshotError`, naming the reason, for a file that is not a
+     * snapshot, an unsupported version, a missing member, or a checksum the
+     * contents no longer match — an edited snapshot is refused, not served.
+     * Returns false when the snapshot holds no catalog for the locale.
+     */
+    public loadSnapshot(snapshot: string | CatalogSnapshot, locale?: string): boolean {
+        const parsed = parseSnapshot(snapshot);
+        const wanted = canonicalizeLocale(locale || this.config.sUserLocale?.get?.() || parsed.base_locale);
+        const catalog = parsed.catalog[wanted];
+        if (!catalog) return false;
+        this.publishSeed(JSON.parse(JSON.stringify(catalog)) as iCategories, wanted);
+        this.Translations.markSeeded();
+        this.debug.log('Loaded snapshot catalog for locale', wanted);
+        return true;
+    }
+
+    /** Publish a catalog and its locale — the one set of rules for what a seeded catalog looks like. */
+    private publishSeed(catalog: iCategories, locale: string): void {
         const normalizedLocale = canonicalizeLocale(locale);
 
         if (!catalog['__uncategorized__']) {
@@ -195,11 +233,6 @@ class LangsysAppClass {
 
         sTranslations.set(catalog);
         currentlyLoadedLocale.set(normalizedLocale);
-        // So a later `change()` for this locale is a cache hit rather than a
-        // fetch that overwrites what the server already sent, and so
-        // `ready()` resolves for consumers that await it before `init`.
-        this.Translations.markLoaded(normalizedLocale);
-        this.debug.log('Seeded catalog for locale', normalizedLocale);
     }
 
     /**

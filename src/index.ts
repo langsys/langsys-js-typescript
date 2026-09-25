@@ -57,6 +57,20 @@ export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber
 export { persist, setPersistStorage, type PersistStorage } from './persist.js';
 export { setTeardownSignal, type TeardownSubscribe } from './teardown.js';
 export {
+    SNAPSHOT_FORMAT,
+    SNAPSHOT_VERSION,
+    SnapshotError,
+    buildSnapshot,
+    canonicalSnapshotJson,
+    parseSnapshot,
+    snapshotChecksum,
+    type CatalogSnapshot,
+    type SnapshotCatalog,
+    type SnapshotCategory,
+    type SnapshotPayload,
+    type SnapshotRefusal,
+} from './snapshot.js';
+export {
     LEGACY_FORMATS,
     SUPPORTED_LEGACY_FORMATS,
     convertLegacyCall,

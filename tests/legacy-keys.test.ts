@@ -27,6 +27,7 @@ import vectors from './fixtures/mig-vectors.json';
 type Row = Record<string, unknown> & { id: string; format: string | null };
 const doc = vectors as unknown as {
     core_formats: Record<string, string[]>;
+    core_entry_points: Record<string, string[]>;
     value_conversion: Array<Row & { value: string; expected: string; recognised: boolean }>;
     plural_forms: Array<Row & { forms: Record<string, string>; expected: string | null; recognised: boolean }>;
     calls: Array<Row & { entry_point: string; text: string | string[]; params: Record<string, unknown>; expected: string; recognised: boolean; same_phrase_as?: string }>;
@@ -36,7 +37,7 @@ const doc = vectors as unknown as {
 
 const JS = doc.core_formats.js!;
 const ours = <T extends { format: string | null }>(rows: T[]) => rows.filter((r) => r.format !== null && JS.includes(r.format));
-const JS_ENTRY_POINTS = ['t', 'vue-i18n', 'i18next'];
+const JS_ENTRY_POINTS = doc.core_entry_points.js!;
 
 describe('the vector file', () => {
     it('is whole, and names the format on every row', () => {
@@ -51,6 +52,13 @@ describe('the vector file', () => {
 
     it("this core's set is the spec's JS set", () => {
         expect(JS).toEqual([...SUPPORTED_LEGACY_FORMATS]);
+    });
+
+    it("this core's entry points are the ones convertLegacyCall accepts, and every calls row names a core that runs it", () => {
+        expect(JS_ENTRY_POINTS).toEqual(['t', 'vue-i18n', 'i18next']);
+        for (const ep of JS_ENTRY_POINTS) expect(() => convertLegacyCall('x', ep as LegacyEntryPoint)).not.toThrow();
+        const all = new Set(Object.values(doc.core_entry_points).flat());
+        for (const row of doc.calls) expect(all.has(row.entry_point), row.id).toBe(true);
     });
 });
 
