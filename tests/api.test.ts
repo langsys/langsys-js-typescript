@@ -73,3 +73,20 @@ describe('LangsysAppAPI capability negotiation', () => {
         expect(body.translatable_items[0]).toMatchObject({ type: 'phrase', phrase: 'Home', category: 'UI' });
     });
 });
+
+describe('HINT-1: a discovery report carries a URL and nothing else', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('the body is exactly the project and page_url: no phrase, no category, no content', async () => {
+        const fetchMock = mockFetchOnce();
+        configure();
+
+        await LangsysAppAPI.postDiscoveryHint('https://site.local/page');
+
+        const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(url).toContain('/discovery/hint');
+        const body = JSON.parse(init.body as string);
+        expect(Object.keys(body).filter((k) => k !== 'project_id')).toEqual(['page_url']);
+        expect(body.page_url).toBe('https://site.local/page');
+    });
+});
