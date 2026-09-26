@@ -26,6 +26,7 @@
  */
 
 import { LangsysAppAPI } from './api.js';
+import { activeCatalog, activeScope } from './scope-context.js';
 import { recordMissForDiscovery } from './discovery.js';
 import { normalizeMarkupPlaceholders } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
@@ -230,7 +231,7 @@ export const SEMANTIC_STYLE_PROPERTIES = [
  * matching the convention the server uses in its GET /translations response.
  */
 export function isContentBlockKnown(category: string, customId: string): boolean {
-    const cats = sTranslations.get();
+    const cats = activeCatalog();
     const lookupCat = category || '__uncategorized__';
     const cbData = cats[lookupCat]?.[customId];
     return typeof cbData === 'object' && cbData !== null;
@@ -255,7 +256,7 @@ export function resolveHistoricalBlockId(
     candidates: readonly string[],
     tokens: readonly string[]
 ): string | null {
-    const bucket = sTranslations.get()[category || '__uncategorized__'] as unknown as Record<string, unknown> | undefined;
+    const bucket = activeCatalog()[category || '__uncategorized__'] as unknown as Record<string, unknown> | undefined;
     if (!bucket) return null;
     for (const id of candidates) {
         const stored = bucket[id];
@@ -288,10 +289,21 @@ export function resolveHistoricalBlockId(
  * - `catalog-unavailable`: the catalog fetch failed, so an unknown block cannot
  *   be told from a registered one (WIRE-4);
  * - `base-locale-gate`: the project registers only at its base locale (GATE-9);
+ * - `deferred`: the block was found inside a request scope, which holds it for its
+ *   flush after the response (SRV-3, SRV-7);
+ * - `client-strategy`: the SSR token strategy leaves collection to the client
+ *   (SSR-1), or a write grant made capability per-user (SSR-2);
  * - `refused`: the server answered the request with a failure;
  * - `failed`: the request did not complete.
  */
-export type RegistrationReason = 'not-write-enabled' | 'catalog-unavailable' | 'base-locale-gate' | 'refused' | 'failed';
+export type RegistrationReason =
+    | 'not-write-enabled'
+    | 'catalog-unavailable'
+    | 'base-locale-gate'
+    | 'deferred'
+    | 'client-strategy'
+    | 'refused'
+    | 'failed';
 
 /**
  * What a registration did. Success only when the server stored the block. A
@@ -301,7 +313,7 @@ export type RegistrationReason = 'not-write-enabled' | 'catalog-unavailable' | '
  */
 export type RegistrationResult =
     | { status: true }
-    | { status: false; skipped: true; reason: 'not-write-enabled' | 'catalog-unavailable' | 'base-locale-gate' }
+    | { status: false; skipped: true; reason: 'not-write-enabled' | 'catalog-unavailable' | 'base-locale-gate' | 'deferred' | 'client-strategy' }
     | { status: false; skipped?: false; reason: 'refused' | 'failed'; errors?: unknown[] };
 
 /**
@@ -314,6 +326,14 @@ export type RegistrationResult =
  * non-success result naming its reason.
  */
 export async function registerContentBlock(contentBlock: iContentBlock): Promise<RegistrationResult> {
+    // Inside a request scope (SRV-7) nothing is sent on the request path: the scope holds
+    // the block and its close() decides, after the response, whether to send it (SRV-3).
+    const scope = activeScope();
+    if (scope) {
+        scope.recordBlock(contentBlock);
+        return { status: false, skipped: true, reason: 'deferred' };
+    }
+
     // WIRE-4. After a failed catalog fetch every block looks unregistered, because
     // there is no catalog to find it in. Registering on that basis re-POSTs blocks
     // the backend already holds, on every page an outage touches. Record nothing,

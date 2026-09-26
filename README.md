@@ -557,6 +557,34 @@ await LangsysApp.init({
 > either, since reports are never sent during a server render. Allow-list the address your server makes requests
 > from before choosing `'server'` or `'auto'`, or keep the default `'client'`.
 
+### Rendering on a server: request scopes
+
+A server process renders for many visitors at once, and the SDK's catalog, locale and miss queue are module state, so each request renders inside a **request scope** of its own. A scope has its own locale, its own view of the catalog, its own misses and its own hydration seed, and nothing one scope does reaches another.
+
+```ts
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createRequestScope, setRequestScopeStorage } from 'langsys-js-typescript';
+
+setRequestScopeStorage(new AsyncLocalStorage());           // once, at startup
+
+// per request, in your framework's request hook:
+const scope = await createRequestScope({ locale: resolvedLocale, url: request.url });
+const html = await scope.run(() => renderApp());            // t(), Translate and Phrase resolve to the scope
+const seed = scope.seed();                                  // serialise into the page
+// ...send the response, then:
+await scope.close();                                        // sends what the render missed, after the response
+```
+
+On the client, hydrate with `LangsysApp.seedCatalog(seed.catalog, seed.locale)`.
+
+- **`createRequestScope({ locale, catalog?, url? })`** resolves once the scope's catalog is in hand. That's the `catalog` you pass, or a fetch. A fetch is made at most once per request and shared read-only with scopes rendering the same locale for a minute. A failed fetch renders source text and records nothing.
+- **`scope.run(fn)`** makes the scope current while `fn` runs, and returns what `fn` returns, a promise included. Without `setRequestScopeStorage`, only code that finishes synchronously inside `fn` sees the scope; `scope.t` always works.
+- **`scope.enter()`** makes the scope current for the rest of the current async context, for a host that cannot wrap its render in a function, such as a Nuxt server plugin or a Nitro request hook. Call it before anything renders. It needs the storage, and throws without it.
+- **`scope.close()`** runs after the response. It sends the scope's misses when the key may write and the strategy collects on the server (`'server'`, or `'auto'` for a short list), and otherwise leaves them to the client. Its result names what happened. It never throws.
+- `currentRequestScope()` returns the scope the current code runs in.
+
+Framework bindings wire this for you through their own request hooks.
+
 ## Detecting the user's preferred locale
 
 ```ts
@@ -643,6 +671,7 @@ import type {
 - `LangsysApp.getLocaleName(code, short?, inLocale?)` / `.getLocaleNameWithLookup(...)`
 - `LangsysApp.renderServerMessage(entry, category?)` — render a server message entry: its template through `t()`, or its `message` when there is no translation.
 - `interpolate(template, params?, locale?, options?)` — ICU and `{name}` interpolation; `options.onDefaulted` and `options.onFormatterFailure` hand its notices to a logger of your own. `defaultedArguments(template, params)` names the arguments a render would default.
+- `createRequestScope({ locale, catalog?, url? })`, `setRequestScopeStorage(storage)`, `currentRequestScope()` — render on a server with one visitor's state kept from the next (see *Rendering on a server*).
 - `LangsysApp.loadSnapshot(snapshot, locale?)` — load a catalog snapshot synchronously as the preloaded catalog; the fetched catalog still replaces it.
 - `createLegacyKeys(files)` — the legacy-key resolver `t()` uses in migrate mode, for a server or bridge that reads its own files.
 - `resolveServerMessages(body, { key } | { resolver })` — the server message entries attached to a response body at the configured key.

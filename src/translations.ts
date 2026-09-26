@@ -3,6 +3,7 @@ import { recordMissForDiscovery } from './discovery.js';
 import { _registerTeardownFlush } from './teardown.js';
 import { stripC0Controls } from './identity.js';
 import { interpolate } from './interpolate.js';
+import { activeCatalog, activeScope } from './scope-context.js';
 import { createLegacyKeys, type LegacyKeyFile, type LegacyKeys } from './legacy-keys.js';
 import { canonicalizeLocale } from './locale.js';
 import { Logger, logger } from './logger.js';
@@ -25,7 +26,7 @@ interface iTokenUpdate {
  * queue across a real process boundary (see `shouldQueueForWrite`), so we also
  * stop collecting at that point rather than retaining tokens nothing will send.
  */
-const AUTO_SSR_FLUSH_THRESHOLD = 5;
+export const AUTO_SSR_FLUSH_THRESHOLD = 5;
 
 /**
  * Client-side flush debounce. Long enough that a burst of misses from one
@@ -132,6 +133,14 @@ export function noticeSsrGrantDegradation(strategy: string): void {
             `per-user and a process-wide server queue cannot carry it, so missing phrases are collected in the ` +
             `browser after hydration instead.`
     );
+}
+
+/** Where `t()` reads and records: the page's state, or a request scope's (SRV-7). */
+export interface CatalogView {
+    catalog(): iCategories;
+    locale(): string;
+    miss(category: string, key: string, onlyForRegistration: boolean): void;
+    fromSnapshot(): boolean;
 }
 
 /** Test seam — module state, and must not leak between cases. */
@@ -301,7 +310,7 @@ export class Translations {
      * a missing token — the DOM class manages its own lifecycle via content blocks.
      */
     public lookupContent(category: string, customId: string, token: string): string | null {
-        const cats = sTranslations.get();
+        const cats = activeCatalog();
         const lookupCat = category || '__uncategorized__';
         const contentData = cats[lookupCat]?.[customId];
         if (!contentData || typeof contentData !== 'object') return null;
@@ -316,7 +325,7 @@ export class Translations {
      * un-interpolated template (it supplies its own markup-token values).
      */
     public lookup(phrase: string, category: string): string | null {
-        const cats = sTranslations.get();
+        const cats = activeCatalog();
         const lookupCat = category || '__uncategorized__';
         // The catalog key never carries a C0 control (TOK-2), on lookup as on register.
         const value = cats[lookupCat]?.[stripC0Controls(phrase)];
@@ -331,68 +340,90 @@ export class Translations {
         //   t(phrase, 'Category')                      → category='Category', params=undefined
         //   t(phrase, 'Category', {params...})         → category='Category', params={params}
         const fn = ((phrase: string, ...rest: unknown[]): string => {
-            let category = typeof rest[0] === 'string' ? rest[0] : '';
-            const params = (typeof rest[0] === 'object' ? rest[0] : rest[1]) as Record<string, unknown> | undefined;
-
-            // In the legacy-key mode the argument is resolved as a key first (MIG-2):
-            // a hit becomes the key's converted source value, never the key string.
-            if (this.legacyKeys) ({ phrase, category } = this.resolveLegacyKey(phrase, category));
-
-            const cats = sTranslations.get();
-            // '__uncategorized__' is a server-internal bucket name used only
-            // in GET /translations responses to group null-category phrases.
-            // We normalize to it for the local cats lookup (so we read from
-            // the same bucket the server writes to), but we MUST NOT leak
-            // the sentinel back into the missingToken queue — that queue
-            // feeds the POST wire payload, and clients are not allowed to
-            // send the reserved sentinel as a category.
-            const lookupCat = category || '__uncategorized__';
-            const bucket = cats[lookupCat];
-
-            // KEY PRESENCE, not truthiness. Three states, and the middle one is
-            // common rather than exotic:
-            //   1. key absent            — never seen. A genuine miss.
-            //   2. key present, value null — registered, translation still being
-            //      produced by MT (a minute or two).
-            //   3. key present, non-empty  — translated.
-            // States 2 and 3 both render the source-text fallback, but only
-            // state 1 may register/report. Collapsing 2 into 1 would make every
-            // visitor during the MT window re-report content that was already
-            // registered — worst on exactly the projects with the most
-            // untranslated content, which is the amplification this design
-            // exists to prevent.
-            //
-            // `hasOwnProperty` rather than `in`: the catalog comes from
-            // JSON.parse and so inherits Object.prototype, and `in` walks the
-            // chain — `t('toString')` and `t('constructor')` would read as
-            // already-known and never register.
-            // The catalog key is the phrase with TOK-2's C0 controls removed, on lookup and on
-            // registration alike. What renders when there is no translation is the phrase as
-            // the caller wrote it: the strip governs identity, not output.
-            const key = stripC0Controls(phrase);
-            const known = !!bucket && Object.prototype.hasOwnProperty.call(bucket, key);
-            const value = known ? bucket[key] : undefined;
-
-            let translated: string;
-            if (typeof value === 'string' && value.length > 0) {
-                this.debug.log('TRANSLATION FOUND', [lookupCat, phrase, value]);
-                translated = value;
-            } else {
-                if (!known) this.missingToken(category, key);
-                translated = phrase;
-            }
-            // A phrase the snapshot holds is not yet known to the live catalog. It is
-            // queued for registration without a discovery report, and the flush,
-            // held until the live catalog arrives, drops it there if it is present.
-            if (known && this.catalogFromSnapshot) this.missingToken(category, key, true);
-
-            // Interpolated with or without params. Returning early without them
-            // rendered a select or plural as its raw source, where ICU-1 renders the
-            // `other` branch and ICU-3 shows `{count}` in place of a `#` with no count.
-            // Plain text, braces included, comes back exactly as written.
-            return interpolate(translated, params ?? {}, currentlyLoadedLocale.get());
+            // Inside a request scope (SRV-7), the scope's catalog and miss collection,
+            // never the page's: the page's state is shared by every render in the process.
+            const scope = activeScope();
+            if (scope) return scope.t(phrase, ...rest);
+            return this.renderWith(this.pageView, phrase, rest);
         }) as TFunction;
         return fn;
+    }
+
+    /** The page's catalog, locale and miss queue: what `t()` uses outside every request scope. */
+    private readonly pageView: CatalogView = {
+        catalog: () => sTranslations.get(),
+        locale: () => currentlyLoadedLocale.get(),
+        miss: (category, key, onlyForRegistration) => this.missingToken(category, key, onlyForRegistration),
+        fromSnapshot: () => this.catalogFromSnapshot,
+    };
+
+    /**
+     * The body of `t()` over a catalog view: the page's, or a request scope's
+     * (SRV-7). One implementation, so a scope looks up, converts legacy keys,
+     * strips C0 controls and interpolates exactly as the page does, and differs
+     * only in whose catalog it reads and whose misses it records.
+     */
+    public renderWith(view: CatalogView, phrase: string, rest: unknown[]): string {
+        let category = typeof rest[0] === 'string' ? rest[0] : '';
+        const params = (typeof rest[0] === 'object' ? rest[0] : rest[1]) as Record<string, unknown> | undefined;
+
+        // In the legacy-key mode the argument is resolved as a key first (MIG-2):
+        // a hit becomes the key's converted source value, never the key string.
+        if (this.legacyKeys) ({ phrase, category } = this.resolveLegacyKey(phrase, category));
+
+        const cats = view.catalog();
+        // '__uncategorized__' is a server-internal bucket name used only
+        // in GET /translations responses to group null-category phrases.
+        // We normalize to it for the local cats lookup (so we read from
+        // the same bucket the server writes to), but we MUST NOT leak
+        // the sentinel back into the missingToken queue — that queue
+        // feeds the POST wire payload, and clients are not allowed to
+        // send the reserved sentinel as a category.
+        const lookupCat = category || '__uncategorized__';
+        const bucket = cats[lookupCat];
+
+        // KEY PRESENCE, not truthiness. Three states, and the middle one is
+        // common rather than exotic:
+        //   1. key absent            — never seen. A genuine miss.
+        //   2. key present, value null — registered, translation still being
+        //      produced by MT (a minute or two).
+        //   3. key present, non-empty  — translated.
+        // States 2 and 3 both render the source-text fallback, but only
+        // state 1 may register/report. Collapsing 2 into 1 would make every
+        // visitor during the MT window re-report content that was already
+        // registered — worst on exactly the projects with the most
+        // untranslated content, which is the amplification this design
+        // exists to prevent.
+        //
+        // `hasOwnProperty` rather than `in`: the catalog comes from
+        // JSON.parse and so inherits Object.prototype, and `in` walks the
+        // chain — `t('toString')` and `t('constructor')` would read as
+        // already-known and never register.
+        // The catalog key is the phrase with TOK-2's C0 controls removed, on lookup and on
+        // registration alike. What renders when there is no translation is the phrase as
+        // the caller wrote it: the strip governs identity, not output.
+        const key = stripC0Controls(phrase);
+        const known = !!bucket && Object.prototype.hasOwnProperty.call(bucket, key);
+        const value = known ? bucket[key] : undefined;
+
+        let translated: string;
+        if (typeof value === 'string' && value.length > 0) {
+            this.debug.log('TRANSLATION FOUND', [lookupCat, phrase, value]);
+            translated = value;
+        } else {
+            if (!known) view.miss(category, key, false);
+            translated = phrase;
+        }
+        // A phrase the snapshot holds is not yet known to the live catalog. It is
+        // queued for registration without a discovery report, and the flush,
+        // held until the live catalog arrives, drops it there if it is present.
+        if (known && view.fromSnapshot()) view.miss(category, key, true);
+
+        // Interpolated with or without params. Returning early without them
+        // rendered a select or plural as its raw source, where ICU-1 renders the
+        // `other` branch and ICU-3 shows `{count}` in place of a `#` with no count.
+        // Plain text, braces included, comes back exactly as written.
+        return interpolate(translated, params ?? {}, view.locale());
     }
 
     /**
@@ -550,6 +581,11 @@ export class Translations {
      * server lane is unsafe and we degrade to flushing after hydration — where
      * the decision is per-user and correct.
      */
+    /** Whether this session may write now, by the same decision the flush makes (see `canWrite`). */
+    public mayWrite(): boolean {
+        return this.canWrite();
+    }
+
     private canWrite(): boolean {
         if (typeof window !== 'undefined') return writeEnabled.get() === true;
         if (LangsysAppAPI.hasWriteGrant()) return false;

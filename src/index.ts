@@ -59,6 +59,15 @@ export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber
 export { persist, setPersistStorage, type PersistStorage } from './persist.js';
 export { setTeardownSignal, type TeardownSubscribe } from './teardown.js';
 export {
+    clearSharedCatalogs,
+    createRequestScope,
+    currentRequestScope,
+    type RequestScope,
+    type RequestScopeOptions,
+    type ScopeMiss,
+} from './request-scope.js';
+export { setRequestScopeStorage, type ScopeStorage } from './scope-context.js';
+export {
     SNAPSHOT_FORMAT,
     SNAPSHOT_VERSION,
     SnapshotError,
