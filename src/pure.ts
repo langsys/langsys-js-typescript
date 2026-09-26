@@ -97,12 +97,12 @@ export type { CatalogSnapshot, SnapshotCatalog, SnapshotCategory, SnapshotPayloa
 // Rendering one needs `t()`, so `renderServerMessage` is on the main entry only.
 export {
     DEFAULT_SERVER_MESSAGE_CATEGORY,
-    SERVER_MESSAGE_CODES,
     fillTemplate,
     resolveServerMessages,
     templateMarkers,
     toServerMessage,
 } from './server-messages.js';
+export type { ResolveServerMessagesOptions, ServerMessage, ServerMessagePieces } from './server-messages.js';
 
 export type { EncodedRichPhrase, RichTextNode } from './identity.js';
 export type { ParamPrimitive, TranslationParams } from './types/translation-fn.js';

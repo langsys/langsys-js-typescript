@@ -1,69 +1,51 @@
 /**
- * Server messages (spec MSG family): the entry a server sends for a validation
- * error or system message, and how a client finds and renders it.
+ * Server messages (spec MSG family): the entries a server attaches to its
+ * framework's own error response, and how a client finds and renders them.
  *
- * An entry is `{ field?, code, message, template, params? }` and those key names
- * are fixed across every SDK. `template` is the source sentence a client looks
- * up, `params` fills its `{name}` markers, `message` is the template already
- * filled (and possibly already localised by the server), `code` is the slug an
- * app branches on, and `field` is a dotted path for a field failure. The body
- * around the entries is the app's own, so entries are found wherever they sit.
+ * What translation needs is small: the `template` — the framework's own
+ * sentence, unfilled, with the field's label written in — and the `params`
+ * that fill its `{name}` markers. `message` is the template already filled, the
+ * fallback a client shows when it cannot look the template up. Everything else
+ * is the framework's and passes through unchanged: `field` in the framework's
+ * own path format (a dotted string, Pydantic's `loc` array), and `code`, the
+ * framework's own identifier for the failure (Laravel's rule name, Pydantic's
+ * error `type`, Django's `code`), or none. The error body is the framework's
+ * too, so where the entries sit and what their pieces are called are the
+ * app's configuration.
  *
  * Everything here is pure except `renderServerMessage`, which renders through
  * `t()`; that one is exported from the main entry only.
  */
 
-/** One server message entry (MSG-1). */
+/** One server message entry (MSG-1), in the SDK's own piece names. */
 export interface ServerMessage {
-    field?: string;
-    code: string;
-    message: string;
-    template: string;
+    template?: string;
     params?: Record<string, unknown>;
+    message?: string;
+    /** The field, in the framework's own path format, unchanged. */
+    field?: unknown;
+    /** The framework's own identifier for the failure, unchanged. Absent where the framework has none. */
+    code?: unknown;
 }
 
-/** Where to look for entries in a body, when the default search is not wanted (MSG-1). */
+/** The piece names an app's entries use, where they differ from the SDK's. */
+export type ServerMessagePieces = Partial<Record<'template' | 'params' | 'message' | 'field' | 'code', string>>;
+
+/** Where the entries sit in a response body (MSG-1). One of `key` or `resolver` is required. */
 export interface ResolveServerMessagesOptions {
-    /** A dotted path to the node holding the entries (`errors`, `data.failures`). Narrows the search to it. */
-    key?: string;
     /**
-     * Maps an app's native failures to entries, for a body that carries no
-     * entries at all. What it returns is filtered through the same entry check.
+     * The dotted path the server attached the entries under, beside the
+     * framework's own error body — Laravel's package default is `langsys_errors`.
      */
+    key?: string;
+    /** Maps a body to entries itself, for an app whose failures are carried some other way. */
     resolver?: (body: unknown) => unknown;
+    /** The entries' piece names, when the server was configured with names of its own. */
+    pieces?: ServerMessagePieces;
 }
 
 /** The category templates are registered and rendered under unless configured otherwise (MSG-6). */
 export const DEFAULT_SERVER_MESSAGE_CATEGORY = 'Errors';
-
-/**
- * The shared validation vocabulary (MSG-2), in the spec's order. `invalid` is the
- * code for a failure that arrived with text but no rule. A code is for logic —
- * highlight a field, retry — and never chooses which text to show.
- */
-export const SERVER_MESSAGE_CODES = [
-    'required',
-    'invalid_type',
-    'invalid_format',
-    'invalid_option',
-    'invalid_date',
-    'not_found',
-    'already_taken',
-    'mismatch',
-    'too_short',
-    'too_long',
-    'too_small',
-    'too_large',
-    'too_few',
-    'too_many',
-    'not_allowed',
-    'already_member',
-    'not_member',
-    'already_owner',
-    'expired',
-    'not_available',
-    'invalid',
-] as const;
 
 /**
  * A marker is a lowercase snake_case name in braces (MSG-3). `{Name}`, `{ min }`
@@ -72,9 +54,6 @@ export const SERVER_MESSAGE_CODES = [
  * client that disagreed about what a marker is would fill a different sentence.
  */
 const MARKER = /\{([a-z][a-z0-9_]*)\}/g;
-
-/** How deep the entry search walks. Error bodies are shallow; the bound stops a cyclic or pathological body. */
-const MAX_DEPTH = 16;
 
 /** The marker names in a template, once each, in the order they first appear. */
 export function templateMarkers(template: string): string[] {
@@ -103,40 +82,50 @@ export function fillTemplate(template: string, params: Record<string, unknown> =
 }
 
 /**
- * An entry from its wire form, or null when it is not one. `code`, `message`
- * and `template` must be strings. Without `template` there is nothing to look
- * up, and rendering from `message` as a key is the one thing a client must
- * never do (MSG-5), so such an object is not an entry.
+ * An entry from its wire form, or null when it is not one. An entry needs a
+ * `template` to look up or a `message` to show; either is a string. `params`
+ * is kept when it is an object; `field` and `code` pass through as they are.
  */
-export function toServerMessage(value: unknown): ServerMessage | null {
+export function toServerMessage(value: unknown, pieces: ServerMessagePieces = {}): ServerMessage | null {
     if (!isRecord(value)) return null;
-    const { code, message, template, params, field } = value;
-    if (typeof code !== 'string' || typeof message !== 'string' || typeof template !== 'string') return null;
+    const read = (piece: keyof ServerMessagePieces) => value[pieces[piece] ?? piece];
+    const template = read('template');
+    const message = read('message');
+    const params = read('params');
+    const field = read('field');
+    const code = read('code');
+    const hasTemplate = typeof template === 'string';
+    const hasMessage = typeof message === 'string';
+    if (!hasTemplate && !hasMessage) return null;
 
-    // Built in the wire's key order: field, code, message, template, params.
     return {
-        ...(typeof field === 'string' && field !== '' ? { field } : {}),
-        code,
-        message,
-        template,
+        ...(hasTemplate ? { template } : {}),
         ...(isRecord(params) ? { params } : {}),
+        ...(hasMessage ? { message } : {}),
+        ...(field !== undefined && field !== null && field !== '' ? { field } : {}),
+        ...(code !== undefined && code !== null ? { code } : {}),
     };
 }
 
 /**
- * Every entry a response carries, wherever it sits (MSG-1).
+ * The entries a response carries, found where the app's configuration says
+ * they are (MSG-1). The body is the framework's own and is never searched by
+ * shape: `key` names the dotted path the server attached the entries under,
+ * and `resolver` maps the body to entries itself. Throws when neither is given,
+ * since there is nowhere to look. `pieces` renames the entries' pieces.
  *
- * By default the whole body is searched and every object carrying an entry's
- * pieces is an entry, so the langsys envelope (`error`, `error.errors[]`), a
- * Laravel map, a JSON:API `errors[]` or a house style all resolve with nothing
- * configured. An entry's own `params` are never searched: they are marker
- * values, not more entries. `key` narrows the search to one dotted path;
- * `resolver` replaces it, for a body whose failures are not entries yet.
- *
- * Accepts the decoded body or its JSON text. Anything unreadable resolves to no
- * entries rather than throwing: this runs in an error path already.
+ * Accepts the decoded body or its JSON text, and never changes the body.
+ * Unreadable JSON, or a key the body does not carry, resolves to no entries:
+ * this runs in an error path already.
  */
-export function resolveServerMessages(body: unknown, options: ResolveServerMessagesOptions = {}): ServerMessage[] {
+export function resolveServerMessages(body: unknown, options: ResolveServerMessagesOptions): ServerMessage[] {
+    const { key, resolver, pieces } = options ?? {};
+    if (typeof resolver !== 'function' && (typeof key !== 'string' || key === '')) {
+        throw new TypeError(
+            'resolveServerMessages needs to know where the entries sit: pass { key } with the path your server attaches them under (Laravel: "langsys_errors"), or { resolver }.'
+        );
+    }
+
     if (typeof body === 'string') {
         try {
             body = JSON.parse(body);
@@ -145,32 +134,18 @@ export function resolveServerMessages(body: unknown, options: ResolveServerMessa
         }
     }
 
-    if (typeof options.resolver === 'function') {
-        const mapped = options.resolver(body);
-        const items = Array.isArray(mapped) ? mapped : mapped === undefined || mapped === null ? [] : [mapped];
-        return items.map(toServerMessage).filter((entry): entry is ServerMessage => entry !== null);
-    }
-
-    if (typeof options.key === 'string' && options.key !== '') {
-        body = dig(body, options.key);
-    }
-
-    const found: ServerMessage[] = [];
-    walk(body, found, 0, new Set());
-    return found;
+    const found = typeof resolver === 'function' ? resolver(body) : dig(body, key!);
+    return toItems(found)
+        .map((item) => toServerMessage(item, pieces))
+        .filter((entry): entry is ServerMessage => entry !== null);
 }
 
-function walk(node: unknown, found: ServerMessage[], depth: number, seen: Set<object>): void {
-    if (depth > MAX_DEPTH || typeof node !== 'object' || node === null || seen.has(node)) return;
-    seen.add(node);
-
-    const entry = Array.isArray(node) ? null : toServerMessage(node);
-    if (entry) found.push(entry);
-
-    for (const [key, child] of Object.entries(node)) {
-        if (entry && key === 'params') continue;
-        walk(child, found, depth + 1, seen);
-    }
+/** A list of entries, a single entry, or a field → entries map, as items. */
+function toItems(found: unknown): unknown[] {
+    if (Array.isArray(found)) return found;
+    if (!isRecord(found)) return [];
+    const values = Object.values(found);
+    return values.every((value) => Array.isArray(value)) && values.length > 0 ? values.flat() : [found];
 }
 
 function dig(body: unknown, path: string): unknown {

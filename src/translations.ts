@@ -156,6 +156,12 @@ export class Translations {
      */
     private catalogFetchesInFlight = 0;
     /**
+     * The published catalog is a snapshot, not the live catalog (SNAP-2). Lookups
+     * read it, but registration is decided only against the live catalog
+     * (REG-13), so until one arrives every phrase is queued and the queue is held.
+     */
+    private catalogFromSnapshot = false;
+    /**
      * CACHE-2: a failed catalog fetch, remembered per project and locale. Until `retryAt` a
      * lookup for that pair renders source text and nothing is fetched. The window follows
      * REG-8's clock on the read side: 3s, doubling on each consecutive failure to 5 minutes,
@@ -375,6 +381,10 @@ export class Translations {
                 if (!known) this.missingToken(category, key);
                 translated = phrase;
             }
+            // A phrase the snapshot holds is not yet known to the live catalog. It is
+            // queued for registration without a discovery report, and the flush,
+            // held until the live catalog arrives, drops it there if it is present.
+            if (known && this.catalogFromSnapshot) this.missingToken(category, key, true);
 
             // Interpolated with or without params. Returning early without them
             // rendered a select or plural as its raw source, where ICU-1 renders the
@@ -423,7 +433,7 @@ export class Translations {
         return true;
     }
 
-    private missingToken(category: string, token: string | undefined | null) {
+    private missingToken(category: string, token: string | undefined | null, onlyForRegistration = false) {
         if (token === undefined || token === null) {
             return this.debug.warn(`Received undefined or null token for category: ${category}`);
         }
@@ -508,7 +518,7 @@ export class Translations {
         // Recorded before the queue dedup below: the discovery lane keys on the
         // URL the miss occurred on, and a phrase already queued from an earlier
         // route must not suppress the record for the page being viewed now.
-        recordMissForDiscovery(category, token);
+        if (!onlyForRegistration) recordMissForDiscovery(category, token);
 
         // Discovery has it; only hold it for registration if that queue can
         // actually drain. See `shouldQueueForWrite`.
@@ -815,6 +825,7 @@ export class Translations {
         locale = canonicalizeLocale(locale);
         this.locale = locale;
         this.lastLoaded[locale] = new Date().getTime() / 1000;
+        this.catalogFromSnapshot = false;
         catalogUnavailable.set(false);
         // A seeded catalog counts as "ready": the cache hit above means no
         // fetch will ever fire to resolve the promise, and content-block /
@@ -829,6 +840,7 @@ export class Translations {
      * it. What waits on `ready()` renders from it now.
      */
     public markSeeded(): void {
+        this.catalogFromSnapshot = true;
         catalogUnavailable.set(false);
         this.readyResolve();
     }
@@ -981,6 +993,12 @@ export class Translations {
         // the flush, so nothing waits for the backstop.
         if (this.catalogFetchesInFlight > 0) {
             this.debug.log('Holding queued tokens until the catalog in flight arrives');
+            return false;
+        }
+        // A snapshot is not the catalog of record: deduplicating against it would
+        // register nothing it holds and re-register nothing it lacks correctly.
+        if (this.catalogFromSnapshot) {
+            this.debug.log('Holding queued tokens until the live catalog replaces the snapshot');
             return false;
         }
         if (!this.canWrite()) {
@@ -1210,6 +1228,7 @@ export class Translations {
         // Before publishing, so subscribers re-rendering off this catalog record their
         // misses normally.
         catalogUnavailable.set(false);
+        this.catalogFromSnapshot = false;
         sTranslations.set(trans);
         // Small delay so consumers see translations + locale updates on the same tick.
         setTimeout(() => currentlyLoadedLocale.set(this.locale), 100);

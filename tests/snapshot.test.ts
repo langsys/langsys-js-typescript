@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangsysAppAPI } from '../src/api.js';
@@ -12,7 +13,8 @@ import {
     type CatalogSnapshot,
     type SnapshotPayload,
 } from '../src/snapshot.js';
-import { catalogUnavailable, currentlyLoadedLocale, sTranslations } from '../src/stores.js';
+import { _resetDiscoveryState } from '../src/discovery.js';
+import { autoDiscovery, catalogUnavailable, currentlyLoadedLocale, sTranslations, writeEnabled } from '../src/stores.js';
 import * as pure from '../src/pure.js';
 import * as main from '../src/index.js';
 import vectors from './fixtures/snapshot-vectors.json';
@@ -127,7 +129,14 @@ describe('SNAP-1 and SNAP-3: a loader refuses, naming the reason', () => {
 
 describe('SNAP-2: a snapshot loads synchronously as the preloaded catalog', () => {
     const block = doc.rows.find((r) => r.id === 'category-in-one-locale')!.document;
-    const priv = () => LangsysApp.Translations as unknown as { config: Record<string, unknown>; locale: string; lastLoaded: Record<string, number> };
+    const priv = () =>
+        LangsysApp.Translations as unknown as {
+            config: Record<string, unknown>;
+            locale: string;
+            lastLoaded: Record<string, number>;
+            catalogFailures: Map<string, unknown>;
+            catalogRequests: Map<string, unknown>;
+        };
     let savedConfig: Record<string, unknown>;
 
     beforeEach(() => {
@@ -136,6 +145,10 @@ describe('SNAP-2: a snapshot loads synchronously as the preloaded catalog', () =
         catalogUnavailable.set(false);
         savedConfig = priv().config;
         priv().lastLoaded = {};
+        // The offline case records a failed fetch for this project and locale, and CACHE-2's
+        // window would then skip the next test's fetch.
+        priv().catalogFailures = new Map();
+        priv().catalogRequests = new Map();
     });
 
     afterEach(() => {
@@ -189,6 +202,78 @@ describe('SNAP-2: a snapshot loads synchronously as the preloaded catalog', () =
         await LangsysApp.Translations.change('es');
         expect(LangsysApp.t('Save', 'UI')).toBe('Guardar');
         expect(LangsysApp.t('Cancel', 'UI')).toBe('Cancel');
+    });
+
+    describe('REG-13: registration is decided against the live catalog, never the snapshot', () => {
+        const queue = () => (LangsysApp.Translations as unknown as { missingTokens: Array<{ token: string }> }).missingTokens;
+        const posted: string[] = [];
+
+        beforeEach(() => {
+            writeEnabled.set(true);
+            queue().length = 0;
+            posted.length = 0;
+            vi.spyOn(LangsysAppAPI, 'createTranslatableItems').mockImplementation(async (items) => {
+                for (const item of items as Array<{ phrase?: string }>) posted.push(String(item.phrase));
+                return { status: true } as never;
+            });
+        });
+
+        afterEach(() => {
+            writeEnabled.set(undefined);
+            queue().length = 0;
+        });
+
+        it('a phrase the snapshot holds is still queued, and nothing is sent while the snapshot is all there is', async () => {
+            LangsysApp.loadSnapshot(block, 'es');
+            priv().config = { ...savedConfig, projectid: 'p', key: 'k' };
+            LangsysApp.t('Save', 'UI');
+            expect(queue().map((q) => q.token)).toEqual(['Save']);
+            await (LangsysApp.Translations as unknown as { updateTokens(): Promise<boolean> }).updateTokens();
+            expect(posted).toEqual([]);
+            // Held, not deduplicated against the snapshot: the phrase waits for the live catalog.
+            expect(queue().map((q) => q.token)).toEqual(['Save']);
+        });
+
+        it('once the live catalog arrives, what it holds is dropped and what it lacks is registered', async () => {
+            LangsysApp.loadSnapshot(block, 'es');
+            priv().config = { ...savedConfig, projectid: 'p', key: 'k' };
+            LangsysApp.t('Save', 'UI');
+            LangsysApp.t('In neither catalog', 'UI');
+            vi.spyOn(LangsysAppAPI, 'getTranslations').mockResolvedValue({ status: true, write_enabled: true, data: { UI: { Save: 'Guardar' } } } as never);
+            await LangsysApp.Translations.change('es');
+            await (LangsysApp.Translations as unknown as { updateTokens(): Promise<boolean> }).updateTokens();
+            expect(posted).toEqual(['In neither catalog']);
+        });
+
+        it('the read lane reports nothing for a phrase the snapshot holds; control: a phrase it lacks is reported', async () => {
+            _resetDiscoveryState();
+            window.sessionStorage.clear();
+            writeEnabled.set(false);
+            autoDiscovery.set(true);
+            const hinted = vi.spyOn(LangsysAppAPI, 'postDiscoveryHint').mockResolvedValue({ status: true } as never);
+            vi.useFakeTimers();
+            try {
+                LangsysApp.loadSnapshot(block, 'es');
+                LangsysApp.t('Save', 'UI');
+                await vi.advanceTimersByTimeAsync(31_000);
+                expect(hinted).not.toHaveBeenCalled();
+                LangsysApp.t('In neither catalog', 'UI');
+                await vi.advanceTimersByTimeAsync(31_000);
+                expect(hinted).toHaveBeenCalledTimes(1);
+            } finally {
+                vi.useRealTimers();
+                _resetDiscoveryState();
+                autoDiscovery.set(undefined);
+            }
+        });
+
+        it('control: with the live catalog published, a phrase it holds is not queued', async () => {
+            priv().config = { ...savedConfig, projectid: 'p', key: 'k' };
+            vi.spyOn(LangsysAppAPI, 'getTranslations').mockResolvedValue({ status: true, data: { UI: { Save: 'Guardar' } } } as never);
+            await LangsysApp.Translations.change('es');
+            LangsysApp.t('Save', 'UI');
+            expect(queue()).toEqual([]);
+        });
     });
 
     it('control: seedCatalog, the SSR hand-off, IS the catalog of record and suppresses the fetch', async () => {

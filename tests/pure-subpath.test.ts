@@ -343,7 +343,6 @@ describe('the export list is a contract', () => {
         'convertLegacyPluralForms',
         'convertLegacyValue',
         'createLegacyKeys',
-        'SERVER_MESSAGE_CODES',
         'fillTemplate',
         'resolveServerMessages',
         'templateMarkers',

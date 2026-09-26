@@ -64,6 +64,7 @@ export function resetSdk(): void {
         // CACHE-2's per-pair failure window and shared requests: a session starts with none.
         catalogFailures: new Map(),
         catalogRequests: new Map(),
+        catalogFromSnapshot: false,
     });
     writeEnabled.set(undefined);
     autoDiscovery.set(undefined);

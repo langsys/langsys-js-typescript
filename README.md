@@ -495,23 +495,22 @@ This core reads `i18next`, `vue-i18n` and `plain`. A file in another format (`la
 
 ## Server messages
 
-A validation error or system message from your server arrives as entries shaped `{ field?, code, message, template, params? }`: `template` is the source sentence, `params` fills its `{name}` markers, `message` is the template already filled, `code` is a slug for your logic, and `field` is a dotted path. The Langsys server SDKs produce them; the body around them is your app's own.
+A Langsys server SDK leaves your framework's error response exactly as it is and attaches translatable entries beside it. Laravel, for example, puts them under `langsys_errors` next to its own `message` and `errors`. An entry is the framework's own sentence as a `template`, with the field's label written in and `{name}` markers for values such as numbers, plus the `params` that fill it. `message` is that sentence already filled. `field` and `code` are the framework's own, passed through unchanged: Laravel's rule name, Pydantic's error `type`, Django's `code`.
 
 ```ts
 import { renderServerMessage, resolveServerMessages } from 'langsys-js-typescript';
 
 const res = await fetch('/api/signup', { method: 'POST', body });
 if (!res.ok) {
-    for (const entry of resolveServerMessages(await res.json())) {
+    for (const entry of resolveServerMessages(await res.json(), { key: 'langsys_errors' })) {
         showError(entry.field, renderServerMessage(entry));
-        if (entry.code === 'already_taken') focus(entry.field);
     }
 }
 ```
 
-- **`resolveServerMessages(body, options?)`** finds every entry in a response, wherever it sits: the Langsys envelope, a Laravel error map, a JSON:API `errors[]`, your own shape. Pass `{ key: 'data.errors' }` to look in one place only, or `{ resolver }` to map failures your API sends in another form. It accepts the parsed body or its JSON text.
-- **`renderServerMessage(entry, category?)`** renders the entry's `template` through `t()`, filled from its `params`, in the current locale. When the catalog has no translation for the template it shows the entry's `message`, which is what the server wrote. It never looks up `message`. A count param drives an ICU plural in the translation with no ICU in your code.
-- **Branch on `code`, never on text.** Codes stay stable when wording or language changes. `SERVER_MESSAGE_CODES` lists the shared validation vocabulary.
+- **`resolveServerMessages(body, { key })`** reads the entries at the path your server attaches them under, which is the same setting as the server's. Nothing else in the body is read or changed. If your entries use other piece names, map them with `pieces: { template: 'sentence', … }`. Pass `{ resolver }` to build entries from the body yourself. With neither `key` nor `resolver` it throws, because it has nowhere to look.
+- **`renderServerMessage(entry, category?)`** renders the entry's `template` through `t()`, filled from its `params`, in the current locale. When the catalog has no translation for the template it shows the entry's `message`, which is the framework's own text. An entry with no `template` shows its `message` and is not looked up. `message` itself is never looked up. A count param drives an ICU plural in the translation with no ICU in your code.
+- **Branch on `code`, never on text.** It is your framework's identifier, so the logic you already have keeps working, whatever language the text is in.
 - **Category.** Templates are registered and rendered under `Errors`. If your server uses another category, set the same one with `messagesCategory` in `LangsysApp.init`, or every lookup misses.
 
 `templateMarkers`, `fillTemplate`, `resolveServerMessages` and `toServerMessage` are also exported from `langsys-js-typescript/pure`, with no DOM.
@@ -527,7 +526,7 @@ LangsysApp.loadSnapshot(snapshot);        // before first render; returns false 
 t('Save', 'UI');                          // → "Guardar", on the next line
 ```
 
-The locale is the user's current one, else the snapshot's base locale, or pass it as the second argument. The snapshot is a cache, not the catalog of record. `init()` still fetches the catalog, which replaces it and supplies any phrase it lacked. With no network the snapshot keeps rendering, and anything it lacks shows its source text.
+The locale is the user's current one, else the snapshot's base locale, or pass it as the second argument. The snapshot is a cache, not the catalog of record. `init()` still fetches the catalog, which replaces it and supplies any phrase it lacked. Registration waits for that live catalog too: nothing is registered, or skipped, on the snapshot's say-so. With no network the snapshot keeps rendering, and anything it lacks shows its source text.
 
 Never edit a snapshot by hand; export it again. Its checksum covers the contents, so an edited file is refused with a `SnapshotError`, as are a different format, an unsupported version and a missing member. `buildSnapshot` writes the format for an export tool of your own. It and `parseSnapshot` are also on `langsys-js-typescript/pure`.
 
@@ -646,7 +645,7 @@ import type {
 - `interpolate(template, params?, locale?, options?)` — ICU and `{name}` interpolation; `options.onDefaulted` and `options.onFormatterFailure` hand its notices to a logger of your own. `defaultedArguments(template, params)` names the arguments a render would default.
 - `LangsysApp.loadSnapshot(snapshot, locale?)` — load a catalog snapshot synchronously as the preloaded catalog; the fetched catalog still replaces it.
 - `createLegacyKeys(files)` — the legacy-key resolver `t()` uses in migrate mode, for a server or bridge that reads its own files.
-- `resolveServerMessages(body, options?)` — the server message entries in a response body, wherever they sit.
+- `resolveServerMessages(body, { key } | { resolver })` — the server message entries attached to a response body at the configured key.
 - `setTeardownSignal(subscribe)` — on a host with no `document` (React Native), supply the "app is going away" signal: `subscribe(fire)` returns an unsubscribe, and the SDK flushes what is queued when `fire` is called.
 - Top-level: `t`, `tSignal`, `notifyNavigation`, `renderServerMessage`, `resolveServerMessages`, `currentlyLoadedLocale`, `sTranslations`, `LangsysAppAPI`, `Translate`, `createSignal`, `getValue`, `persist`, `interpolate`, `Logger`, `logger`, `md5`, `isEmpty`.
 

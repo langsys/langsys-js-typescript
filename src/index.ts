@@ -90,12 +90,12 @@ export {
 } from './legacy-keys.js';
 export {
     DEFAULT_SERVER_MESSAGE_CATEGORY,
-    SERVER_MESSAGE_CODES,
     fillTemplate,
     resolveServerMessages,
     templateMarkers,
     toServerMessage,
     type ResolveServerMessagesOptions,
+    type ServerMessagePieces,
     type ServerMessage,
 } from './server-messages.js';
 
