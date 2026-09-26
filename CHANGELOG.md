@@ -24,7 +24,7 @@ heading records the INTENT rather than the number. There is no summary-regenerat
   - `scope.enter()` makes the scope current for the rest of the async context, for hosts that cannot wrap their render. It holds only in the continuation that performs the render, never past the return of a function the host awaits, so hosts that await their plugins hand the scope to the app by injection instead.
   - `scope.seed()` is the client's hydration payload.
   - `scope.close()`, after the response, sends what the render missed when the key may write and the SSR strategy collects on the server.
-  - `setRequestScopeStorage(new AsyncLocalStorage())` carries the scope across `await`; the core never imports `node:async_hooks`.
+  - `setRequestScopeStorage(new AsyncLocalStorage())` carries the scope across `await`; the core never imports `node:async_hooks`. The storage is opt-in and its guarantees depend on the host's async model (zone.js promises don't carry it across concurrent renders), so a binding may carry the scope through its own dependency injection instead.
   - A catalog is fetched at most once per request and shared read-only with scopes on the same locale.
   - A content block registered inside a scope resolves `{ status: false, skipped: true, reason: 'deferred' }` and is sent by `close()`.
 

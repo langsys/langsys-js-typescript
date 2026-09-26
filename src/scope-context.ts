@@ -36,6 +36,12 @@ const stack: ActiveScope[] = [];
  * Hand the core an `AsyncLocalStorage` (or anything of its shape), so a scope
  * entered with `scope.run()` stays current across `await` inside the render.
  * Pass `null` to go back to synchronous nesting.
+ *
+ * The storage is opt-in, and what it guarantees depends on the host's async
+ * model: under zone.js, for one, promises do not carry it across concurrent
+ * renders. A binding may instead carry the scope through its own dependency
+ * injection, one scope per request, and read `scope.t` and the scope's values
+ * directly, with no storage at all.
  */
 export function setRequestScopeStorage(value: ScopeStorage | null): void {
     storage = value;
