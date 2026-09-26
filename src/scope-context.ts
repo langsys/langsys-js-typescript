@@ -1,4 +1,4 @@
-import { sTranslations } from './stores.js';
+import { _followRequestScope, pageCatalog } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iCategories } from './types/translations.js';
 
@@ -75,5 +75,8 @@ export function runInScope<R>(scope: ActiveScope, fn: () => R): R {
 
 /** The catalog the current code reads: its scope's, or the page's. */
 export function activeCatalog(): iCategories {
-    return activeScope()?.catalog ?? sTranslations.get();
+    return activeScope()?.catalog ?? pageCatalog();
 }
+
+// `sTranslations.get()` and `currentlyLoadedLocale.get()` follow the scope too.
+_followRequestScope(() => activeScope());

@@ -578,7 +578,7 @@ await scope.close();                                        // sends what the re
 On the client, hydrate with `LangsysApp.seedCatalog(seed.catalog, seed.locale)`.
 
 - **`createRequestScope({ locale, catalog?, url? })`** resolves once the scope's catalog is in hand. That's the `catalog` you pass, or a fetch. A fetch is made at most once per request and shared read-only with scopes rendering the same locale for a minute. A failed fetch renders source text and records nothing.
-- **`scope.run(fn)`** makes the scope current while `fn` runs, and returns what `fn` returns, a promise included. Without `setRequestScopeStorage`, only code that finishes synchronously inside `fn` sees the scope; `scope.t` always works.
+- **`scope.run(fn)`** makes the scope current while `fn` runs, for `t()` and for `currentlyLoadedLocale.get()` and `sTranslations.get()` alike, and returns what `fn` returns, a promise included. Without `setRequestScopeStorage`, only code that finishes synchronously inside `fn` sees the scope; `scope.t` always works.
 - **`scope.enter()`** makes the scope current for the rest of the current async context, for a host that cannot wrap its render in a function, such as a Nuxt server plugin or a Nitro request hook. Call it before anything renders. It needs the storage, and throws without it.
 - **`scope.close()`** runs after the response. It sends the scope's misses when the key may write and the strategy collects on the server (`'server'`, or `'auto'` for a short list), and otherwise leaves them to the client. Its result names what happened. It never throws.
 - `currentRequestScope()` returns the scope the current code runs in.

@@ -156,6 +156,46 @@ describe('SRV-7: one visitor’s render never carries another’s locale', () =>
     });
 });
 
+describe('SRV-7 with SRV-2: the locale and catalog signals follow the scope too', () => {
+    // What every binding exposes as a hook, store or service: the translate function,
+    // the current locale and the catalog. React measured `Prezzi|de|Preise` here.
+    const triple = () =>
+        `${topLevelT('Pricing', 'UI' as never)}|${currentlyLoadedLocale.get()}|${(sTranslations.get() as Record<string, Record<string, string>>).UI!.Pricing}`;
+
+    beforeEach(() => {
+        LangsysApp.seedCatalog({ UI: { Pricing: 'Preise' } } as never, 'de');
+    });
+
+    it('with the process seeded de, a render inside an it scope reads only Italian', async () => {
+        const it_ = await createRequestScope({ locale: 'it', catalog: { UI: { Pricing: 'Prezzi' } } as never });
+        expect(it_.run(triple)).toBe('Prezzi|it|Prezzi');
+        expect(triple(), 'control: outside the scope, the page’s').toBe('Preise|de|Preise');
+    });
+
+    it('concurrent renders each read their own triple across an await', async () => {
+        setRequestScopeStorage(new AsyncLocalStorage());
+        const it_ = await createRequestScope({ locale: 'it', catalog: { UI: { Pricing: 'Prezzi' } } as never });
+        const fr = await createRequestScope({ locale: 'fr', catalog: { UI: { Pricing: 'Tarifs' } } as never });
+        const render = (scope: typeof it_, delay: number) =>
+            scope.run(async () => {
+                await sleep(delay);
+                return triple();
+            });
+        await expect(Promise.all([render(it_, 20), render(fr, 5)])).resolves.toEqual(['Prezzi|it|Prezzi', 'Tarifs|fr|Tarifs']);
+    });
+
+    it('set and subscribe stay the page’s: a scope never writes the page, nor the page the scope', async () => {
+        const it_ = await createRequestScope({ locale: 'it', catalog: { UI: { Pricing: 'Prezzi' } } as never });
+        const seen: string[] = [];
+        const stop = currentlyLoadedLocale.subscribe((v) => seen.push(v));
+        it_.run(() => currentlyLoadedLocale.set('es'));
+        stop();
+        expect(seen).toEqual(['de', 'es']);
+        expect(it_.run(() => currentlyLoadedLocale.get())).toBe('it');
+        expect(currentlyLoadedLocale.get()).toBe('es');
+    });
+});
+
 describe('SRV-7: a catalog is fetched at most once, and shared read-only', () => {
     it('two scopes on one locale share one fetch; another locale fetches its own', async () => {
         const fetches = vi.spyOn(LangsysAppAPI, 'getTranslations');

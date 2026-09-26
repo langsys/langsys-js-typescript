@@ -1,7 +1,7 @@
 import { LangsysAppAPI } from './api.js';
 import { canonicalizeLocale, maximizedLangScript } from './locale.js';
 import { Logger, logger } from './logger.js';
-import { autoDiscovery, batchLimit, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations } from './stores.js';
+import { autoDiscovery, batchLimit, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, pageCatalog, pageLocale, sTranslations } from './stores.js';
 import { DEFAULT_SERVER_MESSAGE_CATEGORY, fillTemplate, type ServerMessage } from './server-messages.js';
 import { parseSnapshot, type CatalogSnapshot } from './snapshot.js';
 import { noticeUnusableWriteCapability, Translations } from './translations.js';
@@ -265,8 +265,8 @@ class LangsysAppClass {
 
     /** Whether a catalog is already published for this locale. */
     private isAlreadySeeded(locale: string): boolean {
-        if (currentlyLoadedLocale.get() !== canonicalizeLocale(locale)) return false;
-        const current = sTranslations.get();
+        if (pageLocale() !== canonicalizeLocale(locale)) return false;
+        const current = pageCatalog();
         // The empty skeleton is not a seeded catalog — it is the initial value.
         return Object.keys(current).some((cat) => cat !== '__uncategorized__' || Object.keys(current[cat]!).length > 2);
     }

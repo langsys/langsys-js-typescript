@@ -1,4 +1,4 @@
-import { createSignal } from './signal.js';
+import { createSignal, type Signal } from './signal.js';
 import { persistScoped } from './persist.js';
 import type { iCategories } from './types/translations.js';
 import type { iLangsysConfig } from './types/config.js';
@@ -32,7 +32,31 @@ const catalogCache = persistScoped<iCategories>('langsys:translations', initialT
     'langsys:translations',
 ]);
 
-export const sTranslations = catalogCache.signal;
+/**
+ * The request scope the current code renders in, as the two signals below need
+ * it (SRV-7). Registered by `scope-context.ts`, so this module imports nothing
+ * from the scope and has no cycle.
+ */
+let activeScopeView: () => { catalog: iCategories; locale: string } | undefined = () => undefined;
+
+/** @internal Called once by `scope-context.ts`. */
+export function _followRequestScope(resolver: () => { catalog: iCategories; locale: string } | undefined): void {
+    activeScopeView = resolver;
+}
+
+/**
+ * The catalog. Inside a request scope `get()` answers with the scope's catalog,
+ * as `t()` does, so a binding that reads the catalog through this signal on a
+ * server renders the visitor's, never another request's. `set`, `update` and
+ * `subscribe` are the page's.
+ */
+export const sTranslations: Signal<iCategories> = {
+    ...catalogCache.signal,
+    get: () => activeScopeView()?.catalog ?? catalogCache.signal.get(),
+};
+
+/** The page's own catalog, whatever scope is current: for the page's flush and write-back. */
+export const pageCatalog = (): iCategories => catalogCache.signal.get();
 
 /**
  * Point the catalog cache at a `<projectid>:<locale>` scope. Called by
@@ -41,7 +65,19 @@ export const sTranslations = catalogCache.signal;
  */
 export const scopeCatalogCache = catalogCache.scope;
 
-export const currentlyLoadedLocale = createSignal<string>('');
+const pageLocaleSignal = createSignal<string>('');
+
+/**
+ * The locale the catalog is for. Inside a request scope `get()` answers with the
+ * scope's locale (SRV-7), for the same reason as `sTranslations`.
+ */
+export const currentlyLoadedLocale: Signal<string> = {
+    ...pageLocaleSignal,
+    get: () => activeScopeView()?.locale ?? pageLocaleSignal.get(),
+};
+
+/** The page's own loaded locale, whatever scope is current. */
+export const pageLocale = (): string => pageLocaleSignal.get();
 
 export const config: iLangsysConfig = {
     projectid: '',

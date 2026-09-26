@@ -8,7 +8,7 @@ import { createLegacyKeys, type LegacyKeyFile, type LegacyKeys } from './legacy-
 import { canonicalizeLocale } from './locale.js';
 import { Logger, logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
-import { batchLimit, catalogUnavailable, currentlyLoadedLocale, discoveryBaseLocaleOnly, navigationEpoch, scopeCatalogCache, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
+import { batchLimit, catalogUnavailable, pageCatalog, pageLocale, currentlyLoadedLocale, discoveryBaseLocaleOnly, navigationEpoch, scopeCatalogCache, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
 import type { TFunction } from './types/translation-fn.js';
@@ -351,8 +351,8 @@ export class Translations {
 
     /** The page's catalog, locale and miss queue: what `t()` uses outside every request scope. */
     private readonly pageView: CatalogView = {
-        catalog: () => sTranslations.get(),
-        locale: () => currentlyLoadedLocale.get(),
+        catalog: () => pageCatalog(),
+        locale: () => pageLocale(),
         miss: (category, key, onlyForRegistration) => this.missingToken(category, key, onlyForRegistration),
         fromSnapshot: () => this.catalogFromSnapshot,
     };
@@ -1049,7 +1049,7 @@ export class Translations {
             this.debug.log(`Sending ${this.missingTokens.length} tokens from SSR`);
         }
 
-        const currentData = sTranslations.get();
+        const currentData = pageCatalog();
         this.missingTokens = this.missingTokens.filter((tokenObj) => {
             tokenObj.projectid = this.config.projectid;
             // The server response keys null-category phrases under
@@ -1127,7 +1127,7 @@ export class Translations {
 
             // Re-read: a catalog fetch may have replaced the store while we were
             // in flight, and writing back the pre-await snapshot would clobber it.
-            const latest = sTranslations.get();
+            const latest = pageCatalog();
             batch.forEach((tokenObj) => {
                 // Same bucket normalization as the dedup check: write into
                 // the cats bucket that matches the server response shape.
