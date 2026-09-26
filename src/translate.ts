@@ -3,6 +3,9 @@ import {
     generateCustomId,
     isContentBlockKnown,
     isExcisedFromUnit,
+    isContentBlockMarked,
+    isPhraseMarked,
+    readContentBlockMarker,
     isInResolvedScope,
     legacyTokenizeElement,
     registerContentBlock,
@@ -18,6 +21,8 @@ import { LangsysApp } from './langsys-app.js';
 import { logger } from './logger.js';
 import { config as configStore, currentlyLoadedLocale, navigationEpoch, sTranslations } from './stores.js';
 import type { Unsubscriber } from './signal.js';
+import { claimHost, isHostManaged, releaseHost } from './hosts.js';
+import { Phrase } from './phrase.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
 import { isEmpty } from './utils.js';
@@ -42,6 +47,9 @@ export interface TranslateOptions {
 
 type iNode = Node & { originalNodeValue?: string | null };
 type iElement = HTMLElement & { originalAttributes?: Record<string, string> };
+
+/** The id this SDK stamped on each host this session, so our own stamp is never read as a renderer's. */
+const ownStamps = new WeakMap<Element, string>();
 
 /**
  * Wrap a DOM element and manage translation for its contents.
@@ -69,11 +77,34 @@ export class Translate {
     private checkedParamKeys: string | null = null;
     /** The block this host registered as, kept so a navigation can re-record its miss. */
     private contentBlock: iContentBlock | null = null;
+    /**
+     * The id a renderer stamped on this host (MARK-3's identity), adopted rather
+     * than derived. Such a host renders from the catalog entry under that id, or
+     * its source text, and registers nothing.
+     */
+    private adoptedId: string | null = null;
+    /** Marked hosts inside this one that no instance managed, taken over by this walk. */
+    private takenOver: Array<{ destroy(): void }> = [];
 
-    constructor(element: HTMLElement, options: TranslateOptions = {}) {
+    /**
+     * @param byWalk Internal: set when an enclosing walk creates this instance for
+     *   a host nothing managed, so an instance the author constructs replaces it.
+     */
+    constructor(element: HTMLElement, options: TranslateOptions = {}, byWalk = false) {
         this.element = element;
         this.options = { ...options };
         this.custom_id = options.custom_id || '';
+        claimHost(element, this, byWalk);
+
+        // A stamp this SDK did not write names the host's id (MARK-3). Our own stamp,
+        // on an element re-mounted in the same session, is only the id we derived.
+        if (!this.custom_id) {
+            const marker = readContentBlockMarker(element);
+            if (marker?.kind === 'identity' && ownStamps.get(element) !== marker.id) {
+                this.adoptedId = marker.id;
+                this.custom_id = marker.id;
+            }
+        }
 
         // First pass: tokenize + save + translate.
         void this.tokenizeContent();
@@ -125,7 +156,7 @@ export class Translate {
      * would report the old page's content for the new one.
      */
     private reenterAfterNavigation(): void {
-        if (!this.parseComplete || !this.element?.isConnected) return;
+        if (!this.parseComplete || !this.element?.isConnected || this.adoptedId) return;
         const { category = '' } = this.options;
         if (this.usesSingleTextNodeFastPath()) {
             this.renderSingleToken(category);
@@ -156,6 +187,34 @@ export class Translate {
     public destroy() {
         this.unsubscribers.forEach((unsub) => unsub());
         this.unsubscribers = [];
+        this.takenOver.forEach((instance) => instance.destroy());
+        this.takenOver = [];
+        releaseHost(this.element, this);
+    }
+
+    /**
+     * Take over every marked host inside this one that no instance manages
+     * (MARK-2, MARK-3). The walk excises such a host from this unit (MARK-4), and
+     * without an instance of its own it would never register: a phrase host
+     * registers whole, as the one string its markup defines, and a block host
+     * registers as its own block or, when it carries a stamped id, renders under
+     * that id and registers nothing. Excluded subtrees are not entered, and a
+     * marked host's own inside is its instance's to walk.
+     */
+    private takeOverUnmanagedHosts(): void {
+        const { category, params, label } = this.options;
+        const visit = (parent: Element) => {
+            for (const child of Array.from(parent.children)) {
+                if (isPhraseMarked(child)) {
+                    if (!isHostManaged(child)) this.takenOver.push(new Phrase(child as HTMLElement, { category, params }, true));
+                } else if (isContentBlockMarked(child)) {
+                    if (!isHostManaged(child)) this.takenOver.push(new Translate(child as HTMLElement, { category, params, label }, true));
+                } else if (!isExcisedFromUnit(child)) {
+                    visit(child);
+                }
+            }
+        };
+        visit(this.element);
     }
 
     private translateUpdate(currentLocale: string) {
@@ -244,6 +303,9 @@ export class Translate {
      * in place and recurses, so a token on a nested element is reached too.
      */
     private usesSingleTextNodeFastPath(): boolean {
+        // An adopted id is a block's (MARK-1 stamps blocks), and the fast path would
+        // register the token as a phrase.
+        if (this.adoptedId) return false;
         return this.tokens.length === 1 && this.findSingleTextNode(this.element) !== null;
     }
 
@@ -268,6 +330,7 @@ export class Translate {
     private stampContentBlockMarker(): void {
         if (!this.element || !this.custom_id) return;
         this.element.setAttribute(CONTENT_BLOCK_MARKER_ATTR, this.custom_id);
+        ownStamps.set(this.element, this.custom_id);
     }
 
     private findSingleTextNode(root: Node): Node | null {
@@ -311,6 +374,7 @@ export class Translate {
         const { tokens, content } = tokenizeElement(this.element);
         this.tokens = tokens;
         this.checkParams();
+        this.takeOverUnmanagedHosts();
 
         const { category = '' } = this.options;
 
@@ -341,6 +405,16 @@ export class Translate {
     }
 
     private async handleContentBlock(contentBlock: iContentBlock) {
+        if (this.adoptedId) {
+            // A stamped identity: render from the catalog entry under it, or leave the
+            // source text, and register nothing (MARK-3).
+            await LangsysApp.Translations.ready();
+            if (this.element) {
+                this.translate(Array.from(this.element.childNodes));
+                this.lastTranslatedLocale = currentlyLoadedLocale.get();
+            }
+            return;
+        }
         this.contentBlock = contentBlock;
         const derivedId = isEmpty(this.custom_id);
         if (derivedId) {

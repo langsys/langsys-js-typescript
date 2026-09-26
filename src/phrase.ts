@@ -12,6 +12,7 @@ import type { ParamPrimitive } from './types/translation-fn.js';
  */
 export { PHRASE_MARKER_ATTR } from './content-block.js';
 import { isInResolvedScope } from './content-block.js';
+import { claimHost, releaseHost } from './hosts.js';
 
 export interface PhraseOptions {
     /** Category the phrase registers under (disambiguation for translators). */
@@ -50,8 +51,13 @@ export class Phrase {
     /** Sorted params key-set already checked, so value-only updates don't re-warn. */
     private checkedParamKeys: string | null = null;
 
-    constructor(host: HTMLElement, options: PhraseOptions = {}) {
+    /**
+     * @param byWalk Internal: set when an enclosing walk creates this instance for
+     *   a host nothing managed, so an instance the author constructs replaces it.
+     */
+    constructor(host: HTMLElement, options: PhraseOptions = {}, byWalk = false) {
         this.host = host;
+        claimHost(host, this, byWalk);
         this.category = options.category ?? '';
         this.params = options.params ?? {};
 
@@ -97,6 +103,7 @@ export class Phrase {
     public destroy(): void {
         this.unsubscribers.forEach((unsub) => unsub());
         this.unsubscribers = [];
+        releaseHost(this.host, this);
     }
 
     private async _init(): Promise<void> {

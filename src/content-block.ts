@@ -140,11 +140,37 @@ export function isPhraseMarked(element: Element): boolean {
  * and it does not count toward the enclosing unit's single text node.
  */
 export function isContentBlockMarked(element: Element): boolean {
-    return CONTENT_BLOCK_MARKER_ATTRS.some((attr) => {
-        if (!element.hasAttribute(attr)) return false;
-        const value = (element.getAttribute(attr) ?? '').trim().toLowerCase();
-        return value !== 'false' && value !== '0';
-    });
+    return readContentBlockMarker(element) !== null;
+}
+
+/** What a content-block marker says (MARK-3), or null for no marker or an opt-out. */
+export type ContentBlockMarker = { kind: 'declaration' } | { kind: 'identity'; id: string };
+
+/** The values that declare a block rather than name one. No md5 `custom_id` is one of these words. */
+const DECLARATION_VALUES = ['', 'true', '1', 'yes'];
+
+/**
+ * Read a content-block marker in either spelling (MARK-2, MARK-3), its value
+ * trimmed and compared case-insensitively:
+ *
+ * - bare, empty, `true`, `1` or `yes` declares a block: register this element as
+ *   one block under the id its tokens derive;
+ * - `false` or `0` opts out, and the element is ordinary markup (null);
+ * - anything else is an identity: the `custom_id` a renderer stamped (MARK-1),
+ *   under which the host renders and registers nothing.
+ *
+ * The canonical spelling is read first, and an opted-out spelling does not hide
+ * the other one.
+ */
+export function readContentBlockMarker(element: Element): ContentBlockMarker | null {
+    for (const attr of CONTENT_BLOCK_MARKER_ATTRS) {
+        if (!element.hasAttribute(attr)) continue;
+        const value = (element.getAttribute(attr) ?? '').trim();
+        const lower = value.toLowerCase();
+        if (lower === 'false' || lower === '0') continue;
+        return DECLARATION_VALUES.includes(lower) ? { kind: 'declaration' } : { kind: 'identity', id: value };
+    }
+    return null;
 }
 
 /**

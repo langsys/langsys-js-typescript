@@ -27,12 +27,29 @@ export type ParamsFor<S extends string> = {
 };
 
 /**
+ * Whether a phrase can be a legacy key (spec MIG-2): no whitespace and no
+ * placeholder, like `checkout.greet`. In the legacy-key mode such an argument
+ * resolves to a source value whose placeholders the call site cannot see, so its
+ * params are accepted rather than checked. A sentence is never key-shaped, so its
+ * placeholders stay checked. A phrase that is not a literal (`string`) is
+ * key-shaped too: nothing about its placeholders is known.
+ */
+export type KeyShaped<P extends string> = P extends `${string}${' ' | '\n' | '\t'}${string}`
+    ? false
+    : P extends `${string}{${string}`
+      ? false
+      : true;
+
+/**
  * Rest-tuple for the optional params argument.
- * Empty when the phrase has no placeholders → 3rd arg is forbidden.
- * Required tuple when the phrase has placeholders → 3rd arg must be passed.
+ * Placeholders in the phrase → the params they name must be passed.
+ * No placeholders, and the phrase is a sentence → no params.
+ * No placeholders, and the phrase is key-shaped → params are optional and free.
  */
 export type TArgs<P extends string> = [ExtractParamKeys<P>] extends [never]
-    ? []
+    ? KeyShaped<P> extends true
+        ? [params?: TranslationParams]
+        : []
     : [params: ParamsFor<P>];
 
 /** Loose params type — used inside generic stores where the phrase isn't a known literal. */
@@ -45,6 +62,7 @@ export type TranslationParams = Record<string, ParamPrimitive>;
  *   t('Save', 'UI')                               // categorized
  *   t('Hello, {name}!', { name: 'X' })            // no category, with params
  *   t('Hello, {name}!', 'Greetings', { name: 'X' }) // category + params
+ *   t('checkout.greet', { name: 'X' })            // a legacy key: params accepted
  *
  * Two overloads discriminate on the type at position 2 (string → category,
  * object → params). `category` is required for the second overload —
