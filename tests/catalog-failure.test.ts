@@ -190,7 +190,7 @@ describe('WIRE-4: a failed catalog fetch queues no registrations', () => {
         const tr = make();
         await tr.change('es-es');
         const block = { custom_id: 'b'.repeat(32), category: 'UI', content: '<p>A</p>', tokens: ['A'] };
-        await expect(registerContentBlock(block as never)).resolves.toEqual({ status: true });
+        await expect(registerContentBlock(block as never)).resolves.toEqual({ status: false, skipped: true, reason: 'catalog-unavailable' });
         expect(posted).toEqual([]);
 
         net.recover();

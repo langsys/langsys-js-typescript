@@ -281,20 +281,39 @@ export function resolveHistoricalBlockId(
 }
 
 /**
- * POST a content block to the backend, then stamp its custom_id into the
- * local translations cache so subsequent mounts in this session — and
- * subsequent reloads, since the cache is persisted — skip the POST.
+ * Why a registration did not reach the server, or did not take (REG-10).
  *
- * Mirrors the standalone-phrase path's cache writeback semantics. Respects
- * `key_type === 'write'`: read-only keys silently no-op (resolves with
- * `{ status: true }` so the caller can still render the cached translation).
- *
- * Errors are logged via the SDK's logger and returned as `{ status: false }`
- * — never thrown. Callers can decide whether to surface to UI or swallow.
+ * - `not-write-enabled`: the session may not write, so the block was handed to
+ *   the discovery lane instead;
+ * - `catalog-unavailable`: the catalog fetch failed, so an unknown block cannot
+ *   be told from a registered one (WIRE-4);
+ * - `base-locale-gate`: the project registers only at its base locale (GATE-9);
+ * - `refused`: the server answered the request with a failure;
+ * - `failed`: the request did not complete.
  */
-export async function registerContentBlock(
-    contentBlock: iContentBlock,
-): Promise<{ status: boolean; errors?: unknown[] }> {
+export type RegistrationReason = 'not-write-enabled' | 'catalog-unavailable' | 'base-locale-gate' | 'refused' | 'failed';
+
+/**
+ * What a registration did. Success only when the server stored the block. A
+ * write skipped on purpose is `{ status: false, skipped: true, reason }`, and one
+ * that failed is `{ status: false, reason, errors }`, so a caller can tell them
+ * apart and neither reads as success.
+ */
+export type RegistrationResult =
+    | { status: true }
+    | { status: false; skipped: true; reason: 'not-write-enabled' | 'catalog-unavailable' | 'base-locale-gate' }
+    | { status: false; skipped?: false; reason: 'refused' | 'failed'; errors?: unknown[] };
+
+/**
+ * POST a content block to the backend, then stamp its custom_id into the local
+ * translations cache, so later mounts in this session, and later reloads since
+ * the cache is persisted, skip the POST.
+ *
+ * One behaviour on every path (REG-10): never throws, always logs, and never
+ * reports success for work that did not happen. A skipped write returns a
+ * non-success result naming its reason.
+ */
+export async function registerContentBlock(contentBlock: iContentBlock): Promise<RegistrationResult> {
     // WIRE-4. After a failed catalog fetch every block looks unregistered, because
     // there is no catalog to find it in. Registering on that basis re-POSTs blocks
     // the backend already holds, on every page an outage touches. Record nothing,
@@ -306,7 +325,7 @@ export async function registerContentBlock(
                 custom_id: contentBlock.custom_id,
             });
         }
-        return { status: true };
+        return { status: false, skipped: true, reason: 'catalog-unavailable' };
     }
 
     // GATE-9 on the content-block path, as on the `t()` miss path: with the project setting
@@ -318,7 +337,7 @@ export async function registerContentBlock(
             if (configStore.debug) {
                 logger.log('Skipping content block: discovery is limited to the base locale', { custom_id: contentBlock.custom_id, loaded });
             }
-            return { status: true };
+            return { status: false, skipped: true, reason: 'base-locale-gate' };
         }
     }
 
@@ -348,7 +367,7 @@ export async function registerContentBlock(
                 key_type: configStore.key_type || 'unknown',
             });
         }
-        return { status: true };
+        return { status: false, skipped: true, reason: 'not-write-enabled' };
     }
 
     try {
@@ -364,13 +383,13 @@ export async function registerContentBlock(
         ]);
         if (!response.status) {
             logger.error('Could not save content block', response.errors);
-            return { status: false, errors: response.errors as unknown[] | undefined };
+            return { status: false, reason: 'refused', errors: response.errors as unknown[] | undefined };
         }
         _writeKnownContentBlockToCache(contentBlock.category, contentBlock.custom_id);
         return { status: true };
     } catch (err) {
         logger.error('Could not save content block', err);
-        return { status: false, errors: [err] };
+        return { status: false, reason: 'failed', errors: [err] };
     }
 }
 

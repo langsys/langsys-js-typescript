@@ -35,6 +35,8 @@ export {
     PHRASE_MARKER_ATTRS,
     registerContentBlock,
     tokenizeElement,
+    type RegistrationReason,
+    type RegistrationResult,
 } from './content-block.js';
 
 // Marker constants. Every one `/pure` exports is exported here too, with the same

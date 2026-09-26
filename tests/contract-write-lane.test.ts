@@ -135,21 +135,40 @@ describe('GATE-8: a missing write_enabled is a version signal', () => {
     });
 });
 
-describe('REG-10: a failed registration is never reported as a success', () => {
+describe('REG-10: a registration never reports success for work that did not happen', () => {
     const block = { custom_id: 'b-reg10', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['A', 'B'] };
     const blockIds = async () => (await fx.state()).projects.p1.blocks.map((b) => b.custom_id);
 
-    it('a refused block registration returns status false, does not throw, and leaves nothing', async () => {
-        await fx.seed({ ...SEED, faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
-        await session('k-write');
-        await expect(registerContentBlock(block as never)).resolves.toMatchObject({ status: false });
+    it('from a session the double computes read-only, the skip is a non-success naming "not write-enabled"', async () => {
+        await session('k-read');
+        expect(writeEnabled.get(), 'the double computed read-only').toBe(false);
+        await expect(registerContentBlock(block as never)).resolves.toEqual({ status: false, skipped: true, reason: 'not-write-enabled' });
         expect(await blockIds()).not.toContain('b-reg10');
     });
 
-    it('control: the same registration succeeds and the block is held by the server', async () => {
+    it('while the first catalog fetch has failed, the skip names the unavailable catalog', async () => {
+        await fx.seed({ ...SEED, faults: [{ method: 'GET', path: '/translations', times: 1, drop: true }] });
+        await session('k-write', { awaitCatalog: false });
+        await until(() => catalogUnavailable.get() === true);
+        await expect(registerContentBlock(block as never)).resolves.toEqual({ status: false, skipped: true, reason: 'catalog-unavailable' });
+        expect(await blockIds()).not.toContain('b-reg10');
+    });
+
+    it('a refusal on the registration route is a failure distinct from both skips', async () => {
+        await fx.seed({ ...SEED, faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
         await session('k-write');
-        await expect(registerContentBlock(block as never)).resolves.toMatchObject({ status: true });
+        const result = await registerContentBlock(block as never);
+        expect(result).toMatchObject({ status: false, reason: 'refused' });
+        expect(result).not.toHaveProperty('skipped', true);
+        expect(await blockIds()).not.toContain('b-reg10');
+    });
+
+    it('a write-enabled registration returns success, and the block is in the next catalog read', async () => {
+        await session('k-write');
+        await expect(registerContentBlock(block as never)).resolves.toEqual({ status: true });
         expect(await blockIds()).toContain('b-reg10');
+        await LangsysApp.refresh();
+        expect(isContentBlockKnown('UI', 'b-reg10')).toBe(true);
     });
 });
 
@@ -219,7 +238,7 @@ describe('GATE-9 on the content-block path', () => {
         await fx.seed({ ...SEED, projects: [{ ...SEED.projects[0], discovery_base_locale_only: true }] });
         await session('k-write');
         const block = { custom_id: 'b-gated', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['Gated A', 'Gated B'] };
-        await registerContentBlock(block as never);
+        await expect(registerContentBlock(block as never)).resolves.toEqual({ status: false, skipped: true, reason: 'base-locale-gate' });
         await sleep(300);
         expect((await fx.state()).projects.p1.blocks.map((b) => b.custom_id)).not.toContain('b-gated');
     });
