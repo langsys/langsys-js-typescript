@@ -184,6 +184,36 @@ describe('SRV-7 with SRV-2: the locale and catalog signals follow the scope too'
         await expect(Promise.all([render(it_, 20), render(fr, 5)])).resolves.toEqual(['Prezzi|it|Prezzi', 'Tarifs|fr|Tarifs']);
     });
 
+    // Svelte reads a store by subscribing: `$store` on a server is the synchronous first
+    // emission of subscribe(run). That emission must be the scope's too.
+    const firstEmission = <T>(store: { subscribe(run: (v: T) => void): () => void }): T => {
+        let value!: T;
+        store.subscribe((v) => (value = v))();
+        return value;
+    };
+    const subscribedTriple = () =>
+        `${firstEmission<(p: string, c: string) => string>(LangsysApp.Translations.tSignal as never)('Pricing', 'UI')}|${firstEmission<string>(currentlyLoadedLocale)}|${firstEmission<Record<string, Record<string, string>>>(sTranslations as never).UI!.Pricing}`;
+
+    it('read by subscription, as Svelte’s $store does, a render inside the it scope reads only Italian', async () => {
+        const it_ = await createRequestScope({ locale: 'it', catalog: { UI: { Pricing: 'Prezzi' } } as never });
+        expect(it_.run(subscribedTriple)).toBe('Prezzi|it|Prezzi');
+        expect(subscribedTriple(), 'control: outside the scope, the page’s').toBe('Preise|de|Preise');
+    });
+
+    it('control: tSignal.subscribe already hands a t that reads the scope', async () => {
+        const it_ = await createRequestScope({ locale: 'it', catalog: { UI: { Pricing: 'Prezzi' } } as never });
+        expect(it_.run(() => firstEmission<(p: string, c: string) => string>(LangsysApp.Translations.tSignal as never)('Pricing', 'UI'))).toBe('Prezzi');
+    });
+
+    it('only the first emission follows the scope: later emissions are the page’s changes', async () => {
+        const it_ = await createRequestScope({ locale: 'it', catalog: { UI: { Pricing: 'Prezzi' } } as never });
+        const seen: string[] = [];
+        const stop = it_.run(() => currentlyLoadedLocale.subscribe((v) => seen.push(v)));
+        currentlyLoadedLocale.set('es');
+        stop();
+        expect(seen).toEqual(['it', 'es']);
+    });
+
     it('set and subscribe stay the page’s: a scope never writes the page, nor the page the scope', async () => {
         const it_ = await createRequestScope({ locale: 'it', catalog: { UI: { Pricing: 'Prezzi' } } as never });
         const seen: string[] = [];

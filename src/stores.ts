@@ -45,15 +45,41 @@ export function _followRequestScope(resolver: () => { catalog: iCategories; loca
 }
 
 /**
+ * A page signal whose reads follow the active request scope. `get()`, and the
+ * synchronous first emission of `subscribe(run)`, answer with the scope's value:
+ * a Svelte `$store` read on a server IS a subscription, so the first emission is
+ * the read. Later emissions, and `set` and `update`, are the page's.
+ */
+function followScope<T>(page: Signal<T>, pick: (scope: { catalog: iCategories; locale: string }) => T): Signal<T> {
+    return {
+        ...page,
+        get: () => {
+            const scope = activeScopeView();
+            return scope ? pick(scope) : page.get();
+        },
+        subscribe: (run) => {
+            const scope = activeScopeView();
+            if (!scope) return page.subscribe(run);
+            let first = true;
+            return page.subscribe((value) => {
+                if (first) {
+                    first = false;
+                    run(pick(scope));
+                    return;
+                }
+                run(value);
+            });
+        },
+    };
+}
+
+/**
  * The catalog. Inside a request scope `get()` answers with the scope's catalog,
  * as `t()` does, so a binding that reads the catalog through this signal on a
  * server renders the visitor's, never another request's. `set`, `update` and
  * `subscribe` are the page's.
  */
-export const sTranslations: Signal<iCategories> = {
-    ...catalogCache.signal,
-    get: () => activeScopeView()?.catalog ?? catalogCache.signal.get(),
-};
+export const sTranslations: Signal<iCategories> = followScope(catalogCache.signal, (scope) => scope.catalog);
 
 /** The page's own catalog, whatever scope is current: for the page's flush and write-back. */
 export const pageCatalog = (): iCategories => catalogCache.signal.get();
@@ -71,10 +97,7 @@ const pageLocaleSignal = createSignal<string>('');
  * The locale the catalog is for. Inside a request scope `get()` answers with the
  * scope's locale (SRV-7), for the same reason as `sTranslations`.
  */
-export const currentlyLoadedLocale: Signal<string> = {
-    ...pageLocaleSignal,
-    get: () => activeScopeView()?.locale ?? pageLocaleSignal.get(),
-};
+export const currentlyLoadedLocale: Signal<string> = followScope(pageLocaleSignal, (scope) => scope.locale);
 
 /** The page's own loaded locale, whatever scope is current. */
 export const pageLocale = (): string => pageLocaleSignal.get();
