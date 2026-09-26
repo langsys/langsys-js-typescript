@@ -48,10 +48,11 @@ export function activeScope(): ActiveScope | undefined {
 }
 
 /**
- * Make `scope` current for the rest of the current async context, for a host
- * that cannot wrap its render in a function (a Nuxt server plugin, a Nitro
- * request hook). Needs a storage with `enterWith`: there is no synchronous
- * fallback, since the context outlives any stack frame.
+ * Make `scope` current for the rest of the current async context. Needs a
+ * storage with `enterWith`: there is no synchronous fallback, since the context
+ * outlives any stack frame. `enterWith` binds the store to the current async
+ * resource, so it holds only in the continuation that performs the render,
+ * never past the return of a function the host awaits (see `RequestScope.enter`).
  */
 export function enterScope(scope: ActiveScope): void {
     if (!storage?.enterWith) {

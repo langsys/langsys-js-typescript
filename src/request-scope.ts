@@ -54,9 +54,15 @@ export interface RequestScope {
     run<R>(fn: () => R): R;
     /**
      * Make the scope current for the rest of the current async context, where the
-     * render cannot be wrapped in `run()` (a Nuxt server plugin, a Nitro request
-     * hook), before anything renders. Requires `setRequestScopeStorage` to have
-     * been given an `AsyncLocalStorage`; throws otherwise.
+     * render cannot be wrapped in `run()`. Requires `setRequestScopeStorage` to
+     * have been given an `AsyncLocalStorage`; throws otherwise.
+     *
+     * It holds only in the continuation that itself performs the render: called
+     * inside a function the host awaits and returns from (a Nuxt plugin, a Nitro
+     * request hook, an awaited helper), the scope is gone when that function
+     * returns, before or after its own `await` alike. So call `enter()` in the
+     * function that renders, `run()` everywhere else, and hand the scope to the
+     * app through the framework's own injection when the host awaits you.
      */
     enter(): void;
     /** The hydration seed: pass to `LangsysApp.seedCatalog(catalog, locale)` on the client (SRV-4). */

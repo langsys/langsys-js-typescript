@@ -21,7 +21,7 @@ heading records the INTENT rather than the number. There is no summary-regenerat
 
 - **Request scopes: server rendering with each visitor's state kept apart.** The SDK's catalog, locale and miss queue are module state, so a server process rendering for several visitors at once could serve one visitor another's locale. `createRequestScope({ locale, catalog?, url? })` opens a scope with its own locale, catalog view, misses and hydration seed.
   - `scope.run(fn)` makes the scope current for top-level `t()`, `LangsysApp.t`, `tSignal`, `currentlyLoadedLocale.get()`, `sTranslations.get()`, and the lookups and registrations `Translate` and `Phrase` make. A binding reading the locale or the catalog through those signals on a server gets the visitor's, whether by `get()` or by the first emission of `subscribe`, which is how a Svelte `$store` reads. Later emissions, `set` and `update` remain the page's. It returns `fn`'s result, a promise included.
-  - `scope.enter()` makes the scope current for the rest of the async context, for hosts that cannot wrap their render.
+  - `scope.enter()` makes the scope current for the rest of the async context, for hosts that cannot wrap their render. It holds only in the continuation that performs the render, never past the return of a function the host awaits, so hosts that await their plugins hand the scope to the app by injection instead.
   - `scope.seed()` is the client's hydration payload.
   - `scope.close()`, after the response, sends what the render missed when the key may write and the SSR strategy collects on the server.
   - `setRequestScopeStorage(new AsyncLocalStorage())` carries the scope across `await`; the core never imports `node:async_hooks`.
