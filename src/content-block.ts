@@ -474,6 +474,26 @@ function _writeKnownContentBlockToCache(category: string, customId: string): voi
  * the thing to update — see `generateLegacyCustomId` for what an id change
  * actually costs.
  */
+/**
+ * Whether an element and everything inside it are left out of the unit being
+ * walked: an author's `translate="no"` or `data-notrans`, code and notation
+ * (`NON_TRANSLATABLE_ELEMENTS`), a phrase host (its own rich phrase) and a nested
+ * content-block host (a unit of its own, MARK-4).
+ *
+ * The one predicate for "not this unit's text". The tokenizer skips these, and
+ * so must every question asked about the same unit afterwards — whether its one
+ * token is its one text node (TOK-6), where a translation is written — or the
+ * two disagree about the unit's shape and it registers under the wrong one.
+ */
+export function isExcisedFromUnit(el: Element): boolean {
+    return (
+        isTranslationExcluded(el) ||
+        NON_TRANSLATABLE_ELEMENTS.includes(el.tagName.toLowerCase()) ||
+        isPhraseMarked(el) ||
+        isContentBlockMarked(el)
+    );
+}
+
 function _walkForTokens(
     liveRoot: HTMLElement,
     cloneNodes: ChildNode[],
@@ -484,31 +504,12 @@ function _walkForTokens(
 ): void {
     cloneNodes.forEach((node, index) => {
         if (node.nodeType === Node.ELEMENT_NODE) {
-            const el = node as HTMLElement;
-            if (isTranslationExcluded(el)) return;
-            // Code, markup and notation — never prose. Measured before this guard
-            // existed: `<style>.plan{color:#fff}</style>` registered
-            // `.plan{color:#fff}` as a translatable phrase and
-            // `<script>window.dataLayer.push(1)` registered the statement; later,
-            // `<math>` registered its operators. All were then sent for machine
-            // translation.
-            //
-            // The previous version of this comment said `<noscript>` was
-            // "deliberately absent from that list", which had been false since
-            // TOK-1 was reversed to exclude it — the reasoning left standing
-            // beside a list that contradicted it, which is the same way the
-            // attribute list's docstring went stale. The list is the contract;
-            // see `NON_TRANSLATABLE_ELEMENTS` for why each member is in it and
-            // why `<svg>` is not.
-            if (NON_TRANSLATABLE_ELEMENTS.includes(el.tagName.toLowerCase())) return;
-            // A <Phrase> subtree is its own self-managed rich phrase — skip it
-            // here so the content block doesn't tokenize its inner text.
-            if (isPhraseMarked(el)) return;
-            // A nested content-block host is a unit of its own (MARK-4), whether stamped
-            // with an id or declared by a bare marker, so its words are not this block's.
-            // Without this they registered twice, once in each block, and the outer id
-            // depended on the inner content.
-            if (isContentBlockMarked(el)) return;
+            // Code and notation are never prose (`<style>`, `<script>` and `<math>`
+            // content was registered and machine-translated before this), a phrase
+            // host is its own rich phrase, and a nested block host is its own unit,
+            // whose words would otherwise register in both blocks. See
+            // `isExcisedFromUnit` and `NON_TRANSLATABLE_ELEMENTS`.
+            if (isExcisedFromUnit(node as HTMLElement)) return;
         }
 
         if (applyStyles && node.hasChildNodes()) {
