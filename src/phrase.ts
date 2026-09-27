@@ -1,6 +1,6 @@
 import { interpolate, warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
-import { encodeRichText, markupTokenValues, reconstitute, type RichSlot } from './richtext.js';
+import { applyInPlace, encodeRichText, markupTokenValues, reconstitute, type RichSlot } from './richtext.js';
 import type { Unsubscriber } from './signal.js';
 import { currentlyLoadedLocale, navigationEpoch, sTranslations } from './stores.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -152,8 +152,10 @@ export class Phrase {
         const raw = LangsysApp.Translations.lookup(this.phrase, this.category) ?? this.phrase;
         const params = { ...this.params, ...markupTokenValues(this.slots.length) };
         const resolved = interpolate(raw, params, currentlyLoadedLocale.get());
+        // Into the nodes already there when the translation keeps the markup's shape, so a
+        // framework's references to them stay live; rebuilt only when it does not.
+        if (applyInPlace(this.host, resolved)) return;
         const nodes = reconstitute(resolved, this.slots, this.host.ownerDocument ?? document);
-
         this.host.replaceChildren(...nodes);
     }
 }

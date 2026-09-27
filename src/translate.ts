@@ -613,7 +613,15 @@ export class Translate {
                 const originalText = normalizeTokenText(optionEl.originalAttributes['textContent']);
                 if (originalText) {
                     const translation = this.getTranslation(originalText);
-                    option.textContent = this.applyParams(translation || optionEl.originalAttributes['textContent']);
+                    const text = this.applyParams(translation || optionEl.originalAttributes['textContent']);
+                    // Into the option's own text node when it has just one, so a framework's
+                    // reference to it stays live; `textContent =` would replace it.
+                    const only = option.childNodes.length === 1 ? option.firstChild : null;
+                    if (only && only.nodeType === Node.TEXT_NODE) {
+                        if (only.nodeValue !== text) only.nodeValue = text;
+                    } else {
+                        option.textContent = text;
+                    }
                 }
             });
         }

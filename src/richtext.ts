@@ -145,6 +145,82 @@ export function markupTokenValues(slotCount: number): Record<string, string> {
  * stray close), we fall back to a single plain-text node (markers stripped) —
  * "lose the markup, keep the meaning" rather than throw.
  */
+/**
+ * Split a resolved string into its text runs and markup-token opens and closes,
+ * or null when they do not nest. The one reading of the sentinels, shared by
+ * `applyInPlace` and `reconstitute`.
+ */
+export function splitSentinels(resolved: string): Array<{ text: string } | { open: number } | { close: number }> | null {
+    const parts: Array<{ text: string } | { open: number } | { close: number }> = [];
+    let depth = 0;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    const scan = new RegExp(SENT_SCAN.source, 'g');
+    while ((match = scan.exec(resolved)) !== null) {
+        const text = resolved.slice(lastIndex, match.index);
+        if (text) parts.push({ text });
+        lastIndex = scan.lastIndex;
+        if (match[1] !== undefined) {
+            parts.push({ open: Number(match[1]) });
+            depth++;
+        } else {
+            if (depth === 0) return null;
+            parts.push({ close: Number(match[2]) });
+            depth--;
+        }
+    }
+    const tail = resolved.slice(lastIndex);
+    if (tail) parts.push({ text: tail });
+    return depth === 0 ? parts : null;
+}
+
+/**
+ * Write a resolved rich phrase into the host's EXISTING nodes, when its markup
+ * skeleton is the host's: the same elements, in the same nesting and order.
+ * Each text run goes into the host's text node at its place, and a text node the
+ * translation has nothing for is emptied. Returns false, touching nothing, when
+ * the skeleton differs (a translation that reorders, adds or drops inline
+ * markup), and the caller then rebuilds the host.
+ *
+ * In place, because a reactive framework holds references to the nodes it
+ * rendered: replacing them leaves every later update writing to a detached node
+ * that is no longer on the page. Only a structural change has to replace them,
+ * and then those later updates are lost, which is the cost of the reorder.
+ */
+export function applyInPlace(host: Node, resolved: string): boolean {
+    const parts = splitSentinels(resolved);
+    if (!parts) return false;
+    const writes: Array<[Node, string]> = [];
+    let next = 0;
+    let slot = 0;
+    const walk = (parent: Node): boolean => {
+        for (const child of Array.from(parent.childNodes)) {
+            if (child.nodeType === 3) {
+                const part = parts[next];
+                if (part && 'text' in part) {
+                    writes.push([child, part.text]);
+                    next++;
+                } else {
+                    writes.push([child, '']);
+                }
+            } else if (child.nodeType === 1) {
+                const open = parts[next];
+                const index = slot++;
+                if (!open || !('open' in open) || open.open !== index) return false;
+                next++;
+                if (!walk(child)) return false;
+                const close = parts[next];
+                if (!close || !('close' in close) || close.close !== index) return false;
+                next++;
+            }
+        }
+        return true;
+    };
+    if (!walk(host) || next !== parts.length) return false;
+    for (const [node, text] of writes) if (node.nodeValue !== text) node.nodeValue = text;
+    return true;
+}
+
 export function reconstitute(resolved: string, slots: RichSlot[], doc: Document = document): Node[] {
     const root = doc.createDocumentFragment();
     const stack: Node[] = [root];

@@ -7,7 +7,7 @@
 | **specVersion** | 8.2.19 |
 | **Spec revision read** | langsys2 aac52142…, docs/sdk-spec.mdx blob 5f01ef7d761c35157e553ed0ea83b9a4539511c3 (specVersion 8.2.19). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree aac52142 docs/sdk-spec.mdx` at this write and checked by `npm run verify:spec`, which also fails if the vector file cites a different blob. Every rule id is counted by `npm run tally:conformance`. |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 1309 tests in 64 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 1315 tests in 65 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
