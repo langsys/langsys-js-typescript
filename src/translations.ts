@@ -1,5 +1,6 @@
 import { LangsysAppAPI } from './api.js';
 import { recordMissForDiscovery } from './discovery.js';
+import { isServerCollectedPhrase } from './served-source.js';
 import { _registerTeardownFlush } from './teardown.js';
 import { stripC0Controls } from './identity.js';
 import { interpolate } from './interpolate.js';
@@ -550,6 +551,13 @@ export class Translations {
         // URL the miss occurred on, and a phrase already queued from an earlier
         // route must not suppress the record for the page being viewed now.
         if (!onlyForRegistration) recordMissForDiscovery(category, token);
+
+        // The server's request scope sends this phrase itself after the response (its
+        // seed says so, SSR-1/SSR-2), so queueing it here would register it twice.
+        if (isServerCollectedPhrase(category, token)) {
+            this.debug.log('Not queueing for registration: the server registers this phrase', { category, token });
+            return;
+        }
 
         // Discovery has it; only hold it for registration if that queue can
         // actually drain. See `shouldQueueForWrite`.

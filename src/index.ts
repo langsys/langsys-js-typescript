@@ -72,6 +72,8 @@ export {
     type RenderedBlock,
     type RenderedNode,
     type SeededBlock,
+    type SeededPhrase,
+    type RequestSeed,
 } from './block-tree.js';
 export {
     clearSharedCatalogs,

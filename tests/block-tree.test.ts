@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangsysAppAPI } from '../src/api.js';
-import { applyRendered, blockNodesOf, registerBlock, renderBlock, serializeTree, tokenizeTree, type BlockNode, type RenderedNode } from '../src/block-tree.js';
+import { applyRendered, blockNodesOf, registerBlock, renderBlock, serializeTree, tokenizeTree, warnUnrenderedBlock, type BlockNode, type RenderedNode } from '../src/block-tree.js';
 import { Phrase } from '../src/phrase.js';
 import { findSingleTextNode, generateCustomId, tokenizeElement } from '../src/content-block.js';
 import { _resetDiscoveryState } from '../src/discovery.js';
 import { LangsysApp } from '../src/langsys-app.js';
+import { logger } from '../src/logger.js';
 import { createRequestScope } from '../src/request-scope.js';
 import { config as configStore, currentlyLoadedLocale, sTranslations, writeEnabled } from '../src/stores.js';
 import { Translate } from '../src/translate.js';
@@ -461,5 +462,27 @@ describe('the DOM classes under a request scope do nothing, and say so once', ()
         expect(scope.misses()).toEqual([]);
         expect(phrase.textContent).toBe('Hello');
         expect(warn.mock.calls.flat().join(' ')).toContain('renderBlock');
+    });
+});
+
+describe('SRV-1: a block served as source is reported as a debug notice, once per process per reason', () => {
+    it('nothing at all with debug off, then once per reason with it on, however often the block renders', () => {
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            warnUnrenderedBlock('component-a');
+            expect(log).not.toHaveBeenCalled();
+            logger.debugEnabled = true;
+            for (let i = 0; i < 3; i++) warnUnrenderedBlock('component-a');
+            warnUnrenderedBlock('raw-html-a');
+            const notices = log.mock.calls.map((call) => call.join(' '));
+            expect(notices.filter((n) => n.includes('(component-a)'))).toHaveLength(1);
+            expect(notices.filter((n) => n.includes('(raw-html-a)'))).toHaveLength(1);
+            expect(warn).not.toHaveBeenCalled();
+        } finally {
+            logger.debugEnabled = false;
+            log.mockRestore();
+            warn.mockRestore();
+        }
     });
 });

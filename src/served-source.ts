@@ -1,4 +1,4 @@
-import type { SeededBlock } from './block-tree.js';
+import type { SeededBlock, SeededPhrase } from './block-tree.js';
 import { tokenSlots, type TokenSlot } from './content-block.js';
 import { normalizeMarkupPlaceholders, normalizeTokenText } from './identity.js';
 import { interpolate } from './interpolate.js';
@@ -21,11 +21,22 @@ import type { ParamPrimitive } from './types/translation-fn.js';
  */
 
 const seeded = new Map<string, SeededBlock>();
+const collectedPhrases = new Set<string>();
 let warnedUnrecovered = false;
 
 /** Keep a seeded block's source tokens, by id, for the host that renders it. */
 export function rememberSeededBlock(block: SeededBlock): void {
     if (block?.customId && Array.isArray(block.tokens)) seeded.set(block.customId, block);
+}
+
+/** Keep that the server's scope sends this phrase itself. */
+export function rememberSeededPhrase(phrase: SeededPhrase): void {
+    if (phrase?.collected && typeof phrase.phrase === 'string') collectedPhrases.add(`${phrase.category ?? ''}\0${phrase.phrase}`);
+}
+
+/** Whether the server's scope sends this phrase itself, so the client never records it for registration. */
+export function isServerCollectedPhrase(category: string, phrase: string): boolean {
+    return collectedPhrases.has(`${category ?? ''}\0${phrase}`);
 }
 
 /** Whether the server's scope sends this block itself, so the client never registers it. */
@@ -36,6 +47,7 @@ export function isServerCollected(customId: string): boolean {
 /** Test seam: forget every seeded block, and the warning given. */
 export function _resetSeededBlocks(): void {
     seeded.clear();
+    collectedPhrases.clear();
     warnedUnrecovered = false;
 }
 

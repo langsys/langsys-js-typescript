@@ -575,7 +575,7 @@ const seed = scope.seed();                                  // serialise into th
 await scope.close();                                        // sends what the render missed, after the response
 ```
 
-On the client, hydrate with `LangsysApp.seedCatalog(seed.catalog, seed.locale, seed.blocks)`, before the DOM classes mount. The blocks give each served block's source tokens, and mark the blocks the server sends itself at `close()` (`collected`), which the client never registers.
+On the client, hydrate with `LangsysApp.seedCatalog(seed.catalog, seed.locale, seed)`, before the DOM classes mount. The seed's blocks give each served block's source tokens, and its blocks and phrases are marked `collected` when the server sends them itself at `close()`; the client never registers those.
 
 - **`createRequestScope({ locale, catalog?, url? })`** resolves once the scope's catalog is in hand. That's the `catalog` you pass, or a fetch. A fetch is made at most once per request and shared read-only with scopes rendering the same locale for a minute. A failed fetch renders source text and records nothing.
 - **`setRequestScopeStorage`** is opt-in, and what it guarantees depends on the host's async model. Under zone.js, for one, promises don't carry it across concurrent renders. A binding can instead carry the scope through its own dependency injection and read `scope.t` directly.
@@ -607,6 +607,8 @@ A page served translated holds the translation, and the catalog is keyed by sour
 ```ts
 for (const block of Object.values(seed.blocks)) registerBlock(block);   // registers nothing the server collected
 ```
+
+That loop is for bindings that mount the DOM classes. A binding that renders trees registers each block from its nodes as it renders, and `registerBlock` skips what the seed marks `collected` there too.
 
 A `Translate` over a stamped host in a resolved scope then takes the block's source tokens from the seed, or, without one, from the catalog entry the served text was rendered from. After a locale switch, the host's own resolved marker names the locale it now holds. A `Phrase` over a resolved host takes its source phrase from the catalog the same way. Neither reads the source from the DOM, so a later locale switch renders that locale. A host whose source cannot be recovered keeps the text it was served with, and the core warns once.
 

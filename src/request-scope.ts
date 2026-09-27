@@ -5,7 +5,7 @@ import { canonicalizeLocale } from './locale.js';
 import { activeScope, enterScope, runInScope, type ActiveScope } from './scope-context.js';
 import { batchLimit, config as configStore } from './stores.js';
 import { AUTO_SSR_FLUSH_THRESHOLD, type CatalogView } from './translations.js';
-import type { SeededBlock } from './block-tree.js';
+import type { RequestSeed, SeededBlock } from './block-tree.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { TFunction } from './types/translation-fn.js';
 import type { iCategories, iTranslations } from './types/translations.js';
@@ -67,13 +67,16 @@ export interface RequestScope {
      */
     enter(): void;
     /**
-     * The hydration seed (SRV-4): pass `catalog` and `locale` to
-     * `LangsysApp.seedCatalog` on the client. `blocks` names every block the
-     * scope rendered through `renderBlock`, by id, with its category, source
-     * tokens and shape, for a client that cannot recover a block's source from
-     * DOM already holding the translation: hand one to `registerBlock`.
+     * The hydration seed (SRV-4): on the client, `LangsysApp.seedCatalog(seed.catalog,
+     * seed.locale, seed)` before hydration. `blocks` names every block the scope
+     * rendered through `renderBlock`, by id, with its category, source tokens and
+     * shape, for a client that cannot recover a block's source from DOM already
+     * holding the translation; hand each to `registerBlock` after `init()`.
+     * `phrases` lists the phrases the render missed. A block or phrase the scope
+     * sends itself at `close()` is marked `collected`, and the client never
+     * registers it.
      */
-    seed(): { locale: string; catalog: iCategories; blocks: Record<string, SeededBlock> };
+    seed(): RequestSeed;
     /** The phrases this scope's render missed. */
     misses(): readonly ScopeMiss[];
     /**
@@ -145,7 +148,7 @@ class Scope implements RequestScope, ActiveScope {
         enterScope(this);
     }
 
-    seed(): { locale: string; catalog: iCategories; blocks: Record<string, SeededBlock> } {
+    seed(): RequestSeed {
         // A block this scope will send itself at `close()` is marked `collected`, so the
         // client never sends it again (SSR-1, SSR-2): the decision `flush` makes, taken now.
         const collects = this.serverCollects(this.phraseMisses.size + this.blockMisses.size) && LangsysApp.Translations.mayWrite();
@@ -157,7 +160,8 @@ class Scope implements RequestScope, ActiveScope {
                     : this.blockMisses.has(`${block.category}\0${id}`);
             blocks[id] = collects && held ? { ...block, collected: true } : { ...block };
         }
-        return { locale: this.locale, catalog: clone(this.catalog), blocks: clone(blocks) };
+        const phrases = [...this.phraseMisses.values()].map(({ category, phrase }) => (collects ? { category, phrase, collected: true } : { category, phrase }));
+        return { locale: this.locale, catalog: clone(this.catalog), blocks: clone(blocks), phrases };
     }
 
     /** SSR-1 and SSR-2: whether the server sends a scope's misses, for a list this long. */

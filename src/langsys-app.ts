@@ -4,8 +4,8 @@ import { Logger, logger } from './logger.js';
 import { autoDiscovery, batchLimit, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, pageCatalog, pageLocale, sTranslations } from './stores.js';
 import { DEFAULT_SERVER_MESSAGE_CATEGORY, fillTemplate, type ServerMessage } from './server-messages.js';
 import { parseSnapshot, type CatalogSnapshot } from './snapshot.js';
-import { rememberSeededBlock } from './served-source.js';
-import type { SeededBlock } from './block-tree.js';
+import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
+import type { SeededBlock, SeededPhrase } from './block-tree.js';
 import { noticeUnusableWriteCapability, Translations } from './translations.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig, iLangsysInitConfig, WriteGrant } from './types/config.js';
@@ -183,14 +183,19 @@ class LangsysAppClass {
      * re-seed a locale that is already seeded, so an SSR payload passed through
      * config cannot clobber a catalog a client entry put there first.
      *
-     * `blocks`, a request scope's `seed().blocks`, hands over the blocks the
-     * server rendered before any DOM class mounts: the source tokens a served
-     * translation re-renders from, and which blocks the server sends itself.
-     * Nothing is registered here; `registerBlock(seededBlock)` after `init()`
-     * does that.
+     * `served`, a request scope's `seed()`, hands over what the server rendered
+     * before any DOM class mounts: each block's source tokens, which a served
+     * translation re-renders from, and which blocks and phrases the server sends
+     * itself (`collected`), which the client then never registers. Nothing is
+     * registered here; `registerBlock(seededBlock)` after `init()` does that.
      */
-    public seedCatalog(catalog: iCategories, locale: string, blocks?: Record<string, SeededBlock>): void {
-        for (const block of Object.values(blocks ?? {})) rememberSeededBlock(block);
+    public seedCatalog(
+        catalog: iCategories,
+        locale: string,
+        served?: { blocks?: Record<string, SeededBlock>; phrases?: readonly SeededPhrase[] }
+    ): void {
+        for (const block of Object.values(served?.blocks ?? {})) rememberSeededBlock(block);
+        for (const phrase of served?.phrases ?? []) rememberSeededPhrase(phrase);
         this.publishSeed(catalog, locale);
         // So a later `change()` for this locale is a cache hit rather than a
         // fetch that overwrites what the server already sent, and so

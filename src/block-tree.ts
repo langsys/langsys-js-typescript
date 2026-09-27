@@ -22,11 +22,12 @@ import { interpolate, isICU } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { markupTokenValues, splitSentinels, stripSentinels } from './richtext.js';
 import { activeCatalog, activeScope } from './scope-context.js';
-import { rememberSeededBlock } from './served-source.js';
+import { isServerCollected, rememberSeededBlock } from './served-source.js';
 import { logger } from './logger.js';
 import { config as configStore, currentlyLoadedLocale } from './stores.js';
 import type { CatalogView } from './translations.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
+import type { iCategories } from './types/translations.js';
 
 /**
  * Content blocks without a DOM (spec SRV-1, MARK-1, TOK-6): identify, translate
@@ -121,6 +122,25 @@ export interface SeededBlock {
     collected?: boolean;
 }
 
+/**
+ * A phrase a request scope's render missed, as its seed carries it: `t()`, a
+ * `<Phrase>` host or a single-token block. `collected` as on `SeededBlock`: the
+ * scope sends it itself at `close()`, and the client never records it again.
+ */
+export interface SeededPhrase {
+    category: string;
+    phrase: string;
+    collected?: boolean;
+}
+
+/** A request scope's hydration seed (SRV-4): `LangsysApp.seedCatalog(seed.catalog, seed.locale, seed)` on the client. */
+export interface RequestSeed {
+    locale: string;
+    catalog: iCategories;
+    blocks: Record<string, SeededBlock>;
+    phrases: SeededPhrase[];
+}
+
 /** The tokens and shape of a block's content, exactly as `tokenizeElement` and `Translate` decide them for the same markup. */
 export function tokenizeTree(nodes: readonly BlockNode[]): { tokens: string[]; shape: BlockShape } {
     const root = view(nodes);
@@ -150,21 +170,24 @@ export function renderBlock(nodes: readonly BlockNode[], options: BlockOptions =
     return rendered;
 }
 
-/** The warnings already given, one per reason. */
+/** The notices already given, one per reason. */
 const warnedUnrendered = new Set<string>();
 
 /**
- * Say, once per reason, that a block was served untranslated because a binding
- * could not render it without a DOM: a component in its subtree, raw HTML, a
- * Suspense placeholder, a raw-text element. The block is served as source text
- * with its explicit id stamped, and the client translates it after mount. The
- * warning is the core's (bindings write no console output of their own).
+ * Report, as a debug notice once per process per reason (SRV-1), that a block
+ * was served as source because the binding could not show it to the renderer:
+ * a framework component in its subtree, a raw-HTML prop, a raw-text element, a
+ * suspense placeholder. That is SRV-1's one sanctioned fallback, not a fault:
+ * the block is served with no resolved marker and its app-supplied id stamped
+ * where it has one, and the client renders and registers it after hydration.
+ * The notice is the core's (bindings write no console output of their own), and
+ * a reason reported while debug is off is reported when it next occurs with it on.
  */
 export function warnUnrenderedBlock(reason: string): void {
-    if (warnedUnrendered.has(reason)) return;
+    if (!logger.debugEnabled || warnedUnrendered.has(reason)) return;
     warnedUnrendered.add(reason);
-    logger.warn(
-      `A <Translate> block was not rendered on the server (${reason}), so it is served as source text and translated on the client after mount.`
+    logger.log(
+        `A <Translate> block was served as source (${reason}): the binding could not show it to the renderer, so the client renders and registers it after hydration.`
     );
 }
 
@@ -185,9 +208,10 @@ export function warnUnrenderedBlock(reason: string): void {
  * and nested declared hosts are covered through its tree. On the client after
  * hydration, the blocks a scope rendered are registered from its seed, one
  * `registerBlock(seededBlock)` per `seed().blocks` entry after `init()`, since
- * the DOM already holds translated text. That call also hands the block's source
- * tokens to the `Translate` over the stamped host, so a locale switch re-renders
- * from them, never from the DOM's text.
+ * the DOM already holds translated text. That loop is for bindings that mount
+ * the DOM classes; a binding that renders trees registers each block from its
+ * nodes as it renders. Either way a block or phrase the seed marks `collected`
+ * is never registered: the server's scope sends it itself.
  */
 export function registerBlock(input: readonly BlockNode[] | SeededBlock, options: BlockOptions = {}): void {
     if (!Array.isArray(input)) rememberSeededBlock(input as SeededBlock);
@@ -628,6 +652,8 @@ function registerView(root: ViewNode[], options: BlockOptions, input: readonly B
     if (shape === 'empty' || options.customId) return;
     if (shape === 'phrase') {
         const id = options.id ?? generateCustomId(category, tokens);
+        // The server's request scope sends it itself (its seed says so, SSR-1/SSR-2).
+        if (isServerCollected(id)) return;
         const fromBlock = LangsysApp.Translations.lookupContent(category, id, tokens[0]!);
         if (fromBlock === null || fromBlock === undefined) {
             (LangsysApp.Translations.t as unknown as (p: string, c: string) => string)(tokens[0]!, category);
@@ -635,7 +661,7 @@ function registerView(root: ViewNode[], options: BlockOptions, input: readonly B
         return;
     }
     const id = options.id ?? resolveId(root, tokens, category, undefined);
-    if (isContentBlockKnown(category, id)) return;
+    if (isContentBlockKnown(category, id) || isServerCollected(id)) return;
     void registerContentBlock({ custom_id: id, category, label, content: serializeTree(input), tokens });
 }
 

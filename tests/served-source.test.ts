@@ -346,7 +346,7 @@ describe('a block the server sends itself is never sent by the client (SSR-1, SS
 
     it('seeded before hydration, neither the Translate over the host nor registerBlock(seededBlock) sends it', async () => {
         const { block, seed } = await serve('server');
-        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', seed.blocks);
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', seed);
         for (const b of Object.values(seed.blocks)) registerBlock(b);
         const attrs = Object.entries(block.hostAttrs).map(([k, v]) => ` ${k}="${v}"`).join('');
         const root = mount(`<div${attrs}>${serializeTree(block.nodes as BlockNode[])}</div><p data-ls-contentblock="${LONE_ID}">Server lone</p>`);
@@ -360,9 +360,28 @@ describe('a block the server sends itself is never sent by the client (SSR-1, SS
         expect(misses()).toEqual([]);
     });
 
+    it('a tree-rendering client registering the same block from its nodes sends nothing either', async () => {
+        const { seed } = await serve('server');
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', seed);
+        registerBlock(TREE, { category: 'UI' });
+        registerBlock(LONE, { category: 'UI' });
+        await settle();
+        expect(sent).toEqual([]);
+        expect(misses()).toEqual([]);
+    });
+
+    it('a single-token block the seed marks collected is not recorded as a phrase, from its blocks alone', async () => {
+        const { seed } = await serve('server');
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', { blocks: seed.blocks });
+        registerBlock(LONE, { category: 'UI' });
+        await settle();
+        expect(misses()).toEqual([]);
+        expect(sent).toEqual([]);
+    });
+
     it('seedCatalog alone hands the blocks over, before any registerBlock call', async () => {
         const { block, seed } = await serve('server');
-        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', seed.blocks);
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', seed);
         const attrs = Object.entries(block.hostAttrs).map(([k, v]) => ` ${k}="${v}"`).join('');
         translate(mount(`<div${attrs}>${serializeTree(block.nodes as BlockNode[])}</div>`).firstElementChild!);
         await settle();
@@ -371,7 +390,7 @@ describe('a block the server sends itself is never sent by the client (SSR-1, SS
 
     it('control: under the client strategy the same hand-off registers both, once each', async () => {
         const { block, seed } = await serve('client');
-        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', seed.blocks);
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', seed);
         const attrs = Object.entries(block.hostAttrs).map(([k, v]) => ` ${k}="${v}"`).join('');
         const root = mount(`<div${attrs}>${serializeTree(block.nodes as BlockNode[])}</div><p data-ls-contentblock="${LONE_ID}">Server lone</p>`);
         translate(root.firstElementChild!);
@@ -379,5 +398,64 @@ describe('a block the server sends itself is never sent by the client (SSR-1, SS
         await settle();
         expect(sent.filter((i) => i.custom_id === BLOCK_ID)).toHaveLength(1);
         expect(sent.filter((i) => i.phrase === 'Server lone')).toHaveLength(1);
+    });
+});
+
+describe('a phrase the server sends itself is never recorded again by the client (SSR-1, SSR-2)', () => {
+    const HOST: BlockNode[] = [
+        { tag: 'p', children: [{ text: 'Around A' }] },
+        { tag: 'p', children: [{ text: 'Around B' }] },
+        { tag: 'span', attrs: { 'data-ls-phrase': true }, children: [{ text: 'Served ' }, { tag: 'b', children: [{ text: 'richly' }] }] },
+    ];
+    const RICH = 'Served {m0o}richly{m0c}';
+    const tUI = (phrase: string) => (LangsysApp.Translations.t as unknown as (p: string, c: string) => string)(phrase, 'UI');
+
+    async function serve(strategy: 'server' | 'client') {
+        Object.assign(configStore, { ssrTokenStrategy: strategy });
+        const scope = await createRequestScope({ locale: 'it-it', catalog: { UI: {} } as never });
+        scope.run(() => {
+            renderBlock(HOST, { category: 'UI' });
+            registerBlock(HOST, { category: 'UI' });
+            tUI('Said by t');
+        });
+        return scope.seed();
+    }
+    afterEach(() => {
+        Object.assign(configStore, { ssrTokenStrategy: undefined });
+    });
+
+    it('the seed lists the phrases the render missed, marked collected under the server strategy only', async () => {
+        expect((await serve('server')).phrases).toEqual([
+            { category: 'UI', phrase: RICH, collected: true },
+            { category: 'UI', phrase: 'Said by t', collected: true },
+        ]);
+        expect((await serve('client')).phrases).toEqual([
+            { category: 'UI', phrase: RICH },
+            { category: 'UI', phrase: 'Said by t' },
+        ]);
+    });
+
+    it('seeded before hydration, neither a Phrase over its source-served host nor t() queues it', async () => {
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', await serve('server'));
+        phrase(mount('<span data-ls-phrase>Served <b>richly</b></span>').firstElementChild!);
+        tUI('Said by t');
+        await settle();
+        expect(misses()).toEqual([]);
+        expect(sent).toEqual([]);
+    });
+
+    it('a collected phrase is the phrase in its category: the same words in another category are recorded', async () => {
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', await serve('server'));
+        (LangsysApp.Translations.t as unknown as (p: string, c: string) => string)('Said by t', 'Other');
+        await settle();
+        expect(sent.filter((i) => i.type === 'phrase').map((i) => i.phrase)).toEqual(['Said by t']);
+    });
+
+    it('control: under the client strategy the same hand-off records both', async () => {
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', await serve('client'));
+        phrase(mount('<span data-ls-phrase>Served <b>richly</b></span>').firstElementChild!);
+        tUI('Said by t');
+        await settle();
+        expect(sent.filter((i) => i.type === 'phrase').map((i) => i.phrase).sort()).toEqual([RICH, 'Said by t'].sort());
     });
 });
