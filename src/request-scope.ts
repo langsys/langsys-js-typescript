@@ -5,6 +5,7 @@ import { canonicalizeLocale } from './locale.js';
 import { activeScope, enterScope, runInScope, type ActiveScope } from './scope-context.js';
 import { batchLimit, config as configStore } from './stores.js';
 import { AUTO_SSR_FLUSH_THRESHOLD, type CatalogView } from './translations.js';
+import type { SeededBlock } from './block-tree.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { TFunction } from './types/translation-fn.js';
 import type { iCategories, iTranslations } from './types/translations.js';
@@ -65,8 +66,14 @@ export interface RequestScope {
      * app through the framework's own injection when the host awaits you.
      */
     enter(): void;
-    /** The hydration seed: pass to `LangsysApp.seedCatalog(catalog, locale)` on the client (SRV-4). */
-    seed(): { locale: string; catalog: iCategories };
+    /**
+     * The hydration seed (SRV-4): pass `catalog` and `locale` to
+     * `LangsysApp.seedCatalog` on the client. `blocks` names every block the
+     * scope rendered through `renderBlock`, by id, with its category, source
+     * tokens and shape, for a client that cannot recover a block's source from
+     * DOM already holding the translation: hand one to `registerBlock`.
+     */
+    seed(): { locale: string; catalog: iCategories; blocks: Record<string, SeededBlock> };
     /** The phrases this scope's render missed. */
     misses(): readonly ScopeMiss[];
     /**
@@ -108,6 +115,7 @@ export function clearSharedCatalogs(): void {
 class Scope implements RequestScope, ActiveScope {
     private readonly phraseMisses = new Map<string, ScopeMiss>();
     private readonly blockMisses = new Map<string, iContentBlock>();
+    private readonly rendered = new Map<string, SeededBlock>();
     private closing: Promise<RegistrationResult> | null = null;
 
     private readonly view: CatalogView = {
@@ -137,8 +145,12 @@ class Scope implements RequestScope, ActiveScope {
         enterScope(this);
     }
 
-    seed(): { locale: string; catalog: iCategories } {
-        return { locale: this.locale, catalog: clone(this.catalog) };
+    seed(): { locale: string; catalog: iCategories; blocks: Record<string, SeededBlock> } {
+        return { locale: this.locale, catalog: clone(this.catalog), blocks: clone(Object.fromEntries(this.rendered)) };
+    }
+
+    recordRendered(block: SeededBlock): void {
+        this.rendered.set(block.customId, block);
     }
 
     misses(): readonly ScopeMiss[] {

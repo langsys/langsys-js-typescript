@@ -174,6 +174,18 @@ export function readContentBlockMarker(element: Element): ContentBlockMarker | n
     return null;
 }
 
+/** The attributes a nested host names its own category with, canonical first. */
+export const CATEGORY_MARKER_ATTRS = ['data-ls-category', 'data-langsys-category'];
+
+/** A host's own category, from `data-ls-category` (or `data-langsys-category`), or null. */
+export function hostCategory(element: Element): string | null {
+    for (const attr of CATEGORY_MARKER_ATTRS) {
+        const value = element.getAttribute(attr);
+        if (value !== null) return value.trim();
+    }
+    return null;
+}
+
 /**
  * True when an element sits inside a scope a producer marked as already resolved.
  *
@@ -559,6 +571,56 @@ export function isExcisedFromUnit(el: Element): boolean {
     );
 }
 
+// Node types by number, not `Node.*`: the walk runs on a server too, over trees
+// shaped like the DOM (see `block-tree.ts`), where there is no `Node` global.
+const ELEMENT_NODE = 1;
+const TEXT_NODE = 3;
+
+/** The node shape the walks need: the DOM's, or a tree's that imitates it. */
+export interface WalkNode {
+    nodeType: number;
+    nodeValue: string | null;
+    childNodes: ArrayLike<WalkNode>;
+    hasChildNodes(): boolean;
+}
+
+/**
+ * The tokens of a unit's content, with no DOM required: `nodes` are the unit's
+ * children, DOM nodes or anything shaped like them. The same walk as
+ * `tokenizeElement`, without the style snapshot, so a tree and the DOM it
+ * mirrors yield the same tokens and the same id.
+ */
+export function tokenizeNodes(nodes: ArrayLike<WalkNode>, duplicateSelectOptions = false): string[] {
+    const tokens: string[] = [];
+    _walkForTokens(null as unknown as HTMLElement, Array.from(nodes) as unknown as ChildNode[], tokens, [], duplicateSelectOptions, false);
+    return tokens;
+}
+
+/**
+ * The unit's one non-whitespace text node, or null when it has none or more
+ * than one (TOK-6). What the tokenizer leaves out of the unit (`isExcisedFromUnit`)
+ * is not the unit's text, so it neither counts nor is searched.
+ */
+export function findSingleTextNode<N extends WalkNode>(root: { childNodes: ArrayLike<N> }): N | null {
+    let found: N | null = null;
+    const walk = (parent: { childNodes: ArrayLike<N> }): boolean => {
+        for (const child of Array.from(parent.childNodes)) {
+            if (child.nodeType === TEXT_NODE) {
+                if (normalizeTokenText(child.nodeValue ?? '')) {
+                    if (found) return false;
+                    found = child;
+                }
+            } else if (child.nodeType === ELEMENT_NODE && isExcisedFromUnit(child as unknown as Element)) {
+                continue;
+            } else if (!walk(child as unknown as { childNodes: ArrayLike<N> })) {
+                return false;
+            }
+        }
+        return true;
+    };
+    return walk(root) ? found : null;
+}
+
 function _walkForTokens(
     liveRoot: HTMLElement,
     cloneNodes: ChildNode[],
@@ -568,7 +630,7 @@ function _walkForTokens(
     applyStyles: boolean,
 ): void {
     cloneNodes.forEach((node, index) => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
+        if (node.nodeType === ELEMENT_NODE) {
             // Code and notation are never prose (`<style>`, `<script>` and `<math>`
             // content was registered and machine-translated before this), a phrase
             // host is its own rich phrase, and a nested block host is its own unit,
@@ -581,12 +643,12 @@ function _walkForTokens(
             _applyStylesToClone(liveRoot, node as HTMLElement, [...indices, index]);
         }
 
-        if (node.nodeType === Node.ELEMENT_NODE) {
+        if (node.nodeType === ELEMENT_NODE) {
             _tokenizeAttributes(node as HTMLElement, tokens, duplicateSelectOptions);
         }
 
         const contentToken = node.nodeValue ? normalizeTokenText(node.nodeValue) : undefined;
-        if (node.nodeType === Node.TEXT_NODE && contentToken) {
+        if (node.nodeType === TEXT_NODE && contentToken) {
             tokens.push(normalizeMarkupPlaceholders(contentToken));
             return;
         }

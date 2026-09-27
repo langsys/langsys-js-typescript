@@ -59,6 +59,21 @@ export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber
 export { persist, setPersistStorage, type PersistStorage } from './persist.js';
 export { setTeardownSignal, type TeardownSubscribe } from './teardown.js';
 export {
+    applyRendered,
+    blockNodesOf,
+    registerBlock,
+    renderBlock,
+    serializeTree,
+    tokenizeTree,
+    warnUnrenderedBlock,
+    type BlockNode,
+    type BlockOptions,
+    type BlockShape,
+    type RenderedBlock,
+    type RenderedNode,
+    type SeededBlock,
+} from './block-tree.js';
+export {
     clearSharedCatalogs,
     createRequestScope,
     currentRequestScope,

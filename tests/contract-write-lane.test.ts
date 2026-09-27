@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { registerBlock } from '../src/block-tree.js';
 import { isContentBlockKnown, registerContentBlock } from '../src/content-block.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { createSignal } from '../src/signal.js';
@@ -248,6 +249,33 @@ describe('GATE-9 on the content-block path', () => {
         const block = { custom_id: 'b-open', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['Open A', 'Open B'] };
         await registerContentBlock(block as never);
         expect((await fx.state()).projects.p1.blocks.map((b) => b.custom_id)).toContain('b-open');
+    });
+});
+
+describe('MARK-3 stamps through registerBlock, against the double', () => {
+    const tree = [
+        { tag: 'p', children: [{ text: 'Stamped A' }] },
+        { tag: 'p', children: [{ text: 'Stamped B' }] },
+    ];
+    const heldAs = async (id: string) => (await fx.state()).projects.p1.blocks.filter((b) => b.custom_id === id);
+
+    it('a stamp outside a resolved scope registers once, under its id, with the host’s content', async () => {
+        await session('k-write');
+        registerBlock(tree, { category: 'UI', id: 'stamp-unresolved' });
+        await until(async () => (await heldAs('stamp-unresolved')).length === 1);
+        const [held] = await heldAs('stamp-unresolved');
+        expect(held!.phrases.map((p) => p.phrase)).toEqual(['Stamped A', 'Stamped B']);
+        expect(held!.content).toBe('<p>Stamped A</p><p>Stamped B</p>');
+        registerBlock(tree, { category: 'UI', id: 'stamp-unresolved' });
+        await sleep(300);
+        expect(await heldAs('stamp-unresolved')).toHaveLength(1);
+    });
+
+    it('a stamp adopted inside a resolved scope never posts, although the double would accept it', async () => {
+        await session('k-write');
+        registerBlock(tree, { category: 'UI', customId: 'stamp-resolved' });
+        await sleep(SETTLE_MS);
+        expect(await heldAs('stamp-resolved')).toEqual([]);
     });
 });
 

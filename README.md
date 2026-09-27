@@ -586,6 +586,20 @@ On the client, hydrate with `LangsysApp.seedCatalog(seed.catalog, seed.locale)`.
 
 Framework bindings wire this for you through their own request hooks.
 
+#### Content blocks without a DOM
+
+A server render, or a client render before mount, has no DOM for the `Translate` class to walk, and inside a request scope that class does nothing. Instead, render the block from its content as a tree:
+
+```ts
+import { renderBlock, registerBlock } from 'langsys-js-typescript';
+
+const content = [{ tag: 'p', children: [{ text: 'Compare every plan' }] }, { tag: 'p', children: [{ text: 'Cancel anytime' }] }];
+const { nodes, hostAttrs } = renderBlock(content, { category: 'Pricing' });   // synchronous, registers nothing
+registerBlock(content, { category: 'Pricing' });                               // discovery, deferred to scope.close()
+```
+
+`renderBlock` returns the translated tree, the id, and `hostAttrs` to set on the host element: `data-ls-contentblock` always, and `data-ls-resolved` when the text came from the catalog in a non-base locale. Every element names its input element by `source`, its pre-order index, so a binding can re-attach handlers even where a translation reorders inline markup. `id` registers under your own `custom_id`; `customId` adopts a stamp the server rendered from the catalog. On the client, `applyRendered(element, rendered)` writes a rendered block into the existing nodes in place, and refuses with `reason: 'structure'` when the markup's shape differs. `blockNodesOf(element)` turns a DOM host's content into the tree.
+
 ## Detecting the user's preferred locale
 
 ```ts

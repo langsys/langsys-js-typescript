@@ -12,7 +12,7 @@ import type { ParamPrimitive } from './types/translation-fn.js';
  */
 export { PHRASE_MARKER_ATTR } from './content-block.js';
 import { isInResolvedScope } from './content-block.js';
-import { claimHost, releaseHost } from './hosts.js';
+import { claimHost, inertUnderScope, releaseHost } from './hosts.js';
 
 export interface PhraseOptions {
     /** Category the phrase registers under (disambiguation for translators). */
@@ -57,9 +57,11 @@ export class Phrase {
      */
     constructor(host: HTMLElement, options: PhraseOptions = {}, byWalk = false) {
         this.host = host;
-        claimHost(host, this, byWalk);
         this.category = options.category ?? '';
         this.params = options.params ?? {};
+        // Under a request scope, see `Translate`: `renderBlock` and `registerBlock` there.
+        if (inertUnderScope('Phrase')) return;
+        claimHost(host, this, byWalk);
 
         void this._init();
 

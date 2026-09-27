@@ -1,3 +1,6 @@
+import { logger } from './logger.js';
+import { activeScope } from './scope-context.js';
+
 /**
  * Which marked hosts already have an instance managing them.
  *
@@ -34,6 +37,27 @@ export function claimHost(host: Element, instance: Instance, byWalk = false): vo
 /** Drop `instance`'s claim on `host`, if it still holds it. */
 export function releaseHost(host: Element, instance: Instance): void {
     if (claims.get(host)?.instance === instance) claims.delete(host);
+}
+
+const warnedInert = new Set<string>();
+
+/**
+ * True, warning once per class, when a DOM class is constructed inside a request
+ * scope (SRV-7). Its registration and subscriptions would run after the scope
+ * has ended, outside it: phrases posted during the request, a block recorded as
+ * loose phrases, and a later process emission re-rendering the host. So under a
+ * scope it does nothing, and the server renders through `renderBlock` and
+ * registers through `registerBlock`.
+ */
+export function inertUnderScope(className: string): boolean {
+    if (!activeScope()) return false;
+    if (!warnedInert.has(className)) {
+        warnedInert.add(className);
+        logger.warn(
+            `${className} was constructed inside a request scope and does nothing there: render the block with renderBlock() and register it with registerBlock(), which complete inside the scope.`
+        );
+    }
+    return true;
 }
 
 /** Whether an instance manages `host`. */

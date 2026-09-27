@@ -2,10 +2,13 @@ import {
     CONTENT_BLOCK_MARKER_ATTR,
     generateCustomId,
     isContentBlockKnown,
+    findSingleTextNode,
     isExcisedFromUnit,
+    type WalkNode,
     isContentBlockMarked,
     isPhraseMarked,
     readContentBlockMarker,
+    hostCategory,
     isInResolvedScope,
     legacyTokenizeElement,
     registerContentBlock,
@@ -21,7 +24,7 @@ import { LangsysApp } from './langsys-app.js';
 import { logger } from './logger.js';
 import { config as configStore, currentlyLoadedLocale, navigationEpoch, sTranslations } from './stores.js';
 import type { Unsubscriber } from './signal.js';
-import { claimHost, isHostManaged, releaseHost } from './hosts.js';
+import { claimHost, inertUnderScope, isHostManaged, releaseHost } from './hosts.js';
 import { Phrase } from './phrase.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -94,15 +97,23 @@ export class Translate {
         this.element = element;
         this.options = { ...options };
         this.custom_id = options.custom_id || '';
+        // Under a request scope the render is a server's, and this class's work would
+        // finish after the scope has ended: registration and subscriptions belong to
+        // `renderBlock` and `registerBlock` there (SRV-7).
+        if (inertUnderScope('Translate')) return;
         claimHost(element, this, byWalk);
 
-        // A stamp this SDK did not write names the host's id (MARK-3). Our own stamp,
+        // A stamp this SDK did not write names the host's id (MARK-3). Inside a resolved
+        // scope, the host itself or its nearest marked ancestor carrying data-ls-resolved,
+        // a renderer already rendered the block from the catalog: adopt the id, render
+        // under it, register nothing. Outside one, it is the block's id, app-chosen or
+        // derived, to render and register under when the catalog lacks it. Our own stamp,
         // on an element re-mounted in the same session, is only the id we derived.
         if (!this.custom_id) {
             const marker = readContentBlockMarker(element);
             if (marker?.kind === 'identity' && ownStamps.get(element) !== marker.id) {
-                this.adoptedId = marker.id;
                 this.custom_id = marker.id;
+                if (isInResolvedScope(element)) this.adoptedId = marker.id;
             }
         }
 
@@ -202,9 +213,11 @@ export class Translate {
      * marked host's own inside is its instance's to walk.
      */
     private takeOverUnmanagedHosts(): void {
-        const { category, params, label } = this.options;
+        const { params, label } = this.options;
         const visit = (parent: Element) => {
             for (const child of Array.from(parent.children)) {
+                // A nested host's own category when it names one (`data-ls-category`).
+                const category = hostCategory(child) ?? this.options.category;
                 if (isPhraseMarked(child)) {
                     if (!isHostManaged(child)) this.takenOver.push(new Phrase(child as HTMLElement, { category, params }, true));
                 } else if (isContentBlockMarked(child)) {
@@ -334,27 +347,7 @@ export class Translate {
     }
 
     private findSingleTextNode(root: Node): Node | null {
-        const TEXT_NODE = 3;
-        let found: Node | null = null;
-        const walk = (parent: Node): boolean => {
-            for (const child of Array.from(parent.childNodes)) {
-                if (child.nodeType === TEXT_NODE) {
-                    if (normalizeTokenText(child.nodeValue ?? '')) {
-                        if (found) return false;
-                        found = child;
-                    }
-                } else if (child.nodeType === 1 && isExcisedFromUnit(child as Element)) {
-                    // What the tokenizer leaves out of the unit is not the unit's text (TOK-6):
-                    // a script's source, a translate="no" span, a phrase host or a nested block
-                    // does not stop the unit's one token from being its one text node.
-                    continue;
-                } else if (!walk(child)) {
-                    return false;
-                }
-            }
-            return true;
-        };
-        return walk(root) ? found : null;
+        return findSingleTextNode(root as unknown as { childNodes: ArrayLike<Node & WalkNode> });
     }
 
     private async tokenizeContent(): Promise<boolean> {

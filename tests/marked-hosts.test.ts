@@ -124,12 +124,24 @@ describe('MARK-3: any other value is an identity: rendered under that id, nothin
             expect(phrases()).toEqual([]);
         });
 
-        it(`${attr}="abc123" with no catalog entry keeps its source text and registers nothing`, async () => {
+        it(`${attr}="abc123" alone, outside a resolved scope, registers one block under abc123 with the host's content`, async () => {
             const host = mount(nested(attr, 'abc123'));
             translate(host);
             await settle();
             expect(host.querySelector('section p')!.textContent).toBe('B1');
-            expect(blockWords()).toEqual([['A1', 'A2']]);
+            const stamped = blocks().filter((b) => b.custom_id === 'abc123');
+            expect(stamped).toHaveLength(1);
+            expect((stamped[0]!.phrases ?? []).map((p) => p.phrase)).toEqual(['B1', 'B2']);
+            expect(blockWords()).toContainEqual(['A1', 'A2']);
+        });
+
+        it(`${attr}="abc123" with data-ls-resolved on the host registers nothing, and its catalog entry renders`, async () => {
+            catalog({ abc123: { B1: 'Uno', B2: 'Dos' } });
+            const host = mount(nested(attr, 'abc123').replace('<section ', '<section data-ls-resolved="es-es" '));
+            translate(host);
+            await settle();
+            expect(host.querySelector('section p')!.textContent).toBe('Uno');
+            expect(blocks().filter((b) => b.custom_id === 'abc123')).toEqual([]);
         });
     }
 
@@ -142,8 +154,17 @@ describe('MARK-3: any other value is an identity: rendered under that id, nothin
         expect(sent).toEqual([]);
     });
 
-    it('a stamped single-token host with no catalog entry keeps its source and registers no phrase', async () => {
-        const host = mount('<p data-langsys-contentblock="abc123">Hello</p>');
+    it.each(SPELLINGS)('a stamped host (%s) with data-ls-resolved on an ancestor only registers nothing, and its catalog entry renders', async (attr) => {
+        catalog({ abc123: { B1: 'Uno', B2: 'Dos' } });
+        const host = mount(`<div data-ls-resolved="es-es"><section ${attr}="abc123"><p>B1</p><p>B2</p></section></div>`);
+        translate(host.querySelector('section')!);
+        await settle();
+        expect(host.querySelector('section p')!.textContent).toBe('Uno');
+        expect(sent).toEqual([]);
+    });
+
+    it('a stamped single-token host inside a resolved scope, with no catalog entry, keeps its source and registers no phrase', async () => {
+        const host = mount('<p data-langsys-contentblock="abc123" data-ls-resolved="es-es">Hello</p>');
         translate(host.firstElementChild!);
         await settle();
         expect(host.querySelector('p')!.textContent).toBe('Hello');
