@@ -28,6 +28,11 @@ export function rememberSeededBlock(block: SeededBlock): void {
     if (block?.customId && Array.isArray(block.tokens)) seeded.set(block.customId, block);
 }
 
+/** Whether the server's scope sends this block itself, so the client never registers it. */
+export function isServerCollected(customId: string): boolean {
+    return seeded.get(customId)?.collected === true;
+}
+
 /** Test seam: forget every seeded block, and the warning given. */
 export function _resetSeededBlocks(): void {
     seeded.clear();

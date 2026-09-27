@@ -575,7 +575,7 @@ const seed = scope.seed();                                  // serialise into th
 await scope.close();                                        // sends what the render missed, after the response
 ```
 
-On the client, hydrate with `LangsysApp.seedCatalog(seed.catalog, seed.locale)`.
+On the client, hydrate with `LangsysApp.seedCatalog(seed.catalog, seed.locale, seed.blocks)`, before the DOM classes mount. The blocks give each served block's source tokens, and mark the blocks the server sends itself at `close()` (`collected`), which the client never registers.
 
 - **`createRequestScope({ locale, catalog?, url? })`** resolves once the scope's catalog is in hand. That's the `catalog` you pass, or a fetch. A fetch is made at most once per request and shared read-only with scopes rendering the same locale for a minute. A failed fetch renders source text and records nothing.
 - **`setRequestScopeStorage`** is opt-in, and what it guarantees depends on the host's async model. Under zone.js, for one, promises don't carry it across concurrent renders. A binding can instead carry the scope through its own dependency injection and read `scope.t` directly.
@@ -602,13 +602,13 @@ registerBlock(content, { category: 'Pricing' });                               /
 
 On the client, `applyRendered(element, rendered)` writes a rendered block into the existing nodes in place: text, translatable attributes and nested hosts' markers. It refuses with `reason: 'structure'` when the markup's shape differs. When the tree was rendered from the host element itself rather than its children, as a standalone phrase host is, pass `{ self: true }` and the element is matched against the tree's root. `blockNodesOf(element)` turns a DOM host's content into the tree.
 
-A page served translated holds the translation, and the catalog is keyed by source. Hand the scope's seed to the client and register each block after `init()`:
+A page served translated holds the translation, and the catalog is keyed by source. Hand the scope's seed to the client with `seedCatalog`, as above, and register each block after `init()`:
 
 ```ts
-for (const block of Object.values(seed.blocks)) registerBlock(block);
+for (const block of Object.values(seed.blocks)) registerBlock(block);   // registers nothing the server collected
 ```
 
-A `Translate` over a stamped host in a resolved scope then takes the block's source tokens from the seed, or, without one, from the catalog entry the served text was rendered from. A `Phrase` over a resolved host takes its source phrase from the catalog the same way. Neither reads the source from the DOM, so a later locale switch renders that locale. A host whose source cannot be recovered keeps the text it was served with, and the core warns once.
+A `Translate` over a stamped host in a resolved scope then takes the block's source tokens from the seed, or, without one, from the catalog entry the served text was rendered from. After a locale switch, the host's own resolved marker names the locale it now holds. A `Phrase` over a resolved host takes its source phrase from the catalog the same way. Neither reads the source from the DOM, so a later locale switch renders that locale. A host whose source cannot be recovered keeps the text it was served with, and the core warns once.
 
 ## Detecting the user's preferred locale
 

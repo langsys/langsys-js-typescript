@@ -113,6 +113,12 @@ export interface SeededBlock {
     category: string;
     tokens: string[];
     shape: 'phrase' | 'block';
+    /**
+     * The server's scope sends this block itself at `close()` (the `server`
+     * strategy, or `auto` for a short list), so a client never registers it:
+     * not from the seed, and not from the `Translate` over its host.
+     */
+    collected?: boolean;
 }
 
 /** The tokens and shape of a block's content, exactly as `tokenizeElement` and `Translate` decide them for the same markup. */
@@ -636,6 +642,7 @@ function registerView(root: ViewNode[], options: BlockOptions, input: readonly B
 /** A seeded block: a phrase records its miss as `t()` does; an unknown block registers under its id. */
 function registerSeeded(block: SeededBlock): void {
     const { customId, category, tokens, shape } = block;
+    if (block.collected) return;
     if (shape === 'phrase') {
         const fromBlock = LangsysApp.Translations.lookupContent(category, customId, tokens[0] ?? '');
         if (tokens[0] && (fromBlock === null || fromBlock === undefined)) {

@@ -98,6 +98,8 @@ describe('Translate over a served, stamped host renders the next locale from the
         catalog({ [ID]: FR }, 'fr-fr');
         await settle();
         expect(texts(section)).toEqual([['Bonjour', null], ['Monde', 'Titre']]);
+        // Its resolved marker names the locale it now holds.
+        expect(section.getAttribute('data-ls-resolved')).toBe('fr-fr');
         expect(sent).toEqual([]);
         expect(misses()).toEqual([]);
     });
@@ -296,5 +298,86 @@ describe('applyRendered', () => {
         expect(section.getAttribute('data-ls-contentblock')).toBe(inner);
         expect(section.getAttribute('data-ls-resolved')).toBe('it-it');
         expect(section.textContent).toBe('Bi1');
+    });
+});
+
+describe('a block the server sends itself is never sent by the client (SSR-1, SSR-2)', () => {
+    const TREE: BlockNode[] = [
+        { tag: 'p', children: [{ text: 'Server A' }] },
+        { tag: 'p', children: [{ text: 'Server B' }] },
+    ];
+    const LONE: BlockNode[] = [{ tag: 'p', children: [{ text: 'Server lone' }] }];
+    const BLOCK_ID = generateCustomId('UI', ['Server A', 'Server B']);
+    const LONE_ID = generateCustomId('UI', ['Server lone']);
+
+    async function serve(strategy: 'server' | 'client') {
+        Object.assign(configStore, { ssrTokenStrategy: strategy });
+        const scope = await createRequestScope({ locale: 'it-it', catalog: { UI: {} } as never });
+        const block = scope.run(() => {
+            const rendered = renderBlock(TREE, { category: 'UI' });
+            registerBlock(TREE, { category: 'UI' });
+            renderBlock(LONE, { category: 'UI' });
+            registerBlock(LONE, { category: 'UI' });
+            return rendered;
+        });
+        return { scope, block, seed: scope.seed() };
+    }
+    afterEach(() => {
+        Object.assign(configStore, { ssrTokenStrategy: undefined });
+    });
+
+    it('the seed marks what the scope will send under the server strategy, and nothing under the client strategy', async () => {
+        const server = await serve('server');
+        expect(server.seed.blocks[BLOCK_ID]!.collected).toBe(true);
+        expect(server.seed.blocks[LONE_ID]!.collected).toBe(true);
+        const client = await serve('client');
+        expect(client.seed.blocks[BLOCK_ID]!.collected).toBeUndefined();
+    });
+
+    it('a block the scope rendered from the catalog is not marked: nothing is sent for it', async () => {
+        Object.assign(configStore, { ssrTokenStrategy: 'server' });
+        const scope = await createRequestScope({ locale: 'it-it', catalog: { UI: { [BLOCK_ID]: { 'Server A': 'Server Ai', 'Server B': 'Server Bi' } } } as never });
+        scope.run(() => {
+            renderBlock(TREE, { category: 'UI' });
+            registerBlock(TREE, { category: 'UI' });
+        });
+        expect(scope.seed().blocks[BLOCK_ID]!.collected).toBeUndefined();
+    });
+
+    it('seeded before hydration, neither the Translate over the host nor registerBlock(seededBlock) sends it', async () => {
+        const { block, seed } = await serve('server');
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', seed.blocks);
+        for (const b of Object.values(seed.blocks)) registerBlock(b);
+        const attrs = Object.entries(block.hostAttrs).map(([k, v]) => ` ${k}="${v}"`).join('');
+        const root = mount(`<div${attrs}>${serializeTree(block.nodes as BlockNode[])}</div><p data-ls-contentblock="${LONE_ID}">Server lone</p>`);
+        translate(root.firstElementChild!);
+        translate(root.lastElementChild!);
+        await settle();
+        // Nor does a navigation's re-entry (HINT-13).
+        LangsysApp.notifyNavigation();
+        await settle();
+        expect(sent).toEqual([]);
+        expect(misses()).toEqual([]);
+    });
+
+    it('seedCatalog alone hands the blocks over, before any registerBlock call', async () => {
+        const { block, seed } = await serve('server');
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', seed.blocks);
+        const attrs = Object.entries(block.hostAttrs).map(([k, v]) => ` ${k}="${v}"`).join('');
+        translate(mount(`<div${attrs}>${serializeTree(block.nodes as BlockNode[])}</div>`).firstElementChild!);
+        await settle();
+        expect(sent).toEqual([]);
+    });
+
+    it('control: under the client strategy the same hand-off registers both, once each', async () => {
+        const { block, seed } = await serve('client');
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it', seed.blocks);
+        const attrs = Object.entries(block.hostAttrs).map(([k, v]) => ` ${k}="${v}"`).join('');
+        const root = mount(`<div${attrs}>${serializeTree(block.nodes as BlockNode[])}</div><p data-ls-contentblock="${LONE_ID}">Server lone</p>`);
+        translate(root.firstElementChild!);
+        translate(root.lastElementChild!);
+        await settle();
+        expect(sent.filter((i) => i.custom_id === BLOCK_ID)).toHaveLength(1);
+        expect(sent.filter((i) => i.phrase === 'Server lone')).toHaveLength(1);
     });
 });

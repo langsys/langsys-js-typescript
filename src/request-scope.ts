@@ -146,7 +146,25 @@ class Scope implements RequestScope, ActiveScope {
     }
 
     seed(): { locale: string; catalog: iCategories; blocks: Record<string, SeededBlock> } {
-        return { locale: this.locale, catalog: clone(this.catalog), blocks: clone(Object.fromEntries(this.rendered)) };
+        // A block this scope will send itself at `close()` is marked `collected`, so the
+        // client never sends it again (SSR-1, SSR-2): the decision `flush` makes, taken now.
+        const collects = this.serverCollects(this.phraseMisses.size + this.blockMisses.size) && LangsysApp.Translations.mayWrite();
+        const blocks: Record<string, SeededBlock> = {};
+        for (const [id, block] of this.rendered) {
+            const held =
+                block.shape === 'phrase'
+                    ? this.phraseMisses.has(`${block.category}\0${block.tokens[0]}`)
+                    : this.blockMisses.has(`${block.category}\0${id}`);
+            blocks[id] = collects && held ? { ...block, collected: true } : { ...block };
+        }
+        return { locale: this.locale, catalog: clone(this.catalog), blocks: clone(blocks) };
+    }
+
+    /** SSR-1 and SSR-2: whether the server sends a scope's misses, for a list this long. */
+    private serverCollects(count: number): boolean {
+        const strategy = configStore.ssrTokenStrategy || 'client';
+        if (LangsysAppAPI.hasWriteGrant()) return false;
+        return strategy === 'server' || (strategy === 'auto' && count < AUTO_SSR_FLUSH_THRESHOLD);
     }
 
     recordRendered(block: SeededBlock): void {
@@ -184,9 +202,7 @@ class Scope implements RequestScope, ActiveScope {
         // SSR-1 and SSR-2: the server collects only under the `server` strategy, or `auto`
         // for a short list, and never when a grant makes capability per-user. Otherwise the
         // client registers these misses itself after hydration.
-        const strategy = configStore.ssrTokenStrategy || 'client';
-        const serverCollects = strategy === 'server' || (strategy === 'auto' && items.length < AUTO_SSR_FLUSH_THRESHOLD);
-        if (!serverCollects || LangsysAppAPI.hasWriteGrant()) return { status: false, skipped: true, reason: 'client-strategy' };
+        if (!this.serverCollects(items.length)) return { status: false, skipped: true, reason: 'client-strategy' };
         // SRV-3: a read-only key pushes nothing.
         if (!LangsysApp.Translations.mayWrite()) return { status: false, skipped: true, reason: 'not-write-enabled' };
 

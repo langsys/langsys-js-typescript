@@ -26,7 +26,8 @@ import { config as configStore, currentlyLoadedLocale, navigationEpoch, sTransla
 import type { Unsubscriber } from './signal.js';
 import { claimHost, inertUnderScope, isHostManaged, releaseHost } from './hosts.js';
 import { Phrase } from './phrase.js';
-import { recoverBlockSources, warnUnrecoveredSource } from './served-source.js';
+import { isServerCollected, recoverBlockSources, warnUnrecoveredSource } from './served-source.js';
+import { RESOLVED_MARKER_ATTRS } from './identity.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
 import { isEmpty } from './utils.js';
@@ -184,7 +185,12 @@ export class Translate {
         // A block that is still unknown is recorded again; `registerContentBlock` applies
         // every lane rule. A registered or resolved one records nothing, and a block inside
         // a resolved scope never did.
-        if (this.contentBlock && !isContentBlockKnown(this.contentBlock.category, this.custom_id) && !isInResolvedScope(this.element)) {
+        if (
+            this.contentBlock &&
+            !isContentBlockKnown(this.contentBlock.category, this.custom_id) &&
+            !isInResolvedScope(this.element) &&
+            !isServerCollected(this.custom_id)
+        ) {
             void registerContentBlock({ ...this.contentBlock, custom_id: this.custom_id });
         }
     }
@@ -251,6 +257,7 @@ export class Translate {
             if (!this.recoverServedSources(currentLocale !== this.servedLocale)) return;
             this.translate(Array.from(this.element.childNodes));
             this.lastTranslatedLocale = currentLocale;
+            if (this.adoptedId) this.restampResolvedLocale(currentLocale);
         }
     }
 
@@ -263,6 +270,20 @@ export class Translate {
      * host is left as served, which is right for the locale it was served in; a
      * later switch tries again, since a binding may hand the seed over after mount.
      */
+    /**
+     * An adopted host re-rendered in another locale names that locale in its own
+     * resolved marker, so the marker keeps describing the text it holds. A marker
+     * with no locale (bare, `true`) is left as it is.
+     */
+    private restampResolvedLocale(locale: string): void {
+        for (const attr of RESOLVED_MARKER_ATTRS) {
+            const value = this.element.getAttribute(attr);
+            if (value === null) continue;
+            if (!['', 'true', '1', 'yes'].includes(value.trim().toLowerCase()) && value !== locale) this.element.setAttribute(attr, locale);
+            return;
+        }
+    }
+
     private recoverServedSources(warn: boolean): boolean {
         if (!this.adoptedId || this.sourcesRecovered) return true;
         const { category = '', params = {} } = this.options;
@@ -312,10 +333,11 @@ export class Translate {
         let resolved: string;
         if (fromBlock !== null && fromBlock !== undefined) {
             resolved = this.applyParams(fromBlock);
-        } else if (isInResolvedScope(this.element)) {
+        } else if (isInResolvedScope(this.element) || isServerCollected(this.custom_id)) {
             // The producer says this text is already resolved, so it is a translation and
             // not a source phrase: render from the catalog if we happen to hold it, else
-            // leave what the server served, and record nothing on either lane.
+            // leave what the server served, and record nothing on either lane. A block the
+            // server's scope sends itself is recorded there, never again here.
             resolved = this.applyParams(LangsysApp.Translations.lookup(token, category) ?? token);
         } else {
             resolved = tWithParams(token, category, this.options.params ?? {});
@@ -510,7 +532,11 @@ export class Translate {
         // doesn't depend on the POST completing — translations are looked up
         // from sTranslations on every render, which updates reactively when
         // the GET response arrives.
-        if (isInResolvedScope(this.element)) {
+        if (isServerCollected(this.custom_id)) {
+            // The server's request scope sends this block itself after the response (its
+            // seed says so), so sending it from the client would register it twice.
+            logger.log('Skipping content block registration: the server registers this block');
+        } else if (isInResolvedScope(this.element)) {
             // The same rule one level up: a block inside a resolved scope holds translated
             // text, so registering it would file a translation as source, and the hint lane
             // inside `registerContentBlock` would report the localized page. Identity is
