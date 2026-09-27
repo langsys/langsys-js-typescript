@@ -22,6 +22,7 @@ import { interpolate, isICU } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { markupTokenValues, splitSentinels, stripSentinels } from './richtext.js';
 import { activeCatalog, activeScope } from './scope-context.js';
+import { rememberSeededBlock } from './served-source.js';
 import { logger } from './logger.js';
 import { config as configStore, currentlyLoadedLocale } from './stores.js';
 import type { CatalogView } from './translations.js';
@@ -178,10 +179,12 @@ export function warnUnrenderedBlock(reason: string): void {
  * and nested declared hosts are covered through its tree. On the client after
  * hydration, the blocks a scope rendered are registered from its seed, one
  * `registerBlock(seededBlock)` per `seed().blocks` entry after `init()`, since
- * the DOM already holds translated text; a locale switch re-renders from the
- * seed's source tokens, never from the DOM's text.
+ * the DOM already holds translated text. That call also hands the block's source
+ * tokens to the `Translate` over the stamped host, so a locale switch re-renders
+ * from them, never from the DOM's text.
  */
 export function registerBlock(input: readonly BlockNode[] | SeededBlock, options: BlockOptions = {}): void {
+    if (!Array.isArray(input)) rememberSeededBlock(input as SeededBlock);
     // GATE-10: text inside a resolved scope is never recorded. The walk starts at the
     // host's PARENT. A host carries data-ls-resolved itself only when it was rendered
     // from the catalog (`hostAttrs`), and then its block is known and registering it is
@@ -218,18 +221,25 @@ export function blockNodesOf(element: { childNodes: ArrayLike<Node> }): BlockNod
 }
 
 /**
- * Write a rendered block into the host's EXISTING nodes: each text node's value
- * and each translatable attribute, in place, never replacing a node, so a
+ * Write a rendered block into the host's EXISTING nodes: each text node's value,
+ * each translatable attribute and each nested host's unit markers (its id and
+ * resolved marker, MARK-1, GATE-10), in place, never replacing a node, so a
  * framework's references to them stay live; and, given a whole `RenderedBlock`,
  * its `hostAttrs` on the host. Only when the DOM has the rendered tree's
  * structure: the same nodes in the same places, each element where its `source`
  * says. Otherwise nothing is touched and it returns
  * `{ applied: false, reason: 'structure' }`: a translation that reorders inline
  * markup cannot be applied to nodes a framework owns.
+ *
+ * With `self`, `element` is the tree's root rather than its parent: the tree was
+ * rendered from `[{ tag, attrs, children: blockNodesOf(element) }]`, as a
+ * standalone phrase host is (`data-ls-phrase` on the root, at `source` 0), and
+ * `element` is matched against its one root node.
  */
 export function applyRendered(
     element: Element,
-    rendered: RenderedBlock | readonly RenderedNode[]
+    rendered: RenderedBlock | readonly RenderedNode[],
+    options: { self?: boolean } = {}
 ): { applied: boolean; reason?: 'structure' } {
     const nodes = Array.isArray(rendered) ? (rendered as readonly RenderedNode[]) : (rendered as RenderedBlock).nodes;
     const writes: Array<() => void> = [];
@@ -250,7 +260,8 @@ export function applyRendered(
                 if (dom.nodeType !== 1 || el.localName !== node.tag || node.source !== preorder++) return false;
                 for (const [name, value] of Object.entries(node.attrs)) {
                     const text = value === true ? '' : value;
-                    if (isTranslatableAttribute(el.localName, name, node.attrs) && el.getAttribute(name) !== text) {
+                    const written = isTranslatableAttribute(el.localName, name, node.attrs) || UNIT_MARKER_ATTRS.includes(name);
+                    if (written && el.getAttribute(name) !== text) {
                         writes.push(() => el.setAttribute(name, text));
                     }
                 }
@@ -260,13 +271,17 @@ export function applyRendered(
         }
         return true;
     };
-    if (!walk(element, nodes)) return { applied: false, reason: 'structure' };
+    const parent = options.self ? { childNodes: [element] as unknown as ArrayLike<Node> } : element;
+    if (!walk(parent, nodes)) return { applied: false, reason: 'structure' };
     for (const write of writes) write();
     if (!Array.isArray(rendered)) {
         for (const [name, value] of Object.entries((rendered as RenderedBlock).hostAttrs)) element.setAttribute(name, value);
     }
     return { applied: true };
 }
+
+/** The markers a render sets on a nested host, and `applyRendered` writes. */
+const UNIT_MARKER_ATTRS: readonly string[] = [CONTENT_BLOCK_MARKER_ATTR, RESOLVED_MARKER_ATTR];
 
 function isTranslatableAttribute(tag: string, name: string, attrs: Record<string, string | true>): boolean {
     if ((TRANSLATABLE_ATTRIBUTES as readonly string[]).includes(name)) return true;
@@ -540,8 +555,19 @@ function renderNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved = 
         if (marker) {
             // Rendered in place: the nested render works on these same view nodes, so
             // every element keeps its `source` in the enclosing input's numbering.
-            const rendered = renderView(node.childNodes, nestedOptions(node, options, resolved));
-            if (marker.kind === 'declaration' && rendered.customId) node.setAttribute(CONTENT_BLOCK_MARKER_ATTR, rendered.customId);
+            const nested = nestedOptions(node, options, resolved);
+            const tokens = tokenizeNodes(node.childNodes);
+            const rendered = renderView(node.childNodes, nested);
+            // The nested host is stamped as the outer host is (MARK-1, GATE-10), and a
+            // scope keeps it for its seed, so the client recovers its source too.
+            // A stamped host keeps the id it carries, in the spelling it carries it.
+            for (const [name, value] of Object.entries(rendered.hostAttrs)) {
+                if (marker.kind === 'identity' && name === CONTENT_BLOCK_MARKER_ATTR) continue;
+                node.setAttribute(name, value);
+            }
+            if (rendered.customId && rendered.shape !== 'empty') {
+                activeScope()?.recordRendered({ customId: rendered.customId, category: nested.category ?? '', tokens, shape: rendered.shape });
+            }
             continue;
         }
         if (isExcisedFromUnit(node as unknown as Element)) continue;
@@ -560,8 +586,13 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
         });
     const { phrase, slots } = encodeRichPhrase(toRich(host.childNodes));
     if (!phrase) return host.childNodes;
-    const raw = LangsysApp.Translations.lookup(phrase, category) ?? phrase;
-    const resolved = interpolate(raw, { ...params, ...markupTokenValues(slots.length) }, currentlyLoadedLocale.get());
+    const translated = LangsysApp.Translations.lookup(phrase, category);
+    const locale = currentlyLoadedLocale.get();
+    // A translation from the catalog is marked resolved, as a block's host is, so a
+    // client never reads it as the source phrase (GATE-10).
+    if (translated !== null && locale && locale !== configStore.baseLocale) host.setAttribute(RESOLVED_MARKER_ATTR, locale);
+    const raw = translated ?? phrase;
+    const resolved = interpolate(raw, { ...params, ...markupTokenValues(slots.length) }, locale);
     const parts = splitSentinels(resolved);
     if (!parts) return [new ViewText(stripSentinels(resolved))];
 

@@ -598,7 +598,17 @@ const { nodes, hostAttrs } = renderBlock(content, { category: 'Pricing' });   //
 registerBlock(content, { category: 'Pricing' });                               // discovery, deferred to scope.close()
 ```
 
-`renderBlock` returns the translated tree, the id, and `hostAttrs` to set on the host element: `data-ls-contentblock` always, and `data-ls-resolved` when the text came from the catalog in a non-base locale. Every element names its input element by `source`, its pre-order index, so a binding can re-attach handlers even where a translation reorders inline markup. `id` registers under your own `custom_id`; `customId` adopts a stamp the server rendered from the catalog. On the client, `applyRendered(element, rendered)` writes a rendered block into the existing nodes in place, and refuses with `reason: 'structure'` when the markup's shape differs. `blockNodesOf(element)` turns a DOM host's content into the tree.
+`renderBlock` returns the translated tree, the id, and `hostAttrs` to set on the host element: `data-ls-contentblock` always, and `data-ls-resolved` when the text came from the catalog in a non-base locale. Every element names its input element by `source`, its pre-order index, so a binding can re-attach handlers even where a translation reorders inline markup. `id` registers under your own `custom_id`; `customId` adopts a stamp the server rendered from the catalog. Nested hosts are marked the same way: a nested block gets its id, and a nested block or phrase host rendered from the catalog in a non-base locale gets `data-ls-resolved`.
+
+On the client, `applyRendered(element, rendered)` writes a rendered block into the existing nodes in place: text, translatable attributes and nested hosts' markers. It refuses with `reason: 'structure'` when the markup's shape differs. When the tree was rendered from the host element itself rather than its children, as a standalone phrase host is, pass `{ self: true }` and the element is matched against the tree's root. `blockNodesOf(element)` turns a DOM host's content into the tree.
+
+A page served translated holds the translation, and the catalog is keyed by source. Hand the scope's seed to the client and register each block after `init()`:
+
+```ts
+for (const block of Object.values(seed.blocks)) registerBlock(block);
+```
+
+A `Translate` over a stamped host in a resolved scope then takes the block's source tokens from the seed, or, without one, from the catalog entry the served text was rendered from. A `Phrase` over a resolved host takes its source phrase from the catalog the same way. Neither reads the source from the DOM, so a later locale switch renders that locale. A host whose source cannot be recovered keeps the text it was served with, and the core warns once.
 
 ## Detecting the user's preferred locale
 

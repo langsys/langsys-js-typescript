@@ -13,6 +13,7 @@ import type { ParamPrimitive } from './types/translation-fn.js';
 export { PHRASE_MARKER_ATTR } from './content-block.js';
 import { isInResolvedScope } from './content-block.js';
 import { claimHost, inertUnderScope, releaseHost } from './hosts.js';
+import { recoverPhraseSource } from './served-source.js';
 
 export interface PhraseOptions {
     /** Category the phrase registers under (disambiguation for translators). */
@@ -46,6 +47,14 @@ export class Phrase {
     private params: Record<string, ParamPrimitive>;
     private phrase = '';
     private slots: RichSlot[] = [];
+    /**
+     * The markup slot each element in the host renders. An element's place is its
+     * slot only while the host shows the source's order; a translation that
+     * reorders its markup, served or rendered here, moves them.
+     */
+    private slotOf = new WeakMap<Element, number>();
+    /** A served translation whose source phrase is not recovered yet (see `recoverServed`). */
+    private servedUnrecovered = false;
     private unsubscribers: Unsubscriber[] = [];
     private ready = false;
     /** Sorted params key-set already checked, so value-only updates don't re-warn. */
@@ -117,6 +126,7 @@ export class Phrase {
         const { phrase, slots } = encodeRichText(this.host);
         this.phrase = phrase;
         this.slots = slots;
+        hostElements(this.host).forEach((element, i) => this.slotOf.set(element, i));
         this._checkParams();
 
         // Register the phrase (triggers the missing-token POST on a cache miss).
@@ -126,6 +136,7 @@ export class Phrase {
         // Not inside a resolved scope: there the host's text is a translation a server
         // produced, and `t()` is the call that would register it as a source phrase.
         if (!isInResolvedScope(this.host)) LangsysApp.Translations.t(this.phrase, this.category);
+        else this.servedUnrecovered = !this.recoverServed();
 
         this.ready = true;
         this._render();
@@ -148,18 +159,57 @@ export class Phrase {
         warnUnmatchedParams('<Phrase>', [this.phrase], this.params, this.category || undefined);
     }
 
+    /**
+     * Inside a resolved scope the host holds a translation a server served, and the
+     * catalog is keyed by source: the source phrase is the one catalog entry that
+     * renders as the served text (`recoverPhraseSource`), never the DOM's text. Its
+     * elements are mapped to the source's slots by the order the served translation
+     * opened them. Until it is recovered the host renders from its served text,
+     * which is right for the locale it was served in.
+     */
+    private recoverServed(): boolean {
+        const recovered = recoverPhraseSource(this.phrase, this.slots.length, this.category, this.params);
+        if (!recovered) return false;
+        const served = this.slots;
+        const slots: RichSlot[] = [];
+        hostElements(this.host).forEach((element, j) => {
+            const source = recovered.order[j]!;
+            this.slotOf.set(element, source);
+            slots[source] = served[j]!;
+        });
+        this.phrase = recovered.phrase;
+        this.slots = slots;
+        return true;
+    }
+
     private _render(): void {
         if (!this.phrase) return;
+        if (this.servedUnrecovered) this.servedUnrecovered = !this.recoverServed();
 
         const raw = LangsysApp.Translations.lookup(this.phrase, this.category) ?? this.phrase;
         const params = { ...this.params, ...markupTokenValues(this.slots.length) };
         const resolved = interpolate(raw, params, currentlyLoadedLocale.get());
         // Into the nodes already there when the translation keeps the markup's shape, so a
         // framework's references to them stay live; rebuilt only when it does not.
-        if (applyInPlace(this.host, resolved)) return;
-        const nodes = reconstitute(resolved, this.slots, this.host.ownerDocument ?? document);
+        if (applyInPlace(this.host, resolved, (element) => this.slotOf.get(element))) return;
+        const nodes = reconstitute(resolved, this.slots, this.host.ownerDocument ?? document, (element, slot) =>
+            this.slotOf.set(element, slot)
+        );
         this.host.replaceChildren(...nodes);
     }
+}
+
+/** The host's elements in pre-order, the order `encodeRichText` numbers its slots in. */
+function hostElements(host: Element): Element[] {
+    const out: Element[] = [];
+    const visit = (parent: Element) => {
+        for (const child of Array.from(parent.children)) {
+            out.push(child);
+            visit(child);
+        }
+    };
+    visit(host);
+    return out;
 }
 
 export default Phrase;

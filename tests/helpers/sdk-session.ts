@@ -1,4 +1,5 @@
 import { _resetDiscoveryState } from '../../src/discovery.js';
+import { _resetSeededBlocks } from '../../src/served-source.js';
 import { LangsysApp } from '../../src/langsys-app.js';
 import { createSignal } from '../../src/signal.js';
 import {
@@ -74,6 +75,7 @@ export function resetSdk(): void {
     currentlyLoadedLocale.set('');
     sTranslations.set({ __uncategorized__: { __category__: '__uncategorized__', __symbol__: '__uncategorized__' } } as never);
     _resetDiscoveryState();
+    _resetSeededBlocks();
     _resetCapabilityNotice();
 }
 

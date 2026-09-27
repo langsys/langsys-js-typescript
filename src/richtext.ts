@@ -186,8 +186,13 @@ export function splitSentinels(resolved: string): Array<{ text: string } | { ope
  * rendered: replacing them leaves every later update writing to a detached node
  * that is no longer on the page. Only a structural change has to replace them,
  * and then those later updates are lost, which is the cost of the reorder.
+ *
+ * `slotOf` names the markup slot each element renders. Without it, an element's
+ * slot is its place among the host's elements, which holds only while the host
+ * shows the source's order: after a translation that reorders its markup, or over
+ * a served translation, the elements' places are not their slots.
  */
-export function applyInPlace(host: Node, resolved: string): boolean {
+export function applyInPlace(host: Node, resolved: string, slotOf?: (element: Element) => number | undefined): boolean {
     const parts = splitSentinels(resolved);
     if (!parts) return false;
     const writes: Array<[Node, string]> = [];
@@ -205,7 +210,8 @@ export function applyInPlace(host: Node, resolved: string): boolean {
                 }
             } else if (child.nodeType === 1) {
                 const open = parts[next];
-                const index = slot++;
+                const place = slot++;
+                const index = slotOf ? slotOf(child as Element) : place;
                 if (!open || !('open' in open) || open.open !== index) return false;
                 next++;
                 if (!walk(child)) return false;
@@ -221,7 +227,12 @@ export function applyInPlace(host: Node, resolved: string): boolean {
     return true;
 }
 
-export function reconstitute(resolved: string, slots: RichSlot[], doc: Document = document): Node[] {
+export function reconstitute(
+    resolved: string,
+    slots: RichSlot[],
+    doc: Document = document,
+    onElement?: (element: HTMLElement, slot: number) => void
+): Node[] {
     const root = doc.createDocumentFragment();
     const stack: Node[] = [root];
     const top = () => stack[stack.length - 1];
@@ -243,6 +254,7 @@ export function reconstitute(resolved: string, slots: RichSlot[], doc: Document 
                 const slot = slots[slotIndex];
                 if (!slot) throw new Error('unknown markup slot');
                 const el = slot.template.cloneNode(false) as HTMLElement;
+                onElement?.(el, slotIndex);
                 top().appendChild(el);
                 stack.push(el);
             } else {

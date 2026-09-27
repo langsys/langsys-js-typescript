@@ -26,6 +26,7 @@ import { config as configStore, currentlyLoadedLocale, navigationEpoch, sTransla
 import type { Unsubscriber } from './signal.js';
 import { claimHost, inertUnderScope, isHostManaged, releaseHost } from './hosts.js';
 import { Phrase } from './phrase.js';
+import { recoverBlockSources, warnUnrecoveredSource } from './served-source.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
 import { isEmpty } from './utils.js';
@@ -86,6 +87,13 @@ export class Translate {
      * its source text, and registers nothing.
      */
     private adoptedId: string | null = null;
+    /**
+     * Whether an adopted host's source tokens have been recovered: its DOM holds
+     * the text a server translated, never the source the catalog is keyed by.
+     */
+    private sourcesRecovered = false;
+    /** The locale an adopted host was served in; its served text is right for that locale. */
+    private servedLocale = '';
     /** Marked hosts inside this one that no instance managed, taken over by this walk. */
     private takenOver: Array<{ destroy(): void }> = [];
 
@@ -240,9 +248,44 @@ export class Translate {
             this.renderSingleToken(category);
             this.lastTranslatedLocale = currentLocale;
         } else {
+            if (!this.recoverServedSources(currentLocale !== this.servedLocale)) return;
             this.translate(Array.from(this.element.childNodes));
             this.lastTranslatedLocale = currentLocale;
         }
+    }
+
+    /**
+     * An adopted host holds the text a renderer served, a translation when the
+     * page was served in another locale, and the catalog is keyed by source. Its
+     * source tokens come from the scope's seed, or the catalog entry the served text
+     * was rendered from, never from the DOM (SRV-4): each text node and attribute is
+     * given its source as the original it renders from. Until they are recovered the
+     * host is left as served, which is right for the locale it was served in; a
+     * later switch tries again, since a binding may hand the seed over after mount.
+     */
+    private recoverServedSources(warn: boolean): boolean {
+        if (!this.adoptedId || this.sourcesRecovered) return true;
+        const { category = '', params = {} } = this.options;
+        const recovered = recoverBlockSources(this.element, this.adoptedId, category, params);
+        if (!recovered) {
+            if (warn) warnUnrecoveredSource();
+            return false;
+        }
+        recovered.slots.forEach((slot, i) => {
+            const source = recovered.sources[i]!;
+            if (slot.attr) {
+                const element = slot.node as iElement;
+                (element.originalAttributes ??= {})[slot.attr] = source;
+            } else {
+                const node = slot.node as iNode;
+                const value = node.nodeValue ?? '';
+                node.originalNodeValue = value.match(/^\s*/)![0] + source + value.match(/\s*$/)![0];
+            }
+        });
+        this.tokens = recovered.sources;
+        this.sourcesRecovered = true;
+        this.checkParams();
+        return true;
     }
 
     /**
@@ -403,8 +446,9 @@ export class Translate {
             // source text, and register nothing (MARK-3).
             await LangsysApp.Translations.ready();
             if (this.element) {
-                this.translate(Array.from(this.element.childNodes));
-                this.lastTranslatedLocale = currentlyLoadedLocale.get();
+                if (this.recoverServedSources(false)) this.translate(Array.from(this.element.childNodes));
+                // The host shows this locale either way: rendered now, or as served.
+                this.lastTranslatedLocale = this.servedLocale = currentlyLoadedLocale.get();
             }
             return;
         }
@@ -554,8 +598,9 @@ export class Translate {
     private checkParams(): void {
         // Before tokenization there's nothing to match against — every key
         // would look unused. Skip without recording, so the check still runs
-        // once tokens exist.
-        if (!this.tokens.length) return;
+        // once tokens exist. An adopted host's tokens are its served text until
+        // its source is recovered, and the params are the source's.
+        if (!this.tokens.length || (this.adoptedId && !this.sourcesRecovered)) return;
 
         const { params, category = '' } = this.options;
         const signature = params ? Object.keys(params).sort().join(',') : '';

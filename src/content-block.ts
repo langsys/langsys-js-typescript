@@ -596,6 +596,20 @@ export function tokenizeNodes(nodes: ArrayLike<WalkNode>, duplicateSelectOptions
     return tokens;
 }
 
+/** Where a unit's token sits: a text node, or an attribute of an element. */
+export type TokenSlot = { node: Node; attr?: undefined } | { node: Element; attr: string };
+
+/**
+ * The places a unit's tokens come from, one per token and in token order: the
+ * same walk as `tokenizeNodes`, so the i-th slot holds the i-th token. What lets
+ * a reader pair a block's served text with the source tokens it was rendered from.
+ */
+export function tokenSlots(nodes: ArrayLike<Node>): TokenSlot[] {
+    const slots: TokenSlot[] = [];
+    _walkForTokens(null as unknown as HTMLElement, Array.from(nodes) as ChildNode[], [], [], false, false, slots);
+    return slots;
+}
+
 /**
  * The unit's one non-whitespace text node, or null when it has none or more
  * than one (TOK-6). What the tokenizer leaves out of the unit (`isExcisedFromUnit`)
@@ -628,6 +642,7 @@ function _walkForTokens(
     indices: number[],
     duplicateSelectOptions: boolean,
     applyStyles: boolean,
+    slots?: TokenSlot[],
 ): void {
     cloneNodes.forEach((node, index) => {
         if (node.nodeType === ELEMENT_NODE) {
@@ -644,24 +659,26 @@ function _walkForTokens(
         }
 
         if (node.nodeType === ELEMENT_NODE) {
-            _tokenizeAttributes(node as HTMLElement, tokens, duplicateSelectOptions);
+            _tokenizeAttributes(node as HTMLElement, tokens, duplicateSelectOptions, slots);
         }
 
         const contentToken = node.nodeValue ? normalizeTokenText(node.nodeValue) : undefined;
         if (node.nodeType === TEXT_NODE && contentToken) {
             tokens.push(normalizeMarkupPlaceholders(contentToken));
+            slots?.push({ node });
             return;
         }
 
         if (!node.hasChildNodes()) return;
-        _walkForTokens(liveRoot, Array.from(node.childNodes), tokens, [...indices, index], duplicateSelectOptions, applyStyles);
+        _walkForTokens(liveRoot, Array.from(node.childNodes), tokens, [...indices, index], duplicateSelectOptions, applyStyles, slots);
     });
 }
 
-function _tokenizeAttributes(element: HTMLElement, tokens: string[], duplicateSelectOptions: boolean): void {
+function _tokenizeAttributes(element: HTMLElement, tokens: string[], duplicateSelectOptions: boolean, slots?: TokenSlot[]): void {
     const tagName = element.tagName.toLowerCase();
 
-    if (tagName === 'img') {
+    // On a clone only: `tokenSlots` walks the live DOM, which a token read never writes.
+    if (tagName === 'img' && !slots) {
         const img = element as HTMLImageElement;
         if (img.src) element.setAttribute('src', img.src);
     }
@@ -670,22 +687,19 @@ function _tokenizeAttributes(element: HTMLElement, tokens: string[], duplicateSe
     // internal whitespace while text nodes collapsed theirs, so the same
     // authored sentence produced two different ids depending on where it sat —
     // and put this SDK on different ids from langsys-php for the same markup.
-    for (const attr of TRANSLATABLE_ATTRIBUTES) {
+    const push = (attr: string) => {
         const value = normalizeTokenText(element.getAttribute(attr) ?? '');
-        if (value) tokens.push(normalizeMarkupPlaceholders(value));
-    }
+        if (!value) return;
+        tokens.push(normalizeMarkupPlaceholders(value));
+        slots?.push({ node: element, attr });
+    };
+    for (const attr of TRANSLATABLE_ATTRIBUTES) push(attr);
 
-    if (VALUE_TRANSLATABLE_ELEMENTS.includes(tagName)) {
-        const value = normalizeTokenText(element.getAttribute('value') ?? '');
-        if (value) tokens.push(normalizeMarkupPlaceholders(value));
-    }
+    if (VALUE_TRANSLATABLE_ELEMENTS.includes(tagName)) push('value');
 
     if (tagName === 'input') {
         const inputType = element.getAttribute('type')?.toLowerCase();
-        if (inputType && VALUE_TRANSLATABLE_INPUT_TYPES.includes(inputType)) {
-            const value = normalizeTokenText(element.getAttribute('value') ?? '');
-            if (value) tokens.push(normalizeMarkupPlaceholders(value));
-        }
+        if (inputType && VALUE_TRANSLATABLE_INPUT_TYPES.includes(inputType)) push('value');
     }
 
     // <option> text is NOT harvested here in the current path: it arrives via

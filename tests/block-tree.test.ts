@@ -200,7 +200,8 @@ describe('renderBlock renders what the DOM class renders, byte for byte', () => 
         const b = p.children[0] as Extract<RenderedNode, { tag: string }>;
         expect(b.tag).toBe('b');
         expect(b.source).toBe(1);
-        expect(html(out.nodes)).toBe('<p data-ls-phrase><b>mundo</b> hola</p>');
+        // Marked resolved: the text is the catalog's translation (GATE-10).
+        expect(html(out.nodes)).toBe('<p data-ls-phrase data-ls-resolved="es-es"><b>mundo</b> hola</p>');
     });
 
     it('a comment is returned in place, untouched', () => {
@@ -226,19 +227,19 @@ describe('renderBlock renders what the DOM class renders, byte for byte', () => 
 describe('MARK-2, MARK-3, MARK-4 on a tree', () => {
     withSdk();
 
-    it('a nested declared block renders as its own block, stamped with its id, and is not in the enclosing block', async () => {
+    it('a nested declared block renders as its own block, stamped with its id and resolved marker, and is not in the enclosing block', async () => {
         const inner = generateCustomId('UI', ['B1', 'B2']);
         const outer = generateCustomId('UI', ['A1', 'A2']);
         catalog({ [inner]: { B1: 'Be1', B2: 'Be2' }, [outer]: { A1: 'Ae1', A2: 'Ae2' } });
         const out = renderBlock(toTree(host('<p>A1</p><p>A2</p><section data-ls-contentblock><p>B1</p><p>B2</p></section>').childNodes), { category: 'UI' });
         expect(out.customId).toBe(outer);
-        expect(html(out.nodes)).toBe(`<p>Ae1</p><p>Ae2</p><section data-ls-contentblock="${inner}"><p>Be1</p><p>Be2</p></section>`);
+        expect(html(out.nodes)).toBe(`<p>Ae1</p><p>Ae2</p><section data-ls-contentblock="${inner}" data-ls-resolved="es-es"><p>Be1</p><p>Be2</p></section>`);
     });
 
     it('a stamped nested host renders under its id and registers nothing', async () => {
         catalog({ abc123: { B1: 'Uno' } });
         const tree = toTree(host('<p>A1</p><p>A2</p><section data-langsys-contentblock="abc123"><p>B1</p></section>').childNodes);
-        expect(html(renderBlock(tree, { category: 'UI' }).nodes)).toContain('<section data-langsys-contentblock="abc123"><p>Uno</p></section>');
+        expect(html(renderBlock(tree, { category: 'UI' }).nodes)).toContain('<section data-langsys-contentblock="abc123" data-ls-resolved="es-es"><p>Uno</p></section>');
         registerBlock(tree, { category: 'UI' });
         await settle();
         expect(sent.map((i) => i.custom_id ?? i.phrase)).toEqual([generateCustomId('UI', ['A1', 'A2'])]);
