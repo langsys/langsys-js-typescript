@@ -31,3 +31,14 @@ t('Welcome back.', 'UI', { name: 'Ada' });
 // A phrase known only as `string` is not checked.
 t(dynamic, { name: 'Ada' });
 t(dynamic, 'UI', { name: 'Ada' });
+
+// Langsys promotes "{username}" to "{username_gender, select, …}" in gendered target
+// locales, so every placeholder may carry an optional `<name>_gender` companion. It is
+// optional: without it the neutral `other` branch renders.
+t('{username} has been invited', 'Team', { username: 'Ada', username_gender: 'female' });
+t('{username} has been invited', 'Team', { username: 'Ada' });
+t('{username} has been invited', { username: 'Ada', username_gender: 'female' });
+// @ts-expect-error: only a placeholder gets a gender companion
+t('{username} has been invited', 'Team', { username: 'Ada', team_gender: 'female' });
+// @ts-expect-error: the companion does not replace the placeholder
+t('{username} has been invited', 'Team', { username_gender: 'female' });

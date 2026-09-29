@@ -114,6 +114,10 @@ heading records the INTENT rather than the number. There is no summary-regenerat
 
 ### Fixed
 
+- **`t()` rejected the gender argument Langsys asks for.** Langsys promotes a plain `{username}` to `{username_gender, select, …}` in gendered target locales, and the docs tell you to pass `username_gender` alongside `username`. But `ParamsFor` only allowed the phrase's own placeholders, so in TypeScript `t('{username} has been invited', 'Team', { username, username_gender })` failed with TS2353 ("Object literal may only specify known properties"). Every placeholder now accepts an optional `<name>_gender` companion (`GenderParamsFor`); anything else extra is still an error, and the companion never replaces the placeholder itself. Types only, no runtime change: without the argument the neutral `other` branch renders, as since 0.6.4.
+
+  Covered by `tests/types/t-signature.ts`, which `type-level.test.ts` compiles.
+
 - **An `<option>` inside a translated `<select>` follows every locale switch.** The `<select>` writes its options' text, and the walk then entered each option and took the text just written as its original, so the second switch rendered the first locale's text again. The walk no longer enters an option its `<select>` writes.
 
 - **A content block mounted before `init()` is registered once the write capability is known.** On a hydrated page the served catalog is seeded first, which settles `ready()`, and components mount before the app calls `init()`. A block reaching registration then found the capability still unknown, took that as a refusal, and was never registered. It now waits for `init()`'s answer and decides then: a write key registers it, and a read key hands it to discovery as before.
