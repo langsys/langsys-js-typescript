@@ -53,7 +53,12 @@ export function resetSdk(): void {
     const T = LangsysApp.Translations as unknown as Record<string, unknown> & { destroy(): void };
     T.destroy();
     if (T.debounceTimer) clearTimeout(T.debounceTimer as ReturnType<typeof setTimeout>);
+    // A session is a fresh page: its first catalog has not settled yet.
+    let readyResolve!: () => void;
+    const readyPromise = new Promise<void>((resolve) => (readyResolve = resolve));
     Object.assign(T, {
+        readyPromise,
+        readyResolve,
         missingTokens: [],
         lastLoaded: {},
         catalogFetchesInFlight: 0,

@@ -26,7 +26,7 @@ import { config as configStore, currentlyLoadedLocale, navigationEpoch, sTransla
 import type { Unsubscriber } from './signal.js';
 import { claimHost, inertUnderScope, isHostManaged, releaseHost } from './hosts.js';
 import { Phrase } from './phrase.js';
-import { isServerCollected, recoverBlockSources, warnUnrecoveredSource } from './served-source.js';
+import { isBlockHandled, isServerCollected, markBlockHandled, recoverBlockSources, warnUnrecoveredSource } from './served-source.js';
 import { RESOLVED_MARKER_ATTRS } from './identity.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -118,12 +118,16 @@ export class Translate {
         // under it, register nothing. Outside one, it is the block's id, app-chosen or
         // derived, to render and register under when the catalog lacks it. Our own stamp,
         // on an element re-mounted in the same session, is only the id we derived.
-        if (!this.custom_id) {
-            const marker = readContentBlockMarker(element);
-            if (marker?.kind === 'identity' && ownStamps.get(element) !== marker.id) {
-                this.custom_id = marker.id;
-                if (isInResolvedScope(element)) this.adoptedId = marker.id;
-            }
+        // The app's own `custom_id`, when it names the stamp, is the same identity: a
+        // server rendered the block under it, and the served text is still a translation.
+        const marker = readContentBlockMarker(element);
+        if (
+            marker?.kind === 'identity' &&
+            ownStamps.get(element) !== marker.id &&
+            (!this.custom_id || this.custom_id === marker.id)
+        ) {
+            this.custom_id = marker.id;
+            if (isInResolvedScope(element)) this.adoptedId = marker.id;
         }
 
         // First pass: tokenize + save + translate.
@@ -532,7 +536,10 @@ export class Translate {
         // doesn't depend on the POST completing — translations are looked up
         // from sTranslations on every render, which updates reactively when
         // the GET response arrives.
-        if (isServerCollected(this.custom_id)) {
+        if (isBlockHandled(this.custom_id, 'seed')) {
+            // Already sent on this page from the scope's seed.
+            logger.log('Skipping content block registration: the seed already sent it');
+        } else if (isServerCollected(this.custom_id)) {
             // The server's request scope sends this block itself after the response (its
             // seed says so), so sending it from the client would register it twice.
             logger.log('Skipping content block registration: the server registers this block');
@@ -543,6 +550,7 @@ export class Translate {
             // untouched — the marker stamped above still names this block.
             logger.log('Skipping content block registration: the host sits in a resolved scope');
         } else {
+            markBlockHandled(this.custom_id, 'mount');
             void registerContentBlock(contentBlock);
         }
 

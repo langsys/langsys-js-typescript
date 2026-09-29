@@ -459,3 +459,73 @@ describe('a phrase the server sends itself is never recorded again by the client
         expect(sent.filter((i) => i.type === 'phrase').map((i) => i.phrase).sort()).toEqual([RICH, 'Said by t'].sort());
     });
 });
+
+describe('a seeded block and the Translate over its host send it once between them', () => {
+    const TREE: BlockNode[] = [
+        { tag: 'p', children: [{ text: 'Twice A' }] },
+        { tag: 'p', children: [{ text: 'Twice B' }] },
+    ];
+    const ID2 = generateCustomId('UI', ['Twice A', 'Twice B']);
+    async function served() {
+        catalog({}, 'it-it');
+        const scope = await createRequestScope({ locale: 'it-it', catalog: { UI: {} } as never });
+        const block = scope.run(() => renderBlock(TREE, { category: 'UI' }));
+        const attrs = Object.entries(block.hostAttrs).map(([k, v]) => ` ${k}="${v}"`).join('');
+        return { html: `<div${attrs}>${serializeTree(block.nodes as BlockNode[])}</div>`, seed: scope.seed() };
+    }
+
+    // Both before the first send returns: once one has, the block is known and the other
+    // skips it anyway, so only the same tick can send it twice.
+    it('the seed first, then the host, in the same tick', async () => {
+        const { html, seed } = await served();
+        registerBlock(seed.blocks[ID2]!);
+        translate(mount(html).firstElementChild!);
+        await settle();
+        expect(sent.filter((i) => i.custom_id === ID2)).toHaveLength(1);
+    });
+
+    it('the host first, then the seed, in the same tick', async () => {
+        const { html, seed } = await served();
+        translate(mount(html).firstElementChild!);
+        registerBlock(seed.blocks[ID2]!);
+        await settle();
+        expect(sent.filter((i) => i.custom_id === ID2)).toHaveLength(1);
+    });
+
+    it('a tree binding over the same block and the seed, in the same tick', async () => {
+        const { seed } = await served();
+        registerBlock(seed.blocks[ID2]!);
+        registerBlock(TREE, { category: 'UI' });
+        await settle();
+        expect(sent.filter((i) => i.custom_id === ID2)).toHaveLength(1);
+    });
+
+    it('a host mounted again sends once, as it did before', async () => {
+        const { html } = await served();
+        const first = translate(mount(html).firstElementChild!);
+        await settle();
+        first.destroy();
+        document.body.innerHTML = '';
+        translate(mount(html).firstElementChild!);
+        await settle();
+        expect(sent.filter((i) => i.custom_id === ID2)).toHaveLength(1);
+    });
+});
+
+describe('a single-token block served under the app’s own id switches locale from its source', () => {
+    for (const given of [true, false]) {
+        it(given ? 'with the app’s custom_id on the Translate' : 'with the stamp alone', async () => {
+            catalog({ 'pricing-hero': { 'Pricing plans': 'Piani tariffari' } }, 'it-it');
+            registerBlock({ customId: 'pricing-hero', category: 'UI', tokens: ['Pricing plans'], shape: 'phrase' });
+            const h1 = mount('<h1 data-ls-contentblock="pricing-hero" data-ls-resolved="it-it">Piani tariffari</h1>').querySelector('h1')!;
+            live.push(new Translate(h1, given ? { category: 'UI', custom_id: 'pricing-hero' } : { category: 'UI' }));
+            await settle();
+            catalog({ 'pricing-hero': { 'Pricing plans': 'Preispläne' } }, 'de-de');
+            await settle();
+            expect(h1.textContent).toBe('Preispläne');
+            expect(h1.getAttribute('data-ls-resolved')).toBe('de-de');
+            expect(sent).toEqual([]);
+            expect(misses()).toEqual([]);
+        });
+    }
+});

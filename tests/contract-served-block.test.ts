@@ -175,3 +175,34 @@ describe('SRV-4: a block served in it-it, hydrated, and switched to de-de on the
         expect(await heldIds()).toEqual([INNER, OUTER].sort());
     });
 });
+
+describe('a seeded registration right after init sends nothing the catalog holds', () => {
+    // Observed at the transport seam: a known block sent again is an upsert the double's
+    // state cannot show. The phrase-shaped case is also visible in state.
+    it('neither a known block nor a phrase-shaped block whose id holds its token, although the catalog is still loading', async () => {
+        await fx.seed({
+            ...SEED,
+            projects: [{ ...SEED.projects[0]!, blocks: [...SEED.projects[0]!.blocks, { category: 'UI', custom_id: 'pricing-hero', phrases: [{ phrase: 'Pricing plans', translations: { 'it-it': 'Piani tariffari' } }] }] }],
+        });
+        resetSdk();
+        const posted: string[] = [];
+        const realFetch = globalThis.fetch;
+        globalThis.fetch = ((url: RequestInfo, init?: RequestInit) => {
+            if (init?.method === 'POST') posted.push(String(init.body));
+            return realFetch(url, init);
+        }) as typeof fetch;
+        try {
+            await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('it-it'), baseLocale: 'en', apiUrl: fx.baseUrl });
+            registerBlock({ customId: INNER, category: 'UI', tokens: ['Inner title', 'Inner body'], shape: 'block' });
+            registerBlock({ customId: 'pricing-hero', category: 'UI', tokens: ['Pricing plans'], shape: 'phrase' });
+            registerBlock({ customId: 'seeded-new', category: 'UI', tokens: ['New one', 'New two'], shape: 'block' });
+            // Control: the unknown seeded block is sent and held, so the wait would have seen the others.
+            await until(async () => (await heldIds()).includes('seeded-new'));
+            await sleep(SETTLE_MS);
+        } finally {
+            globalThis.fetch = realFetch;
+        }
+        expect(posted.filter((body) => body.includes(INNER) || body.includes('Pricing plans'))).toEqual([]);
+        expect((await fx.state()).projects.p1.phrases.map((p) => p.phrase)).not.toContain('Pricing plans');
+    });
+});

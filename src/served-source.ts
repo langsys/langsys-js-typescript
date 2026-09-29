@@ -22,6 +22,13 @@ import type { ParamPrimitive } from './types/translation-fn.js';
 
 const seeded = new Map<string, SeededBlock>();
 const collectedPhrases = new Set<string>();
+/**
+ * Blocks sent for registration on this page, by the path that sent them: a seed
+ * entry, or a mounted unit (the `Translate` over a host, a tree binding's
+ * `registerBlock` over nodes). Each path skips what the OTHER sent; a unit
+ * mounted again still registers as it always has.
+ */
+const handledBlocks = { seed: new Set<string>(), mount: new Set<string>() };
 let warnedUnrecovered = false;
 
 /** Keep a seeded block's source tokens, by id, for the host that renders it. */
@@ -39,6 +46,16 @@ export function isServerCollectedPhrase(category: string, phrase: string): boole
     return collectedPhrases.has(`${category ?? ''}\0${phrase}`);
 }
 
+/** A block sent for registration by `via`, so the other path over the same block does not send it again. */
+export function markBlockHandled(customId: string, via: 'seed' | 'mount'): void {
+    handledBlocks[via].add(customId);
+}
+
+/** Whether `by` already sent this block. */
+export function isBlockHandled(customId: string, by: 'seed' | 'mount'): boolean {
+    return handledBlocks[by].has(customId);
+}
+
 /** Whether the server's scope sends this block itself, so the client never registers it. */
 export function isServerCollected(customId: string): boolean {
     return seeded.get(customId)?.collected === true;
@@ -48,6 +65,8 @@ export function isServerCollected(customId: string): boolean {
 export function _resetSeededBlocks(): void {
     seeded.clear();
     collectedPhrases.clear();
+    handledBlocks.seed.clear();
+    handledBlocks.mount.clear();
     warnedUnrecovered = false;
 }
 

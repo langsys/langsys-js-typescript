@@ -22,7 +22,7 @@ import { interpolate, isICU } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { markupTokenValues, splitSentinels, stripSentinels } from './richtext.js';
 import { activeCatalog, activeScope } from './scope-context.js';
-import { isServerCollected, rememberSeededBlock } from './served-source.js';
+import { isBlockHandled, isServerCollected, markBlockHandled, rememberSeededBlock } from './served-source.js';
 import { logger } from './logger.js';
 import { config as configStore, currentlyLoadedLocale } from './stores.js';
 import type { CatalogView } from './translations.js';
@@ -221,12 +221,20 @@ export function registerBlock(input: readonly BlockNode[] | SeededBlock, options
     // a no-op; counting the host would instead let that client-side stamp silence the
     // re-entry registration HINT-13 asks for on every later `t` change.
     if (options.host && isInResolvedScope(options.host.parentElement)) return;
-    try {
-        if (Array.isArray(input)) registerView(view(input), options, input);
-        else registerSeeded(input as SeededBlock);
-    } catch {
-        // Registration never takes a render down with it (REG-10).
-    }
+    const root = Array.isArray(input) ? view(input) : null;
+    const register = () => {
+        try {
+            if (root) registerView(root, options, input as readonly BlockNode[]);
+            else registerSeeded(input as SeededBlock);
+        } catch {
+            // Registration never takes a render down with it (REG-10).
+        }
+    };
+    // Inside a scope the scope's catalog is in hand. On a page, what is known is decided
+    // once the first catalog has settled, as `Translate` decides it: before then every
+    // block and phrase looks unknown, and one the catalog holds would be sent.
+    if (activeScope()) register();
+    else void LangsysApp.Translations.ready().then(register);
 }
 
 /**
@@ -661,14 +669,15 @@ function registerView(root: ViewNode[], options: BlockOptions, input: readonly B
         return;
     }
     const id = options.id ?? resolveId(root, tokens, category, undefined);
-    if (isContentBlockKnown(category, id) || isServerCollected(id)) return;
+    if (isContentBlockKnown(category, id) || isServerCollected(id) || isBlockHandled(id, 'seed')) return;
+    if (!activeScope()) markBlockHandled(id, 'mount');
     void registerContentBlock({ custom_id: id, category, label, content: serializeTree(input), tokens });
 }
 
 /** A seeded block: a phrase records its miss as `t()` does; an unknown block registers under its id. */
 function registerSeeded(block: SeededBlock): void {
     const { customId, category, tokens, shape } = block;
-    if (block.collected) return;
+    if (block.collected || isBlockHandled(customId, 'mount')) return;
     if (shape === 'phrase') {
         const fromBlock = LangsysApp.Translations.lookupContent(category, customId, tokens[0] ?? '');
         if (tokens[0] && (fromBlock === null || fromBlock === undefined)) {
@@ -677,6 +686,7 @@ function registerSeeded(block: SeededBlock): void {
         return;
     }
     if (isContentBlockKnown(category, customId)) return;
+    markBlockHandled(customId, 'seed');
     void registerContentBlock({ custom_id: customId, category, content: '', tokens });
 }
 
