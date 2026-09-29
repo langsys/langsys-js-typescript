@@ -1,3 +1,11 @@
+## Unreleased
+
+### Fixed
+
+- **`t()` rejected the gender argument Langsys asks for.** Langsys promotes a plain `{username}` to `{username_gender, select, …}` in gendered target locales, and the docs tell you to pass `username_gender` alongside `username`. But `ParamsFor` only allowed the phrase's own placeholders, so in TypeScript `t('{username} has been invited', 'Team', { username, username_gender })` failed with TS2353 ("Object literal may only specify known properties"). Every placeholder now accepts an optional `<name>_gender` companion (`GenderParamsFor`); anything else extra is still an error, and the companion never replaces the placeholder itself. Types only, no runtime change: without the argument the neutral `other` branch renders, as since 0.6.4.
+
+  `npm run typecheck` now also compiles `tests/types/` (`tsconfig.types.json`), so these checks run in CI alongside the source.
+
 ## 0.6.5 - 2026-08-16
 
 ### Added

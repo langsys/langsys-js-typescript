@@ -21,10 +21,22 @@ export type ExtractParamKeys<S extends string> = S extends `${string}{${infer K}
     ? K | ExtractParamKeys<Rest>
     : never;
 
+/**
+ * Optional `<name>_gender` companions, one per placeholder. Langsys promotes a plain
+ * `{username}` to `{username_gender, select, …}` in gendered target locales, so the
+ * argument exists in the translation but never in the phrase you wrote. Optional because
+ * most apps don't know the gender; without it the neutral `other` branch renders.
+ * @example
+ *   GenderParamsFor<"{username} has been invited">  // { username_gender?: string }
+ */
+export type GenderParamsFor<S extends string> = {
+    [K in ExtractParamKeys<S> as `${K}_gender`]?: string;
+};
+
 /** Build the params object type required for a given phrase. */
 export type ParamsFor<S extends string> = {
     [K in ExtractParamKeys<S>]: ParamPrimitive;
-};
+} & GenderParamsFor<S>;
 
 /**
  * Rest-tuple for the optional params argument.
