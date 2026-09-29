@@ -13,6 +13,8 @@ import type { ParamPrimitive } from './types/translation-fn.js';
 export { PHRASE_MARKER_ATTR } from './content-block.js';
 import { isInResolvedScope } from './content-block.js';
 import { claimHost, inertUnderScope, releaseHost } from './hosts.js';
+import { warnUnregistered } from './notices.js';
+import { paramElementName, type MarkerNode } from './var-markers.js';
 import { recoverPhraseSource } from './served-source.js';
 
 export interface PhraseOptions {
@@ -27,6 +29,12 @@ export interface PhraseOptions {
      * normalized back to `{n}` at capture.
      */
     params?: Record<string, ParamPrimitive>;
+    /**
+     * `false` renders from the catalog and registers nothing (VAR-7): for a binding
+     * whose phrase holds values from variables it cannot name without its build-time
+     * transform. One debug notice says so. Default `true`.
+     */
+    register?: boolean;
 }
 
 /**
@@ -45,6 +53,9 @@ export class Phrase {
     private host: HTMLElement;
     private category: string;
     private params: Record<string, ParamPrimitive>;
+    private register: boolean;
+    /** Each marked value in the host (VAR-3), by name: params the caller's own override. */
+    private values: Record<string, string> = {};
     private phrase = '';
     private slots: RichSlot[] = [];
     /**
@@ -68,9 +79,11 @@ export class Phrase {
         this.host = host;
         this.category = options.category ?? '';
         this.params = options.params ?? {};
+        this.register = options.register !== false;
         // Under a request scope, see `Translate`: `renderBlock` and `registerBlock` there.
         if (inertUnderScope('Phrase')) return;
         claimHost(host, this, byWalk);
+        if (!this.register) warnUnregistered('register-false');
 
         void this._init();
 
@@ -94,7 +107,7 @@ export class Phrase {
                     initialNavigation = false;
                     return;
                 }
-                if (!this.ready || !this.phrase || !this.host.isConnected || isInResolvedScope(this.host)) return;
+                if (!this.ready || !this.phrase || !this.register || !this.host.isConnected || isInResolvedScope(this.host)) return;
                 LangsysApp.Translations.t(this.phrase, this.category);
             })
         );
@@ -123,9 +136,10 @@ export class Phrase {
             return;
         }
 
-        const { phrase, slots } = encodeRichText(this.host);
+        const { phrase, slots, values } = encodeRichText(this.host);
         this.phrase = phrase;
         this.slots = slots;
+        this.values = values;
         hostElements(this.host).forEach((element, i) => this.slotOf.set(element, i));
         this._checkParams();
 
@@ -135,8 +149,10 @@ export class Phrase {
         await LangsysApp.Translations.ready();
         // Not inside a resolved scope: there the host's text is a translation a server
         // produced, and `t()` is the call that would register it as a source phrase.
-        if (!isInResolvedScope(this.host)) LangsysApp.Translations.t(this.phrase, this.category);
-        else this.servedUnrecovered = !this.recoverServed();
+        // Nor with `register: false` (VAR-7), nor for a phrase made only of value markers,
+        // which has no text of its own (VAR-3).
+        if (isInResolvedScope(this.host)) this.servedUnrecovered = !this.recoverServed();
+        else if (this.register && !(Object.keys(values).length && isOnlyPlaceholders(this.phrase))) LangsysApp.Translations.t(this.phrase, this.category);
 
         this.ready = true;
         this._render();
@@ -187,7 +203,7 @@ export class Phrase {
         if (this.servedUnrecovered) this.servedUnrecovered = !this.recoverServed();
 
         const raw = LangsysApp.Translations.lookup(this.phrase, this.category) ?? this.phrase;
-        const params = { ...this.params, ...markupTokenValues(this.slots.length) };
+        const params = { ...this.values, ...this.params, ...markupTokenValues(this.slots.length) };
         const resolved = interpolate(raw, params, currentlyLoadedLocale.get());
         // Into the nodes already there when the translation keeps the markup's shape, so a
         // framework's references to them stay live; rebuilt only when it does not.
@@ -199,11 +215,20 @@ export class Phrase {
     }
 }
 
-/** The host's elements in pre-order, the order `encodeRichText` numbers its slots in. */
+/** A phrase with no text of its own: only placeholders and markup tokens. */
+function isOnlyPlaceholders(phrase: string): boolean {
+    return !phrase.replace(/\{[a-z][a-z0-9_]*\}/g, '').trim();
+}
+
+/**
+ * The host's elements in pre-order, the order `encodeRichText` numbers its slots
+ * in. A `data-ls-param` element marks a value (VAR-3), and is no slot.
+ */
 function hostElements(host: Element): Element[] {
     const out: Element[] = [];
     const visit = (parent: Element) => {
         for (const child of Array.from(parent.children)) {
+            if (paramElementName(child as unknown as MarkerNode) !== null) continue;
             out.push(child);
             visit(child);
         }

@@ -12,18 +12,22 @@ import {
     registerContentBlock,
     resolveHistoricalBlockId,
     tokenizeNodes,
+    tokenizeUnit,
+    isMarkerOnlyUnit,
+    type UnitVars,
     TRANSLATABLE_ATTRIBUTES,
     VALUE_TRANSLATABLE_ELEMENTS,
     VALUE_TRANSLATABLE_INPUT_TYPES,
     type WalkNode,
 } from './content-block.js';
-import { encodeRichPhrase, generateCustomId, historicalCustomIds, normalizeMarkupPlaceholders, normalizeTokenText, type RichTextNode } from './identity.js';
+import { encodeRichPhrase, generateCustomId, historicalCustomIds, normalizeMarkupPlaceholders, normalizeTokenText } from './identity.js';
 import { interpolate, isICU } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { markupTokenValues, splitSentinels, stripSentinels } from './richtext.js';
 import { activeCatalog, activeScope } from './scope-context.js';
 import { isBlockHandled, isServerCollected, markBlockHandled, rememberSeededBlock } from './served-source.js';
-import { logger } from './logger.js';
+import { debugNotice } from './notices.js';
+import { groupRuns, renderRun, runToken, toRichNodes, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
 import { config as configStore, currentlyLoadedLocale } from './stores.js';
 import type { CatalogView } from './translations.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -88,6 +92,8 @@ export interface BlockOptions {
      * resolved marker when it was rendered from the catalog.
      */
     host?: Element;
+    /** `false` registers nothing, nested hosts included (VAR-7); `renderBlock` ignores it. Default `true`. */
+    register?: boolean;
 }
 
 export interface RenderedBlock {
@@ -144,8 +150,8 @@ export interface RequestSeed {
 /** The tokens and shape of a block's content, exactly as `tokenizeElement` and `Translate` decide them for the same markup. */
 export function tokenizeTree(nodes: readonly BlockNode[]): { tokens: string[]; shape: BlockShape } {
     const root = view(nodes);
-    const tokens = tokenizeNodes(root);
-    return { tokens, shape: shapeOf(root, tokens, false) };
+    const { tokens, vars } = tokenizeUnit(root);
+    return { tokens, shape: shapeOf(root, tokens, false, vars) };
 }
 
 /**
@@ -171,23 +177,29 @@ export function renderBlock(nodes: readonly BlockNode[], options: BlockOptions =
 }
 
 /** The notices already given, one per reason. */
-const warnedUnrendered = new Set<string>();
-
 /**
- * Report, as a debug notice once per process per reason (SRV-1), that a block
- * was served as source because the binding could not show it to the renderer:
- * a framework component in its subtree, a raw-HTML prop, a raw-text element, a
- * suspense placeholder. That is SRV-1's one sanctioned fallback, not a fault:
- * the block is served with no resolved marker and its app-supplied id stamped
- * where it has one, and the client renders and registers it after hydration.
- * The notice is the core's (bindings write no console output of their own), and
- * a reason reported while debug is off is reported when it next occurs with it on.
+ * Report, as a debug notice once per process per reason, that a binding could
+ * not render a block through `renderBlock`. What happens next depends on the
+ * reason, and the notice says which:
+ *
+ * - a framework component in its subtree, a raw-HTML prop, a raw-text element,
+ *   a suspense placeholder: SRV-1's one sanctioned fallback, not a fault. The
+ *   block is served as source with no resolved marker and its app-supplied id
+ *   stamped where it has one, and the client renders and registers it after
+ *   hydration.
+ * - `variable`: the block holds a value from a variable the binding cannot name
+ *   without its build-time transform, so it renders from the catalog and
+ *   registers nothing, on the server or the client (VAR-7).
+ *
+ * The notice is the core's (bindings write no console output of their own). One
+ * raised before `init()` is held until debug is known (see `debugNotice`).
  */
 export function warnUnrenderedBlock(reason: string): void {
-    if (!logger.debugEnabled || warnedUnrendered.has(reason)) return;
-    warnedUnrendered.add(reason);
-    logger.log(
-        `A <Translate> block was served as source (${reason}): the binding could not show it to the renderer, so the client renders and registers it after hydration.`
+    debugNotice(
+        `unrendered\0${reason}`,
+        reason === 'variable'
+            ? 'A <Translate> block holds a value from a variable that cannot be named without the build-time transform, so it renders from the catalog and registers nothing, on the server or the client (VAR-7).'
+            : `A <Translate> block was served as source (${reason}): the binding could not show it to the renderer, so the client renders and registers it after hydration.`
     );
 }
 
@@ -449,10 +461,10 @@ function toBlockNodes(nodes: readonly ViewNode[]): BlockNode[] {
 // Render and register, mirroring `Translate`.
 // ---------------------------------------------------------------------
 
-function shapeOf(root: ViewNode[], tokens: string[], adopted: boolean): BlockShape {
+function shapeOf(root: ViewNode[], tokens: string[], adopted: boolean, vars?: UnitVars): BlockShape {
     if (tokens.length === 0) return 'empty';
     // TOK-6, and an adopted id is a block's (MARK-1 stamps blocks).
-    if (!adopted && tokens.length === 1 && findSingleTextNode({ childNodes: root }) !== null) return 'phrase';
+    if (!adopted && tokens.length === 1 && (findSingleTextNode({ childNodes: root }) !== null || !!vars?.runs.includes(0))) return 'phrase';
     return 'block';
 }
 
@@ -475,10 +487,18 @@ function resolveId(root: ViewNode[], tokens: string[], category: string, adopted
 
 function renderView(root: ViewNode[], options: BlockOptions): RenderedBlock {
     const { category = '', params = {} } = options;
-    const tokens = tokenizeNodes(root);
-    const shape = shapeOf(root, tokens, !!options.customId);
+    const { tokens, vars } = tokenizeUnit(root);
+    const shape = shapeOf(root, tokens, !!options.customId, vars);
     const locale = currentlyLoadedLocale.get();
     const apply = (text: string) => interpolate(text, params, locale);
+    // A marked run renders around its values (VAR-3); the tree is its own source.
+    const writeRun = (run: VarRun<ViewNode>, template: string) => {
+        const writes = renderRun(run as unknown as VarRun<MarkerNode>, template, params, locale, {
+            text: (node) => node.nodeValue ?? '',
+            value: (marker) => normalizeTokenText(marker.value.map((node) => node.nodeValue ?? '').join('')),
+        });
+        for (const [node, text] of writes) (node as unknown as ViewText).nodeValue = text;
+    };
 
     renderNestedHosts(root, options);
 
@@ -494,12 +514,17 @@ function renderView(root: ViewNode[], options: BlockOptions): RenderedBlock {
     if (shape === 'phrase') {
         // As `Translate.renderSingleToken`: the block entry first, then `t()`'s lookup.
         const id = options.id ?? generateCustomId(category, tokens);
-        const node = findSingleTextNode({ childNodes: root }) as ViewText;
         const token = tokens[0]!;
         const fromBlock = LangsysApp.Translations.lookupContent(category, id, token);
         const inBlock = fromBlock !== null && fromBlock !== undefined;
-        node.nodeValue = inBlock ? apply(fromBlock) : LangsysApp.Translations.renderWith(readOnlyView(), token, [category, params]);
-        const fromCatalog = inBlock || LangsysApp.Translations.lookup(token, category) !== null;
+        const fromPhrases = LangsysApp.Translations.lookup(token, category);
+        const run = vars.runs.includes(0) ? findRun(root) : null;
+        if (run) writeRun(run, inBlock ? fromBlock : (fromPhrases ?? token));
+        else {
+            const node = findSingleTextNode({ childNodes: root }) as ViewText;
+            node.nodeValue = inBlock ? apply(fromBlock) : LangsysApp.Translations.renderWith(readOnlyView(), token, [category, params]);
+        }
+        const fromCatalog = inBlock || fromPhrases !== null;
         return { shape, customId: id, nodes: toRendered(root), hostAttrs: hostAttrs(id, fromCatalog) };
     }
 
@@ -507,18 +532,41 @@ function renderView(root: ViewNode[], options: BlockOptions): RenderedBlock {
     // As `Translate.translate`: at the base locale, with no params and no ICU, the
     // content is left exactly as written.
     const untouched = locale === configStore.baseLocale && Object.keys(params).length === 0 && !tokens.some((t) => isICU(t));
-    if (!untouched) translateNodes(root, (token) => LangsysApp.Translations.lookupContent(category, id, token), apply);
+    if (!untouched) translateNodes(root, (token) => LangsysApp.Translations.lookupContent(category, id, token), apply, writeRun);
     return { shape, customId: id, nodes: toRendered(root), hostAttrs: hostAttrs(id, isContentBlockKnown(category, id)) };
 }
 
 /** `Translate.translate` over a view: this unit's text nodes and attributes, never what it excises. */
-function translateNodes(nodes: ViewNode[], lookup: (token: string) => string | null, apply: (text: string) => string): void {
-    for (const node of nodes) {
+/** The first marked run in a unit, outside what it excises. */
+function findRun(nodes: ViewNode[]): VarRun<ViewNode> | null {
+    for (const item of groupRuns(nodes as unknown as MarkerNode[]) as unknown as RunItem<ViewNode>[]) {
+        if ('run' in item) return item.run;
+        const node = item.node;
+        if (!(node instanceof ViewElement) || isExcisedFromUnit(node as unknown as Element)) continue;
+        const found = findRun(node.childNodes);
+        if (found) return found;
+    }
+    return null;
+}
+
+function translateNodes(
+    nodes: ViewNode[],
+    lookup: (token: string) => string | null,
+    apply: (text: string) => string,
+    writeRun: (run: VarRun<ViewNode>, template: string) => void
+): void {
+    for (const item of groupRuns(nodes as unknown as MarkerNode[]) as unknown as RunItem<ViewNode>[]) {
+        if ('run' in item) {
+            const token = runToken(item.run as unknown as VarRun<MarkerNode>);
+            writeRun(item.run, lookup(token) ?? token);
+            continue;
+        }
+        const node = item.node;
         if (node instanceof ViewComment) continue;
         if (node instanceof ViewElement) {
             if (isExcisedFromUnit(node as unknown as Element)) continue;
             translateAttributes(node, lookup, apply);
-            translateNodes(node.childNodes, lookup, apply);
+            translateNodes(node.childNodes, lookup, apply, writeRun);
             continue;
         }
         if (!normalizeTokenText(node.nodeValue)) continue;
@@ -616,21 +664,20 @@ function renderNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved = 
 /** A phrase host's children, rendered as `Phrase._render` renders them, from a view. */
 function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] {
     const { category = '', params = {} } = options;
-    const toRich = (nodes: ViewNode[]): RichTextNode<ViewElement>[] =>
-        nodes.flatMap((node): RichTextNode<ViewElement>[] => {
-            if (node instanceof ViewText) return [{ text: node.nodeValue }];
-            if (node instanceof ViewComment) return [];
-            return [{ children: toRich(node.childNodes), payload: node }];
-        });
-    const { phrase, slots } = encodeRichPhrase(toRich(host.childNodes));
+    const values: Record<string, string> = {};
+    const rich = toRichNodes(host.childNodes as unknown as MarkerNode[], (element) => element as unknown as ViewElement, values);
+    const { phrase, slots } = encodeRichPhrase(rich);
     if (!phrase) return host.childNodes;
     const translated = LangsysApp.Translations.lookup(phrase, category);
+    // Served as source, a phrase with marked values keeps its markers (VAR-3), so a
+    // reader on the client reads the same phrase.
+    if (translated === null && Object.keys(values).length) return host.childNodes;
     const locale = currentlyLoadedLocale.get();
     // A translation from the catalog is marked resolved, as a block's host is, so a
     // client never reads it as the source phrase (GATE-10).
     if (translated !== null && locale && locale !== configStore.baseLocale) host.setAttribute(RESOLVED_MARKER_ATTR, locale);
     const raw = translated ?? phrase;
-    const resolved = interpolate(raw, { ...params, ...markupTokenValues(slots.length) }, locale);
+    const resolved = interpolate(raw, { ...values, ...params, ...markupTokenValues(slots.length) }, locale);
     const parts = splitSentinels(resolved);
     if (!parts) return [new ViewText(stripSentinels(resolved))];
 
@@ -652,12 +699,15 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
 
 function registerView(root: ViewNode[], options: BlockOptions, input: readonly BlockNode[]): void {
     const { category = '', label } = options;
-    const tokens = tokenizeNodes(root);
-    const shape = shapeOf(root, tokens, !!options.customId);
+    const { tokens, vars } = tokenizeUnit(root);
+    const shape = shapeOf(root, tokens, !!options.customId, vars);
+    // `register: false` registers nothing (VAR-7), nested hosts included.
+    if (options.register === false) return;
 
     registerNestedHosts(root, options);
 
-    if (shape === 'empty' || options.customId) return;
+    // A unit made only of value markers has no text of its own (VAR-3).
+    if (shape === 'empty' || options.customId || isMarkerOnlyUnit(tokens, vars)) return;
     if (shape === 'phrase') {
         const id = options.id ?? generateCustomId(category, tokens);
         // The server's request scope sends it itself (its seed says so, SSR-1/SSR-2).
@@ -696,15 +746,12 @@ function registerNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved 
         const here = resolvedHere(node as unknown as Element, resolved);
         const category = nestedOptions(node, options, resolved).category ?? '';
         if (isPhraseMarked(node as unknown as Element)) {
-            const toRich = (list: ViewNode[]): RichTextNode<null>[] =>
-                list.flatMap((n): RichTextNode<null>[] => {
-                    if (n instanceof ViewText) return [{ text: n.nodeValue }];
-                    if (n instanceof ViewComment) return [];
-                    return [{ children: toRich(n.childNodes), payload: null }];
-                });
-            const { phrase } = encodeRichPhrase(toRich(node.childNodes));
-            // Text inside a resolved scope is never recorded (GATE-10).
-            if (phrase && !here) (LangsysApp.Translations.t as unknown as (p: string, c: string) => string)(phrase, category);
+            const values: Record<string, string> = {};
+            const { phrase } = encodeRichPhrase(toRichNodes(node.childNodes as unknown as MarkerNode[], () => null, values));
+            // Text inside a resolved scope is never recorded (GATE-10), nor a phrase made
+            // only of value markers (VAR-3).
+            const markersOnly = Object.keys(values).length > 0 && !phrase.replace(/\{[a-z][a-z0-9_]*\}/g, '').trim();
+            if (phrase && !here && !markersOnly) (LangsysApp.Translations.t as unknown as (p: string, c: string) => string)(phrase, category);
             continue;
         }
         const marker = readContentBlockMarker(node as unknown as Element);

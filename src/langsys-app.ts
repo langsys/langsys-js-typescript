@@ -5,6 +5,7 @@ import { autoDiscovery, batchLimit, config as configStore, currentlyLoadedLocale
 import { DEFAULT_SERVER_MESSAGE_CATEGORY, fillTemplate, type ServerMessage } from './server-messages.js';
 import { parseSnapshot, type CatalogSnapshot } from './snapshot.js';
 import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
+import { settleNotices } from './notices.js';
 import type { SeededBlock, SeededPhrase } from './block-tree.js';
 import { noticeUnusableWriteCapability, Translations } from './translations.js';
 import type { ResponseObject } from './types/api.js';
@@ -318,6 +319,8 @@ class LangsysAppClass {
         // typechecked, had tests, and could never fire. `init` is the one place
         // `debug` is resolved, so it is the right place to propagate it.
         logger.debugEnabled = debug;
+        // Debug notices raised before this point were held until debug was known.
+        settleNotices();
 
         if (debug && initialTranslations) {
             this.debug.log('SSR initial translations config:', {

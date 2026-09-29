@@ -7,6 +7,7 @@ import { findSingleTextNode, generateCustomId, tokenizeElement } from '../src/co
 import { _resetDiscoveryState } from '../src/discovery.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { logger } from '../src/logger.js';
+import { _resetNotices, settleNotices } from '../src/notices.js';
 import { createRequestScope } from '../src/request-scope.js';
 import { config as configStore, currentlyLoadedLocale, sTranslations, writeEnabled } from '../src/stores.js';
 import { Translate } from '../src/translate.js';
@@ -469,6 +470,8 @@ describe('SRV-1: a block served as source is reported as a debug notice, once pe
     it('nothing at all with debug off, then once per reason with it on, however often the block renders', () => {
         const log = vi.spyOn(console, 'log').mockImplementation(() => {});
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        _resetNotices();
+        settleNotices();
         try {
             warnUnrenderedBlock('component-a');
             expect(log).not.toHaveBeenCalled();

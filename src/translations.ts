@@ -1,6 +1,8 @@
 import { LangsysAppAPI } from './api.js';
 import { recordMissForDiscovery } from './discovery.js';
 import { isServerCollectedPhrase } from './served-source.js';
+import { warnUnregistered } from './notices.js';
+import { derivePlaceholderNames } from './var-names.js';
 import { _registerTeardownFlush } from './teardown.js';
 import { stripC0Controls } from './identity.js';
 import { interpolate } from './interpolate.js';
@@ -365,6 +367,18 @@ export class Translations {
      * only in whose catalog it reads and whose misses it records.
      */
     public renderWith(view: CatalogView, phrase: string, rest: unknown[]): string {
+        // A tagged template, t`Hello ${{ name }}`: each value named by its object's one key
+        // becomes a placeholder with the value as its param (VAR-1, VAR-2). A value that
+        // cannot be named is rendered but never registered (VAR-7).
+        if (isTemplateStrings(phrase)) {
+            const tagged = fromTaggedTemplate(phrase, rest);
+            if (tagged.phrase === null) {
+                warnUnregistered('tagged-template');
+                return tagged.text;
+            }
+            phrase = tagged.phrase;
+            rest = [tagged.params];
+        }
         let category = typeof rest[0] === 'string' ? rest[0] : '';
         const params = (typeof rest[0] === 'object' ? rest[0] : rest[1]) as Record<string, unknown> | undefined;
 
@@ -1283,3 +1297,29 @@ export class Translations {
 }
 
 export default Translations;
+
+/** Whether `t` was called as a template tag: its first argument is the template's strings. */
+function isTemplateStrings(value: unknown): value is TemplateStringsArray {
+    return Array.isArray(value) && Array.isArray((value as unknown as { raw?: unknown }).raw);
+}
+
+/**
+ * A tagged template as a phrase and its params. A value written as a one-key
+ * object, `${{ name }}`, is named by its key (explicit, VAR-2); any other value
+ * cannot be named, and then there is no phrase, only the rendered text.
+ */
+function fromTaggedTemplate(strings: TemplateStringsArray, values: unknown[]): { phrase: string | null; params: Record<string, unknown>; text: string } {
+    const named = values.map((value) => {
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+        const keys = Object.keys(value);
+        return keys.length === 1 ? { key: keys[0]!, value: (value as Record<string, unknown>)[keys[0]!] } : null;
+    });
+    const shown = named.map((n, i) => String(n ? n.value : values[i]));
+    const text = strings.reduce((out, part, i) => out + part + (i < shown.length ? shown[i] : ''), '');
+    if (named.some((n) => n === null)) return { phrase: null, params: {}, text };
+    const names = derivePlaceholderNames(named.map((n) => ({ shape: { identifier: n!.key }, explicit: n!.key })));
+    const params: Record<string, unknown> = {};
+    names.forEach((name, i) => (params[name] = named[i]!.value));
+    const phrase = strings.reduce((out, part, i) => out + part + (i < names.length ? `{${names[i]}}` : ''), '');
+    return { phrase, params, text };
+}
