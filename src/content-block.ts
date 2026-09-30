@@ -34,6 +34,7 @@ import { logger } from './logger.js';
 import { catalogUnavailable, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations, writeEnabled } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
+import { groupRuns, isMarkerOnly, runToken, runValues, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
 import {
     blockContentMatches,
     CONTENT_BLOCK_MARKER_ATTRS,
@@ -444,11 +445,12 @@ export async function registerContentBlock(contentBlock: iContentBlock): Promise
  * can read its style. For SSR / pre-mount callers, the style capture step
  * silently no-ops and the snapshot is plain (without inlined styles).
  */
-export function tokenizeElement(element: HTMLElement): { tokens: string[]; content: string } {
+export function tokenizeElement(element: HTMLElement): { tokens: string[]; content: string; vars: UnitVars } {
     const tokens: string[] = [];
+    const vars: UnitVars = { values: {}, runs: [], markerOnly: [] };
     const clone = element.cloneNode(true) as HTMLElement;
-    _walkForTokens(element, Array.from(clone.childNodes), tokens, [], false, true);
-    return { tokens, content: normalizeMarkupPlaceholders(clone.outerHTML) };
+    _walkForTokens(element, Array.from(clone.childNodes), tokens, [], false, true, undefined, vars);
+    return { tokens, content: normalizeMarkupPlaceholders(clone.outerHTML), vars };
 }
 
 /**
@@ -596,8 +598,38 @@ export function tokenizeNodes(nodes: ArrayLike<WalkNode>, duplicateSelectOptions
     return tokens;
 }
 
-/** Where a unit's token sits: a text node, or an attribute of an element. */
-export type TokenSlot = { node: Node; attr?: undefined } | { node: Element; attr: string };
+/** What the walk learns from value markers (VAR-3), alongside the tokens. */
+export interface UnitVars {
+    /** Each marker's value, by name: the params the unit renders with, unless the caller names them. */
+    values: Record<string, string>;
+    /** The indices of tokens that are marked runs. */
+    runs: number[];
+    /** The indices of tokens made only of markers, with no text of their own. */
+    markerOnly: number[];
+}
+
+/**
+ * The tokens of a unit and what its value markers say (VAR-3): the same walk as
+ * `tokenizeNodes`, reporting which tokens came from marked runs and each
+ * marker's value.
+ */
+export function tokenizeUnit(nodes: ArrayLike<WalkNode>): { tokens: string[]; vars: UnitVars } {
+    const tokens: string[] = [];
+    const vars: UnitVars = { values: {}, runs: [], markerOnly: [] };
+    _walkForTokens(null as unknown as HTMLElement, Array.from(nodes) as unknown as ChildNode[], tokens, [], false, false, undefined, vars);
+    return { tokens, vars };
+}
+
+/** A unit made only of markers has no text of its own, and registers nothing (VAR-3). */
+export function isMarkerOnlyUnit(tokens: readonly string[], vars: UnitVars): boolean {
+    return tokens.length > 0 && vars.markerOnly.length === tokens.length;
+}
+
+/** Where a unit's token sits: a text node, an attribute of an element, or a marked run (VAR-3). */
+export type TokenSlot =
+    | { node: Node; attr?: undefined; run?: undefined }
+    | { node: Element; attr: string; run?: undefined }
+    | { node: Node; run: VarRun<Node>; attr?: undefined };
 
 /**
  * The places a unit's tokens come from, one per token and in token order: the
@@ -643,15 +675,31 @@ function _walkForTokens(
     duplicateSelectOptions: boolean,
     applyStyles: boolean,
     slots?: TokenSlot[],
+    vars?: UnitVars,
 ): void {
-    cloneNodes.forEach((node, index) => {
+    for (const item of groupRuns(cloneNodes as unknown as MarkerNode[]) as unknown as RunItem<ChildNode>[]) {
+        if ('run' in item) {
+            // A marked run is one token, `{NAME}` in place of each value (VAR-3).
+            const token = runToken(item.run);
+            if (vars) {
+                if (isMarkerOnly(item.run)) vars.markerOnly.push(tokens.length);
+                vars.runs.push(tokens.length);
+                vars.values = { ...runValues(item.run), ...vars.values };
+            }
+            tokens.push(token);
+            const first = item.run.parts[0]!;
+            slots?.push({ node: 'text' in first ? first.text : first.marker.frame[0]!, run: item.run as unknown as VarRun<Node> });
+            continue;
+        }
+        const node = item.node;
+        const index = cloneNodes.indexOf(node);
         if (node.nodeType === ELEMENT_NODE) {
             // Code and notation are never prose (`<style>`, `<script>` and `<math>`
             // content was registered and machine-translated before this), a phrase
             // host is its own rich phrase, and a nested block host is its own unit,
             // whose words would otherwise register in both blocks. See
             // `isExcisedFromUnit` and `NON_TRANSLATABLE_ELEMENTS`.
-            if (isExcisedFromUnit(node as HTMLElement)) return;
+            if (isExcisedFromUnit(node as HTMLElement)) continue;
         }
 
         if (applyStyles && node.hasChildNodes()) {
@@ -666,12 +714,12 @@ function _walkForTokens(
         if (node.nodeType === TEXT_NODE && contentToken) {
             tokens.push(normalizeMarkupPlaceholders(contentToken));
             slots?.push({ node });
-            return;
+            continue;
         }
 
-        if (!node.hasChildNodes()) return;
-        _walkForTokens(liveRoot, Array.from(node.childNodes), tokens, [...indices, index], duplicateSelectOptions, applyStyles, slots);
-    });
+        if (!node.hasChildNodes()) continue;
+        _walkForTokens(liveRoot, Array.from(node.childNodes), tokens, [...indices, index], duplicateSelectOptions, applyStyles, slots, vars);
+    }
 }
 
 function _tokenizeAttributes(element: HTMLElement, tokens: string[], duplicateSelectOptions: boolean, slots?: TokenSlot[]): void {

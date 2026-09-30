@@ -84,6 +84,11 @@ export {
     type ScopeMiss,
 } from './request-scope.js';
 export { setRequestScopeStorage, type ScopeStorage } from './scope-context.js';
+// Variables in registered text: the unregistered notice (VAR-7), placeholder names (VAR-2)
+// and the value marker (VAR-3).
+export { warnUnregistered } from './notices.js';
+export { derivePlaceholderNames, snakeCase, type ExpressionShape, type NamedExpression } from './var-names.js';
+export { VAR_PARAM_ATTR } from './var-markers.js';
 export {
     SNAPSHOT_FORMAT,
     SNAPSHOT_VERSION,
@@ -191,6 +196,12 @@ export const tSignal = _LangsysApp.Translations.tSignal;
  * its misses are recorded for the new URL. Framework bindings wire this for you.
  */
 export const notifyNavigation = (): void => _LangsysApp.Translations.notifyNavigation();
+
+/**
+ * The header that asks your own API for the user's language (FRM-6):
+ * `fetch(url, { headers: { ...localeHeaders() } })`. See `LangsysApp.localeHeaders`.
+ */
+export const localeHeaders = (): Record<string, string> => _LangsysApp.localeHeaders();
 
 /**
  * Render a server message entry (MSG-5): its template through `t()` under the

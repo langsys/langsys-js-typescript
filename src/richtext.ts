@@ -29,7 +29,8 @@
 // never registered, never sent over the wire (the wire form uses {mNo}/{mNc}).
 //   open(i)  = U+E000  <i>  U+E001
 //   close(i) = U+E002  <i>  U+E003
-import { encodeRichPhrase, type RichTextNode } from './identity.js';
+import { encodeRichPhrase } from './identity.js';
+import { paramElementName, toRichNodes, type MarkerNode } from './var-markers.js';
 
 const SENT_OPEN_START = String.fromCharCode(0xe000);
 const SENT_OPEN_END = String.fromCharCode(0xe001);
@@ -53,6 +54,8 @@ export interface EncodedRichText {
     phrase: string;
     /** Captured inline elements, indexed by markup-token slot number. */
     slots: RichSlot[];
+    /** Each marked value, by name (VAR-3): the params the phrase renders with, unless the caller names them. */
+    values: Record<string, string>;
 }
 
 /**
@@ -90,36 +93,15 @@ export function encodeRichText(root: HTMLElement): EncodedRichText {
     // renders `<Phrase>` from parse5 nodes and had no way to import this, so the
     // alternative was a second encoder, and two encoders of one key drift into a
     // silent re-registration rather than an error.
-    const { phrase, slots } = encodeRichPhrase(_toRichNodes(Array.from(root.childNodes)));
-    return { phrase, slots: slots.map((template) => ({ template })) };
+    const values: Record<string, string> = {};
+    // Shallow clone: tag + attributes, no children. Preserves the framework's
+    // scoped-CSS class, which is the whole point of reusing the real element at
+    // reconstitution. A marked value is its placeholder, and its value a param (VAR-3).
+    const nodes = toRichNodes(root.childNodes as unknown as ArrayLike<MarkerNode>, (element) => (element as unknown as HTMLElement).cloneNode(false) as HTMLElement, values);
+    const { phrase, slots } = encodeRichPhrase(nodes);
+    return { phrase, slots: slots.map((template) => ({ template })), values };
 }
 
-/**
- * Map DOM child nodes onto `RichTextNode`s.
- *
- * Text nodes pass their value through UNCOLLAPSED — collapse happens once over
- * the assembled string, inside `encodeRichPhrase`. Anything that is neither text
- * nor element (comments, CDATA) is DROPPED rather than mapped to empty text; see
- * the `RichTextNode` docstring for why the distinction is identity.
- */
-function _toRichNodes(nodes: ChildNode[]): RichTextNode<HTMLElement>[] {
-    const out: RichTextNode<HTMLElement>[] = [];
-    for (const node of nodes) {
-        if (node.nodeType === Node.TEXT_NODE) {
-            out.push({ text: node.nodeValue ?? '' });
-            continue;
-        }
-        if (node.nodeType !== Node.ELEMENT_NODE) continue;
-
-        const element = node as HTMLElement;
-        // Shallow clone: tag + attributes, no children. Preserves the
-        // framework's scoped-CSS class, which is the whole point of reusing the
-        // real element at reconstitution.
-        const payload = element.cloneNode(false) as HTMLElement;
-        out.push({ children: _toRichNodes(Array.from(element.childNodes)), payload });
-    }
-    return out;
-}
 
 /**
  * The param values to feed alongside the user's params when resolving a rich
@@ -208,6 +190,9 @@ export function applyInPlace(host: Node, resolved: string, slotOf?: (element: El
                 } else {
                     writes.push([child, '']);
                 }
+            } else if (child.nodeType === 1 && paramElementName(child as unknown as MarkerNode) !== null) {
+                // A marked value (VAR-3) is no slot: its value is in the resolved text.
+                for (const text of Array.from(child.childNodes)) writes.push([text, '']);
             } else if (child.nodeType === 1) {
                 const open = parts[next];
                 const place = slot++;

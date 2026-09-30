@@ -347,6 +347,9 @@ describe('the export list is a contract', () => {
         'resolveServerMessages',
         'templateMarkers',
         'toServerMessage',
+        'derivePlaceholderNames',
+        'snakeCase',
+        'VAR_PARAM_ATTR',
     ];
 
     it('exports exactly the documented set', () => {

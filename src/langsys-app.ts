@@ -5,6 +5,8 @@ import { autoDiscovery, batchLimit, config as configStore, currentlyLoadedLocale
 import { DEFAULT_SERVER_MESSAGE_CATEGORY, fillTemplate, type ServerMessage } from './server-messages.js';
 import { parseSnapshot, type CatalogSnapshot } from './snapshot.js';
 import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
+import { settleNotices } from './notices.js';
+import { activeScope } from './scope-context.js';
 import type { SeededBlock, SeededPhrase } from './block-tree.js';
 import { noticeUnusableWriteCapability, Translations } from './translations.js';
 import type { ResponseObject } from './types/api.js';
@@ -189,6 +191,19 @@ class LangsysAppClass {
      * itself (`collected`), which the client then never registers. Nothing is
      * registered here; `registerBlock(seededBlock)` after `init()` does that.
      */
+    /**
+     * The request header that asks the app's own API for the user's language
+     * (FRM-6): `{ 'Accept-Language': 'es-es' }` for the locale the user chose,
+     * inside a request scope the scope's, else the loaded catalog's. Empty before
+     * any locale is known. Spread it into the headers of the app's API calls, so an
+     * API that answers per the negotiated language (FRM-5) answers in the user's,
+     * not the browser's default.
+     */
+    public localeHeaders(): Record<string, string> {
+        const locale = activeScope()?.locale || this.config?.sUserLocale?.get?.() || currentlyLoadedLocale.get();
+        return locale ? { 'Accept-Language': canonicalizeLocale(locale) } : {};
+    }
+
     public seedCatalog(
         catalog: iCategories,
         locale: string,
@@ -318,6 +333,8 @@ class LangsysAppClass {
         // typechecked, had tests, and could never fire. `init` is the one place
         // `debug` is resolved, so it is the right place to propagate it.
         logger.debugEnabled = debug;
+        // Debug notices raised before this point were held until debug was known.
+        settleNotices();
 
         if (debug && initialTranslations) {
             this.debug.log('SSR initial translations config:', {

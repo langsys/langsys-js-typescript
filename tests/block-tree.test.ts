@@ -7,6 +7,7 @@ import { findSingleTextNode, generateCustomId, tokenizeElement } from '../src/co
 import { _resetDiscoveryState } from '../src/discovery.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { logger } from '../src/logger.js';
+import { _resetNotices, settleNotices } from '../src/notices.js';
 import { createRequestScope } from '../src/request-scope.js';
 import { config as configStore, currentlyLoadedLocale, sTranslations, writeEnabled } from '../src/stores.js';
 import { Translate } from '../src/translate.js';
@@ -42,8 +43,13 @@ const host = (html: string) => {
     div.innerHTML = html;
     return div;
 };
+// As `Translate` decides it: one token in one text node, or one marked run (VAR-3), is a phrase.
 const domShape = (div: HTMLElement, tokens: string[]) =>
-    tokens.length === 0 ? 'empty' : tokens.length === 1 && findSingleTextNode(div as never) !== null ? 'phrase' : 'block';
+    tokens.length === 0
+        ? 'empty'
+        : tokens.length === 1 && (findSingleTextNode(div as never) !== null || tokenizeElement(div).vars.runs.includes(0))
+          ? 'phrase'
+          : 'block';
 
 const ROWS: Array<{ id: string; html: string; category: string }> = [
     ...(canonicalization as unknown as { cases: Array<{ id: string; html: string; category: string }> }).cases,
@@ -51,8 +57,8 @@ const ROWS: Array<{ id: string; html: string; category: string }> = [
 ];
 
 describe('parity: a tree tokenizes, shapes and derives its id exactly as the DOM it mirrors', () => {
-    it('carries every markup row of the shared vector files', () => {
-        expect(ROWS).toHaveLength(49);
+    it('carries every markup row of the shared vector files, the VAR-3 marker rows included', () => {
+        expect(ROWS).toHaveLength(58);
     });
 
     it.each(ROWS.map((r) => [r.id, r] as const))('%s', (_id, row) => {
@@ -469,6 +475,8 @@ describe('SRV-1: a block served as source is reported as a debug notice, once pe
     it('nothing at all with debug off, then once per reason with it on, however often the block renders', () => {
         const log = vi.spyOn(console, 'log').mockImplementation(() => {});
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        _resetNotices();
+        settleNotices();
         try {
             warnUnrenderedBlock('component-a');
             expect(log).not.toHaveBeenCalled();

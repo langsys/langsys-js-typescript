@@ -3,6 +3,7 @@ import { tokenSlots, type TokenSlot } from './content-block.js';
 import { normalizeMarkupPlaceholders, normalizeTokenText } from './identity.js';
 import { interpolate } from './interpolate.js';
 import { markupTokenValues, splitSentinels } from './richtext.js';
+import { runToken, type MarkerNode, type VarRun } from './var-markers.js';
 import { logger } from './logger.js';
 import { activeCatalog } from './scope-context.js';
 import { currentlyLoadedLocale } from './stores.js';
@@ -81,8 +82,9 @@ export function warnUnrecoveredSource(): void {
 
 const served = (value: string) => normalizeTokenText(normalizeMarkupPlaceholders(value));
 
-/** What a slot holds now: the served token. */
+/** What a slot holds now: the served token; a marked run's with `{NAME}` for each value (VAR-3). */
 function servedToken(slot: TokenSlot): string {
+    if (slot.run) return runToken(slot.run as unknown as VarRun<MarkerNode>);
     return served(slot.attr ? (slot.node as Element).getAttribute(slot.attr) ?? '' : slot.node.nodeValue ?? '');
 }
 
@@ -110,9 +112,11 @@ export function recoverBlockSources(
     const rendered = Object.entries(entry as unknown as Record<string, unknown>)
         .filter(([key]) => !key.startsWith('__'))
         .flatMap(([key, value]) => {
-            const asSource = { key, text: served(interpolate(key, params, locale)) };
-            if (typeof value !== 'string' || !value) return [asSource];
-            return [asSource, { key, text: served(interpolate(value, params, locale)) }];
+            // As rendered with the params, and as written: a marked run is served with its
+            // placeholders in place of the values it marks.
+            const forms = (text: string) => [served(interpolate(text, params, locale)), served(text)];
+            const texts = [...forms(key), ...(typeof value === 'string' && value ? forms(value) : [])];
+            return [...new Set(texts)].map((text) => ({ key, text }));
         });
     const sources: string[] = [];
     for (const slot of slots) {

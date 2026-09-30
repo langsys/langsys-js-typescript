@@ -356,7 +356,11 @@ export function generateLegacyCustomId(category: string, tokens: string[]): stri
  * which also shifts every later slot index). Those two are the mistakes worth
  * naming; "must be omitted" overstates the rule.
  */
-export type RichTextNode<T> = { readonly text: string } | { readonly children: readonly RichTextNode<T>[]; readonly payload: T };
+export type RichTextNode<T> =
+    | { readonly text: string }
+    /** A marked value (VAR-3): its placeholder, `{NAME}`, never its text. */
+    | { readonly param: string }
+    | { readonly children: readonly RichTextNode<T>[]; readonly payload: T };
 
 export interface EncodedRichPhrase<T> {
     /** The phrase string: the lookup key, and therefore the identity. */
@@ -414,6 +418,10 @@ function _encodeRichNodes<T>(nodes: readonly RichTextNode<T>[], slots: T[]): str
     for (const node of nodes) {
         if ('text' in node) {
             out += node.text;
+            continue;
+        }
+        if ('param' in node) {
+            out += `{${node.param}}`;
             continue;
         }
         // Index taken and payload pushed BEFORE recursing: pre-order.

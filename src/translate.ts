@@ -11,6 +11,8 @@ import {
     hostCategory,
     isInResolvedScope,
     legacyTokenizeElement,
+    isMarkerOnlyUnit,
+    type UnitVars,
     registerContentBlock,
     resolveHistoricalBlockId,
     tokenizeElement,
@@ -27,6 +29,8 @@ import type { Unsubscriber } from './signal.js';
 import { claimHost, inertUnderScope, isHostManaged, releaseHost } from './hosts.js';
 import { Phrase } from './phrase.js';
 import { isBlockHandled, isServerCollected, markBlockHandled, recoverBlockSources, warnUnrecoveredSource } from './served-source.js';
+import { warnUnregistered } from './notices.js';
+import { groupRuns, renderRun, runToken, type MarkerNode, type VarMarker, type VarRun } from './var-markers.js';
 import { RESOLVED_MARKER_ATTRS } from './identity.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -48,6 +52,12 @@ export interface TranslateOptions {
      * normalized back to `{name}` at capture.
      */
     params?: Record<string, ParamPrimitive>;
+    /**
+     * `false` renders from the catalog and registers nothing, on either lane (VAR-7):
+     * for a binding whose content holds values from variables it cannot name without
+     * its build-time transform. One debug notice says so. Default `true`.
+     */
+    register?: boolean;
 }
 
 type iNode = Node & { originalNodeValue?: string | null };
@@ -95,6 +105,14 @@ export class Translate {
     private sourcesRecovered = false;
     /** The locale an adopted host was served in; its served text is right for that locale. */
     private servedLocale = '';
+    /** What the unit's value markers say (VAR-3): the runs among its tokens, and their values. */
+    private vars: UnitVars = { values: {}, runs: [], markerOnly: [] };
+    /** Each marked run's source, by its first node, where it was recovered rather than read. */
+    private runSources = new WeakMap<Node, string>();
+    /** Each marked run's text nodes as first seen, before any render wrote them. */
+    private runOriginals = new WeakMap<Node, string>();
+    /** Each marked value as first seen, for a render that emptied it. */
+    private markedValues = new WeakMap<Node, string>();
     /** Marked hosts inside this one that no instance managed, taken over by this walk. */
     private takenOver: Array<{ destroy(): void }> = [];
 
@@ -111,6 +129,7 @@ export class Translate {
         // `renderBlock` and `registerBlock` there (SRV-7).
         if (inertUnderScope('Translate')) return;
         claimHost(element, this, byWalk);
+        if (options.register === false) warnUnregistered('register-false');
 
         // A stamp this SDK did not write names the host's id (MARK-3). Inside a resolved
         // scope, the host itself or its nearest marked ancestor carrying data-ls-resolved,
@@ -180,7 +199,7 @@ export class Translate {
      * would report the old page's content for the new one.
      */
     private reenterAfterNavigation(): void {
-        if (!this.parseComplete || !this.element?.isConnected || this.adoptedId) return;
+        if (!this.parseComplete || !this.element?.isConnected || this.adoptedId || !this.registers()) return;
         const { category = '' } = this.options;
         if (this.usesSingleTextNodeFastPath()) {
             this.renderSingleToken(category);
@@ -237,9 +256,11 @@ export class Translate {
                 // A nested host's own category when it names one (`data-ls-category`).
                 const category = hostCategory(child) ?? this.options.category;
                 if (isPhraseMarked(child)) {
-                    if (!isHostManaged(child)) this.takenOver.push(new Phrase(child as HTMLElement, { category, params }, true));
+                    if (!isHostManaged(child)) this.takenOver.push(new Phrase(child as HTMLElement, { category, params, register: this.options.register }, true));
                 } else if (isContentBlockMarked(child)) {
-                    if (!isHostManaged(child)) this.takenOver.push(new Translate(child as HTMLElement, { category, params, label }, true));
+                    if (!isHostManaged(child)) {
+                        this.takenOver.push(new Translate(child as HTMLElement, { category, params, label, register: this.options.register }, true));
+                    }
                 } else if (!isExcisedFromUnit(child)) {
                     visit(child);
                 }
@@ -298,7 +319,10 @@ export class Translate {
         }
         recovered.slots.forEach((slot, i) => {
             const source = recovered.sources[i]!;
-            if (slot.attr) {
+            if (slot.run) {
+                // A marked run's source is its template; its values stay the framework's.
+                this.runSources.set(this.runKey(slot.run), source);
+            } else if (slot.attr) {
                 const element = slot.node as iElement;
                 (element.originalAttributes ??= {})[slot.attr] = source;
             } else {
@@ -334,14 +358,27 @@ export class Translate {
             category: string,
             params: Record<string, unknown>
         ) => string;
+        // The producer says text in a resolved scope is already resolved, so it is a
+        // translation and not a source phrase: render from the catalog if we happen to
+        // hold it, else leave what the server served, and record nothing on either lane.
+        // A block the server's scope sends itself is recorded there, never again here;
+        // and a unit that does not register records nothing at all (VAR-7).
+        const records = this.registers() && !isInResolvedScope(this.element) && !isServerCollected(this.custom_id);
+        const found = fromBlock !== null && fromBlock !== undefined;
+
+        if (this.isSingleRun()) {
+            // One sentence with its values (VAR-3): recorded as its template, written
+            // around the values the framework owns.
+            if (!found && records) tWithParams(token, category, { ...this.vars.values, ...(this.options.params ?? {}) });
+            const run = this.findRun();
+            if (run) this.writeRun(run, found ? fromBlock : (LangsysApp.Translations.lookup(token, category) ?? token));
+            return;
+        }
+
         let resolved: string;
-        if (fromBlock !== null && fromBlock !== undefined) {
+        if (found) {
             resolved = this.applyParams(fromBlock);
-        } else if (isInResolvedScope(this.element) || isServerCollected(this.custom_id)) {
-            // The producer says this text is already resolved, so it is a translation and
-            // not a source phrase: render from the catalog if we happen to hold it, else
-            // leave what the server served, and record nothing on either lane. A block the
-            // server's scope sends itself is recorded there, never again here.
+        } else if (!records) {
             resolved = this.applyParams(LangsysApp.Translations.lookup(token, category) ?? token);
         } else {
             resolved = tWithParams(token, category, this.options.params ?? {});
@@ -388,7 +425,17 @@ export class Translate {
         // An adopted id is a block's (MARK-1 stamps blocks), and the fast path would
         // register the token as a phrase.
         if (this.adoptedId) return false;
-        return this.tokens.length === 1 && this.findSingleTextNode(this.element) !== null;
+        return this.tokens.length === 1 && (this.findSingleTextNode(this.element) !== null || this.isSingleRun());
+    }
+
+    /** A unit whose one token is a marked run is a phrase too (VAR-3, TOK-6): one sentence, with its values. */
+    private isSingleRun(): boolean {
+        return this.tokens.length === 1 && this.vars.runs.includes(0);
+    }
+
+    /** Whether this unit registers: not with `register: false`, and not when it is made only of markers (VAR-3, VAR-7). */
+    private registers(): boolean {
+        return this.options.register !== false && !isMarkerOnlyUnit(this.tokens, this.vars);
     }
 
     /**
@@ -415,6 +462,59 @@ export class Translate {
         ownStamps.set(this.element, this.custom_id);
     }
 
+    /** The unit's first marked run, where its single-run token comes from. */
+    private findRun(): VarRun<Node> | null {
+        const visit = (parent: Node): VarRun<Node> | null => {
+            for (const item of groupRuns(parent.childNodes as unknown as ArrayLike<MarkerNode>) as unknown as Array<{ node: Node } | { run: VarRun<Node> }>) {
+                if ('run' in item) return item.run;
+                if (item.node.nodeType !== Node.ELEMENT_NODE || isExcisedFromUnit(item.node as Element)) continue;
+                const found = visit(item.node);
+                if (found) return found;
+            }
+            return null;
+        };
+        return visit(this.element);
+    }
+
+    /** The node a run is known by: its first text node or marker. */
+    private runKey(run: VarRun<Node>): Node {
+        const first = run.parts[0]!;
+        return 'text' in first ? first.text : first.marker.frame[0]!;
+    }
+
+    /** A run text node's text before any render wrote it. */
+    private runOriginal(node: Node): string {
+        let original = this.runOriginals.get(node);
+        if (original === undefined) {
+            original = normalizeMarkupPlaceholders(node.nodeValue ?? '');
+            this.runOriginals.set(node, original);
+        }
+        return original;
+    }
+
+    /** A marked value: the text the framework shows now, or, where a render emptied it, what it showed. */
+    private markedValue(marker: VarMarker<Node>): string {
+        const key = marker.value[0] ?? marker.frame[0]!;
+        const shown = normalizeTokenText(marker.value.map((node) => node.nodeValue ?? '').join(''));
+        if (shown) this.markedValues.set(key, shown);
+        return shown || (this.markedValues.get(key) ?? '');
+    }
+
+    /** Write `template` into a marked run, around its values where it can (see `renderRun`). */
+    private writeRun(run: VarRun<Node>, template: string): void {
+        const writes = renderRun(run as unknown as VarRun<MarkerNode>, template, this.options.params ?? {}, currentlyLoadedLocale.get(), {
+            text: (node) => this.runOriginal(node as unknown as Node),
+            value: (marker) => this.markedValue(marker as unknown as VarMarker<Node>),
+        });
+        for (const [node, text] of writes) if (node.nodeValue !== text) node.nodeValue = text;
+    }
+
+    /** A marked run inside a block: its translation under the block's id, else its source. */
+    private translateRun(run: VarRun<Node>): void {
+        const source = this.runSources.get(this.runKey(run)) ?? runToken(run as unknown as VarRun<MarkerNode>, (node) => this.runOriginal(node as unknown as Node));
+        this.writeRun(run, this.getTranslation(source) ?? source);
+    }
+
     private findSingleTextNode(root: Node): Node | null {
         return findSingleTextNode(root as unknown as { childNodes: ArrayLike<Node & WalkNode> });
     }
@@ -433,8 +533,9 @@ export class Translate {
         // content-block.ts. We store the clone locally only because the
         // existing translate() DOM-mutator references it for content-block
         // detection (`this.tokens` drives the single-vs-multi branch below).
-        const { tokens, content } = tokenizeElement(this.element);
+        const { tokens, content, vars } = tokenizeElement(this.element);
         this.tokens = tokens;
+        this.vars = vars;
         this.checkParams();
         this.takeOverUnmanagedHosts();
 
@@ -536,7 +637,10 @@ export class Translate {
         // doesn't depend on the POST completing — translations are looked up
         // from sTranslations on every render, which updates reactively when
         // the GET response arrives.
-        if (isBlockHandled(this.custom_id, 'seed')) {
+        if (!this.registers()) {
+            // `register: false`, or a unit made only of value markers (VAR-7, VAR-3).
+            logger.log('Skipping content block registration: this unit registers nothing');
+        } else if (isBlockHandled(this.custom_id, 'seed')) {
             // Already sent on this page from the scope's seed.
             logger.log('Skipping content block registration: the seed already sent it');
         } else if (isServerCollected(this.custom_id)) {
@@ -578,21 +682,26 @@ export class Translate {
             return;
         }
 
-        nodes.forEach((node) => {
+        for (const item of groupRuns(nodes as unknown as MarkerNode[]) as unknown as Array<{ node: iNode } | { run: VarRun<Node> }>) {
+            if ('run' in item) {
+                this.translateRun(item.run);
+                continue;
+            }
+            const node = item.node;
             if (node?.nodeType === Node.ELEMENT_NODE) {
                 // Only this unit's text is rendered: what the tokenizer left out, it did
                 // not register, and a phrase host or a nested block renders itself.
-                if (isExcisedFromUnit(node as HTMLElement)) return;
+                if (isExcisedFromUnit(node as HTMLElement)) continue;
                 this.translateAttributes(node as iElement);
             }
 
             if (node?.nodeType !== Node.TEXT_NODE) {
-                if (!node?.hasChildNodes()) return;
+                if (!node?.hasChildNodes()) continue;
                 this.translate(Array.from(node.childNodes));
-                return;
+                continue;
             }
 
-            if (isEmpty(normalizeTokenText(node.nodeValue ?? ''))) return;
+            if (isEmpty(normalizeTokenText(node.nodeValue ?? ''))) continue;
 
             if (isEmpty(node.originalNodeValue)) {
                 // Snapshot in canonical placeholder form so lookups, replaces,
@@ -604,7 +713,7 @@ export class Translate {
             // call `normalizeTokenText` so there is one definition of it: a second copy
             // of the same regex agreed today and would not have followed a change.
             const contentToken = node.originalNodeValue ? normalizeTokenText(node.originalNodeValue) : undefined;
-            if (!contentToken) return;
+            if (!contentToken) continue;
 
             const translation = this.getTranslation(contentToken);
 
@@ -615,7 +724,7 @@ export class Translate {
             } else if (node.originalNodeValue) {
                 node.nodeValue = this.applyParams(node.originalNodeValue);
             }
-        });
+        }
     }
 
     private getTranslation(token: string): string | null {
