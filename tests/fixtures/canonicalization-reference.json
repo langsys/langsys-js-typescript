@@ -6,7 +6,7 @@
  "spec_blob": "5f43b636423ed9e7e81d9d34b37e82bfe36a2811 (langsys2 04a1f462, specVersion 8.5.2). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 04a1f462 docs/sdk-spec.mdx` at this write, and checked against the CONFORMANCE header by `npm run verify:spec`, which fails when the two disagree. What the spec supplies: the three collapse-set rows by code point and expected behaviour (membership shown as an id equal to the plain-space row, non-membership as a distinct id). It quotes no ids for them, and from this revision it quotes none for TOK-5 either, saying they belong in this file. Every id here was derived with the core tokenizer, per the CID-3 split between who specifies and who derives.",
  "measured_at": {
   "langsys-js-typescript": "this repo, tokenizeElement + generateCustomId, re-measured at this write",
-  "langsys-php-sdk": "HtmlParser::extractPhrases + HtmlParser::generateCustomId, PHP 8.3.19. The rows added for TOK-2's C0 strip were measured at tip 3121404, which carries its C0 strip; every earlier row at tip e28972c, where the change that made them agree is 717673d (`git log -S`), which adds src/Html/Canonical.php. Its parser is libxml2 2.9.13 (LIBXML_DOTTED_VERSION on this host), a pre-2.14 libxml2, which drops C0 controls from DOM text but not from attribute values — the parser_dependent note on fs-in-text and vt-in-text.",
+  "langsys-php-sdk": "HtmlParser::extractPhrases + HtmlParser::generateCustomId, PHP 8.3.19. The rows added for TOK-2's C0 strip were measured at tip 3121404, which carries its C0 strip; every earlier row at tip e28972c, where the change that made them agree is 717673d (`git log -S`), which adds src/Html/Canonical.php. Its parser is libxml2 2.9.13 (LIBXML_DOTTED_VERSION on this host), a pre-2.14 libxml2, which drops C0 controls from DOM text but not from attribute values — the parser_dependent note on fs-in-text and vt-in-text. The VAR-3 rows (added_by 'spec 8.3.0 VAR-3 value markers') were measured at langsys-php-sdk b26615a5 through its ValueMarkers reader, on the fragment and the page path.",
   "langsys2 (server)": "NO MINTER EXISTS. Searched by hashing call and by canonical-serialization signature, with the same searches positive-controlled against langsys-php-sdk (4 hits there, 0 here). The backend stores ids clients send; it does not compute them."
  },
  "harness_control": {
@@ -2980,12 +2980,14 @@
       "Hello {name}, welcome back"
      ]
     },
-    "langsys-php-sdk": null,
+    "langsys-php-sdk": {
+     "custom_id": "9fa869bad01ed7602bee3decedcfec96",
+     "tokens": [
+      "Hello {name}, welcome back"
+     ]
+    },
     "langsys2 (server)": null
    },
-   "awaiting": [
-    "langsys-php-sdk"
-   ],
    "agree": true
   },
   {
@@ -3101,12 +3103,14 @@
       "Hello {name}, welcome back"
      ]
     },
-    "langsys-php-sdk": null,
+    "langsys-php-sdk": {
+     "custom_id": "9fa869bad01ed7602bee3decedcfec96",
+     "tokens": [
+      "Hello {name}, welcome back"
+     ]
+    },
     "langsys2 (server)": null
    },
-   "awaiting": [
-    "langsys-php-sdk"
-   ],
    "agree": true
   },
   {
@@ -3238,12 +3242,14 @@
       "Hi {first_name} {last_name}!"
      ]
     },
-    "langsys-php-sdk": null,
+    "langsys-php-sdk": {
+     "custom_id": "738068198814ed8ed14acbcecd8a1136",
+     "tokens": [
+      "Hi {first_name} {last_name}!"
+     ]
+    },
     "langsys2 (server)": null
    },
-   "awaiting": [
-    "langsys-php-sdk"
-   ],
    "agree": true
   },
   {
@@ -3309,12 +3315,14 @@
       "{name}"
      ]
     },
-    "langsys-php-sdk": null,
+    "langsys-php-sdk": {
+     "custom_id": "a6f5729155d2cc0e3caa9ee87511d161",
+     "tokens": [
+      "{name}"
+     ]
+    },
     "langsys2 (server)": null
    },
-   "awaiting": [
-    "langsys-php-sdk"
-   ],
    "agree": true
   },
   {
@@ -3414,12 +3422,15 @@
       "{total}"
      ]
     },
-    "langsys-php-sdk": null,
+    "langsys-php-sdk": {
+     "custom_id": "d43188dc9b08b88b3c695fa70485927d",
+     "tokens": [
+      "Order total",
+      "{total}"
+     ]
+    },
     "langsys2 (server)": null
    },
-   "awaiting": [
-    "langsys-php-sdk"
-   ],
    "agree": true
   },
   {
@@ -3536,12 +3547,16 @@
       ", welcome back"
      ]
     },
-    "langsys-php-sdk": null,
+    "langsys-php-sdk": {
+     "custom_id": "0587bcf3d1f7a0d00c243805d668631e",
+     "tokens": [
+      "Hello",
+      "Ana",
+      ", welcome back"
+     ]
+    },
     "langsys2 (server)": null
    },
-   "awaiting": [
-    "langsys-php-sdk"
-   ],
    "agree": true
   },
   {
@@ -3636,12 +3651,15 @@
       "Ana"
      ]
     },
-    "langsys-php-sdk": null,
+    "langsys-php-sdk": {
+     "custom_id": "b32ea7214e8d5ce3cca6813aae3fa8d4",
+     "tokens": [
+      "Hello",
+      "Ana"
+     ]
+    },
     "langsys2 (server)": null
    },
-   "awaiting": [
-    "langsys-php-sdk"
-   ],
    "agree": true
   },
   {
@@ -3734,12 +3752,15 @@
       "Ana"
      ]
     },
-    "langsys-php-sdk": null,
+    "langsys-php-sdk": {
+     "custom_id": "b32ea7214e8d5ce3cca6813aae3fa8d4",
+     "tokens": [
+      "Hello",
+      "Ana"
+     ]
+    },
     "langsys2 (server)": null
    },
-   "awaiting": [
-    "langsys-php-sdk"
-   ],
    "agree": true
   },
   {
@@ -3806,12 +3827,15 @@
       "Ana"
      ]
     },
-    "langsys-php-sdk": null,
+    "langsys-php-sdk": {
+     "custom_id": "b32ea7214e8d5ce3cca6813aae3fa8d4",
+     "tokens": [
+      "Hello",
+      "Ana"
+     ]
+    },
     "langsys2 (server)": null
    },
-   "awaiting": [
-    "langsys-php-sdk"
-   ],
    "agree": true
   }
  ]
