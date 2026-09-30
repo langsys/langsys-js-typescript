@@ -479,6 +479,15 @@ export class Translations {
         return true;
     }
 
+    /**
+     * Record a miss on the page's lanes, as `t()` outside every scope does: for a
+     * request scope rebuilt from a seed on the client (`scopeFromSeed`), whose
+     * render's misses belong to the page.
+     */
+    public recordPageMiss(category: string, token: string): void {
+        this.missingToken(category, token);
+    }
+
     private missingToken(category: string, token: string | undefined | null, onlyForRegistration = false) {
         if (token === undefined || token === null) {
             return this.debug.warn(`Received undefined or null token for category: ${category}`);

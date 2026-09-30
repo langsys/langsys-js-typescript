@@ -126,6 +126,12 @@ export interface SeededBlock {
      * not from the seed, and not from the `Translate` over its host.
      */
     collected?: boolean;
+    /**
+     * `false` when the block was rendered with `register: false` (VAR-7): its tokens
+     * hold values from variables, carried only so a client can re-render the served
+     * text. `registerBlock(seededBlock)` never registers it.
+     */
+    register?: false;
 }
 
 /**
@@ -171,7 +177,13 @@ export function renderBlock(nodes: readonly BlockNode[], options: BlockOptions =
     const rendered = renderView(root, options);
     // A request scope keeps what it rendered, for its seed (SRV-4).
     if (rendered.customId && rendered.shape !== 'empty') {
-        activeScope()?.recordRendered({ customId: rendered.customId, category: options.category ?? '', tokens, shape: rendered.shape });
+        activeScope()?.recordRendered({
+            customId: rendered.customId,
+            category: options.category ?? '',
+            tokens,
+            shape: rendered.shape,
+            ...(options.register === false ? { register: false as const } : {}),
+        });
     }
     return rendered;
 }
@@ -223,7 +235,8 @@ export function warnUnrenderedBlock(reason: string): void {
  * the DOM already holds translated text. That loop is for bindings that mount
  * the DOM classes; a binding that renders trees registers each block from its
  * nodes as it renders. Either way a block or phrase the seed marks `collected`
- * is never registered: the server's scope sends it itself.
+ * is never registered, since the server's scope sends it itself, and neither is a
+ * block the seed marks `register: false`, whose tokens hold per-user values.
  */
 export function registerBlock(input: readonly BlockNode[] | SeededBlock, options: BlockOptions = {}): void {
     if (!Array.isArray(input)) rememberSeededBlock(input as SeededBlock);
@@ -652,7 +665,13 @@ function renderNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved = 
                 node.setAttribute(name, value);
             }
             if (rendered.customId && rendered.shape !== 'empty') {
-                activeScope()?.recordRendered({ customId: rendered.customId, category: nested.category ?? '', tokens, shape: rendered.shape });
+                activeScope()?.recordRendered({
+                    customId: rendered.customId,
+                    category: nested.category ?? '',
+                    tokens,
+                    shape: rendered.shape,
+                    ...(options.register === false ? { register: false as const } : {}),
+                });
             }
             continue;
         }
@@ -727,7 +746,9 @@ function registerView(root: ViewNode[], options: BlockOptions, input: readonly B
 /** A seeded block: a phrase records its miss as `t()` does; an unknown block registers under its id. */
 function registerSeeded(block: SeededBlock): void {
     const { customId, category, tokens, shape } = block;
-    if (block.collected || isBlockHandled(customId, 'mount')) return;
+    // Collected by the server, already sent from a mount, or rendered with
+    // `register: false`, its tokens then holding per-user values (VAR-1, VAR-7).
+    if (block.collected || block.register === false || isBlockHandled(customId, 'mount')) return;
     if (shape === 'phrase') {
         const fromBlock = LangsysApp.Translations.lookupContent(category, customId, tokens[0] ?? '');
         if (tokens[0] && (fromBlock === null || fromBlock === undefined)) {

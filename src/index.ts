@@ -79,6 +79,7 @@ export {
     clearSharedCatalogs,
     createRequestScope,
     currentRequestScope,
+    scopeFromSeed,
     type RequestScope,
     type RequestScopeOptions,
     type ScopeMiss,

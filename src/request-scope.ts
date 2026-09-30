@@ -1,5 +1,6 @@
 import { LangsysAppAPI } from './api.js';
-import type { RegistrationResult } from './content-block.js';
+import { registerContentBlock, type RegistrationResult } from './content-block.js';
+import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
 import { LangsysApp } from './langsys-app.js';
 import { canonicalizeLocale } from './locale.js';
 import { activeScope, enterScope, runInScope, type ActiveScope } from './scope-context.js';
@@ -51,6 +52,11 @@ export interface RequestScope {
      * and the lookups and registrations `Translate` and `Phrase` make, resolve to
      * it. Across `await` only once `setRequestScopeStorage` has an
      * `AsyncLocalStorage`; otherwise only code that finishes inside `fn`.
+     *
+     * The `t` that `tSignal.get()` returns reads the catalog when it is CALLED, not
+     * when it was taken: kept and called after `fn` returns, it reads the page's.
+     * A host wrapping `t` for its components returns `scope.t`, which is this
+     * scope's wherever it is called.
      */
     run<R>(fn: () => R): R;
     /**
@@ -104,6 +110,31 @@ export async function createRequestScope(options: RequestScopeOptions): Promise<
     return new Scope(locale, catalog ?? freeze(normalizeCatalog({} as iCategories)), catalog !== null);
 }
 
+/**
+ * The request scope a server rendered, rebuilt on the client from its seed, at
+ * once and synchronously: for a host whose client render must run inside the
+ * same scope as the server's (React's hydration render, which reads the server
+ * snapshot), and whose provider cannot await. Its `t` reads the seed's catalog
+ * in the seed's locale, so the hydration render produces the served text.
+ *
+ * It sends nothing itself: the server's scope decided at its own `close()`. What
+ * its render misses, and the blocks it registers, go to the page's lanes as a
+ * render outside any scope would, which skip what the seed marks `collected`
+ * (the seed's blocks and phrases are remembered here, as `seedCatalog` remembers
+ * them), so under the `client` strategy the client still registers them.
+ *
+ * A host that wraps `t` for its components returns `scope.t`, never a `t` taken
+ * from `tSignal.get()` inside `run()`: that one reads the catalog when it is
+ * called, and called later in the render, outside `run()`, it reads the page's.
+ */
+export function scopeFromSeed(seed: RequestSeed): RequestScope {
+    for (const block of Object.values(seed.blocks ?? {})) rememberSeededBlock(block);
+    for (const phrase of seed.phrases ?? []) rememberSeededPhrase(phrase);
+    const scope = new Scope(canonicalizeLocale(seed.locale), freeze(normalizeCatalog(clone(seed.catalog ?? ({} as iCategories)))), true, true);
+    for (const block of Object.values(seed.blocks ?? {})) scope.recordRendered(block);
+    return scope;
+}
+
 /** The request scope the current code runs in, if any. */
 export function currentRequestScope(): RequestScope | undefined {
     const scope = activeScope();
@@ -126,6 +157,8 @@ class Scope implements RequestScope, ActiveScope {
         locale: () => this.locale,
         miss: (category, key) => {
             if (!this.available || this.closing) return;
+            // A scope rebuilt from a seed records on the page's lanes (see `scopeFromSeed`).
+            if (this.fromSeed) return LangsysApp.Translations.recordPageMiss(category, key);
             this.phraseMisses.set(`${category}\0${key}`, { category, phrase: key });
         },
         fromSnapshot: () => false,
@@ -137,7 +170,8 @@ class Scope implements RequestScope, ActiveScope {
     constructor(
         readonly locale: string,
         readonly catalog: iCategories,
-        private readonly available: boolean
+        private readonly available: boolean,
+        private readonly fromSeed = false
     ) {}
 
     run<R>(fn: () => R): R {
@@ -181,6 +215,11 @@ class Scope implements RequestScope, ActiveScope {
 
     recordBlock(block: iContentBlock): void {
         if (!this.available || this.closing) return;
+        if (this.fromSeed) {
+            // On the page's lane, once the render that holds this scope has returned.
+            queueMicrotask(() => void registerContentBlock(block));
+            return;
+        }
         this.blockMisses.set(`${block.category}\0${block.custom_id}`, block);
     }
 
