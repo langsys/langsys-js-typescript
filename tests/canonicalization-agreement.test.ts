@@ -42,6 +42,8 @@ interface Row {
     divergence?: string;
     parser_dependent?: string;
     added_by?: string;
+    /** Lanes that have not measured this row yet; each one's `measured` entry is null until it does. */
+    awaiting?: string[];
 }
 
 const doc = fixture as unknown as {
@@ -90,7 +92,13 @@ describe('the file is internally consistent about who agrees', () => {
         // Over every row, and the assertion that catches the realistic error:
         // a re-measure pasted into `measured` while `agree` stayed true.
         let checked = 0;
+        let expected = 0;
         for (const row of doc.cases) {
+            // A lane still awaited has not measured, and a lane that has is no longer awaited.
+            for (const lane of row.awaiting ?? []) {
+                expect(row.measured[lane], `${row.id}: ${lane} is awaited but has a measurement`).toBeNull();
+            }
+            if (row.agree) expected += 2 - (row.awaiting?.length ?? 0);
             const lanes = Object.entries(row.measured).filter(([, m]) => m !== null) as [string, LaneMeasurement][];
             expect(lanes.length, `${row.id} records no lane measurement at all`).toBeGreaterThan(0);
             if (!row.agree) continue;
@@ -113,7 +121,12 @@ describe('the file is internally consistent about who agrees', () => {
         // test below ties to the divergent rows' notes, so it cannot shrink
         // without a divergence being written down.
         expect(doc.cases.length).toBeGreaterThanOrEqual(20);
-        expect(checked).toBe(doc.cases.filter((c) => c.agree).length * 2);
+        expect(checked).toBe(expected);
+        // Only the rows the VAR-3 markers added may await a lane; every other row stays measured twice.
+        for (const row of doc.cases.filter((c) => c.awaiting?.length)) {
+            expect(row.added_by, `${row.id} awaits a lane without saying which batch added it`).toBe('spec 8.3.0 VAR-3 value markers');
+            expect(row.measured['langsys-js-typescript'], `${row.id}: the JS lane, which authors the row, must have measured it`).not.toBeNull();
+        }
     });
 
     it('a row that does NOT agree carries a note naming the lane', () => {

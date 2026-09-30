@@ -155,7 +155,8 @@ export function runValues<N extends MarkerNode>(run: VarRun<N>, value: (node: N)
  * and value node is emptied; a later value update then needs a re-render.
  *
  * `params` are the caller's; a marker's value is its param only when the caller
- * does not name that param itself.
+ * does not name that param itself. A param the caller names is written into the
+ * value's nodes, in place as in a whole sentence.
  */
 export function renderRun<N extends MarkerNode>(
     run: VarRun<N>,
@@ -188,10 +189,17 @@ export function renderRun<N extends MarkerNode>(
         segments!.forEach((segment, i) => {
             groups[i]!.forEach((node, k) => writes.push([node, k === 0 ? edge(i, interpolate(segment, params, locale)) : '']));
         });
-        // A value an earlier whole-sentence render emptied is shown again.
         for (const marker of markers) {
-            const shown = marker.value.map((node) => node.nodeValue ?? '').join('');
-            if (!shown && marker.value[0]) writes.push([marker.value[0], source.value(marker)]);
+            const node = marker.value[0];
+            if (!node) continue;
+            if (marker.name in params) {
+                // The caller names the param itself, so it is the value shown (VAR-3).
+                const text = interpolate(`{${marker.name}}`, params, locale);
+                marker.value.forEach((n, k) => writes.push([n, k === 0 ? text : '']));
+            } else if (!marker.value.map((n) => n.nodeValue ?? '').join('')) {
+                // A value an earlier whole-sentence render emptied is shown again.
+                writes.push([node, source.value(marker)]);
+            }
         }
         return writes;
     }

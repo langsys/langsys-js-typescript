@@ -612,6 +612,37 @@ That loop is for bindings that mount the DOM classes. A binding that renders tre
 
 A `Translate` over a stamped host in a resolved scope then takes the block's source tokens from the seed, or, without one, from the catalog entry the served text was rendered from. After a locale switch, the host's own resolved marker names the locale it now holds. A `Phrase` over a resolved host takes its source phrase from the catalog the same way. Neither reads the source from the DOM, so a later locale switch renders that locale. A host whose source cannot be recovered keeps the text it was served with, and the core warns once.
 
+## Variables in registered text
+
+A sentence that shows a value from a variable registers once, as a phrase with a `{placeholder}`, for every user. `Hello {name}` is one phrase; `Hello Ana` and `Hello Luis` would be two, and a phrase with no placeholder cannot be given plural or gendered forms.
+
+Where you call `t()` yourself, pass the value as a param: `t('Hello {name}', { name })`, or name it in a template tag, ``t`Hello ${{ name }}` ``. A tag value with no name renders, but registers nothing.
+
+Where the text is rendered first and read afterwards (`<Translate>`, `<Phrase>`, server-rendered HTML), the emitter marks each printed value, and the SDK reads the mark back as the placeholder:
+
+```html
+<p>Hello <!--ls:name-->Ana<!--/ls-->, welcome back</p>
+<p>Hello <span data-ls-param="name">Ana</span>, welcome back</p>   <!-- where comments cannot be written -->
+```
+
+Both register `Hello {name}, welcome back` with `name` = `Ana` as its param, unless you pass `name` yourself. In a tree for `renderBlock`, the same marker is `{ comment: 'ls:name' }` … `{ comment: '/ls' }`. The framework bindings' build-time transforms emit these for you. The value is text only: an element inside the pair makes it ordinary markup. A unit holding nothing but markers registers nothing.
+
+A translation that keeps each placeholder once and in order is written around the framework's own value node, so the framework's later updates to the value still show. A translation that moves or repeats one is written as a whole sentence with the value in it.
+
+Placeholder names come from the source expression (`derivePlaceholderNames`): `user.firstName` → `first_name`, `items.length` → `items_count`, `price.value` → `price`. The shared vectors are in `tests/fixtures/var-naming-vectors.json`.
+
+A `Translate` or `Phrase` created with `register: false`, and `registerBlock(nodes, { register: false })`, renders from the catalog and registers nothing. A binding uses this for content it cannot name without its transform, and one debug notice says so.
+
+## Asking your own API for the user's language
+
+```ts
+import { localeHeaders } from 'langsys-js-typescript';
+
+await fetch('/api/orders', { headers: { ...localeHeaders() } });   // { 'Accept-Language': 'es-es' }
+```
+
+`localeHeaders()` names the locale the user chose, or the request scope's inside one, so an API that answers in the negotiated language answers in the user's.
+
 ## Detecting the user's preferred locale
 
 ```ts

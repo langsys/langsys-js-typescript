@@ -104,6 +104,11 @@ export {
 } from './server-messages.js';
 export type { ResolveServerMessagesOptions, ServerMessage, ServerMessagePieces } from './server-messages.js';
 
+// Variables in registered text: placeholder names (VAR-2) and the value marker (VAR-3).
+export { derivePlaceholderNames, snakeCase } from './var-names.js';
+export type { ExpressionShape, NamedExpression } from './var-names.js';
+export { VAR_PARAM_ATTR } from './var-markers.js';
+
 export type { EncodedRichPhrase, RichTextNode } from './identity.js';
 export type { ParamPrimitive, TranslationParams } from './types/translation-fn.js';
 export type { iContentBlock } from './types/content-block.js';
