@@ -338,6 +338,20 @@ export type RegistrationResult =
  * reports success for work that did not happen. A skipped write returns a
  * non-success result naming its reason.
  */
+/** Resolves once the session's write capability is known: `writeEnabled` is true or false. */
+function capabilityKnown(): Promise<void> {
+    return new Promise((resolve) => {
+        let settled = false;
+        let unsubscribe: (() => void) | null = null;
+        unsubscribe = writeEnabled.subscribe((value) => {
+            if (value === undefined || settled) return;
+            settled = true;
+            resolve();
+            queueMicrotask(() => unsubscribe?.());
+        });
+    });
+}
+
 export async function registerContentBlock(contentBlock: iContentBlock): Promise<RegistrationResult> {
     // Inside a request scope (SRV-7) nothing is sent on the request path: the scope holds
     // the block and its close() decides, after the response, whether to send it (SRV-3).
@@ -372,6 +386,16 @@ export async function registerContentBlock(contentBlock: iContentBlock): Promise
             }
             return { status: false, skipped: true, reason: 'base-locale-gate' };
         }
+    }
+
+    // GATE-2: in the browser, a capability not known yet is not a refusal. A block
+    // mounted before `init()` answers (a hydrated page seeds its catalog, which
+    // settles `ready()`, and components mount before the app initialises) waits for
+    // the server's answer, then decides every gate again. Under SSR the signal is
+    // never written, and the SSR strategies decide there.
+    if (writeEnabled.get() === undefined && typeof window !== 'undefined' && !LangsysAppAPI.hasWriteGrant()) {
+        await capabilityKnown();
+        return registerContentBlock(contentBlock);
     }
 
     // Server-computed capability, never inferred from `key_type`. This is the

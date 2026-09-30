@@ -206,3 +206,39 @@ describe('a seeded registration right after init sends nothing the catalog holds
         expect((await fx.state()).projects.p1.phrases.map((p) => p.phrase)).not.toContain('Pricing plans');
     });
 });
+
+describe('a block mounted before init() decides once the write capability is known', () => {
+    // The hydration order: the page seeds the served catalog, which settles `ready()`,
+    // components mount, and only then does the app call init(). Until init answers,
+    // `writeEnabled` is unknown, which is not the same as false.
+    const NEW_BLOCK = generateCustomId('UI', ['Early one', 'Early two']);
+    const mountEarly = () => mount('<div><p>Early one</p><p>Early two</p></div>');
+
+    it('a write key registers it once init() answers', async () => {
+        resetSdk();
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it');
+        mountEarly();
+        await sleep(300);
+        await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('it-it'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        await until(async () => (await heldIds()).includes(NEW_BLOCK));
+        await sleep(SETTLE_MS);
+        expect((await heldIds()).filter((id) => id === NEW_BLOCK)).toHaveLength(1);
+    });
+
+    it('a read key still registers nothing, and says why', async () => {
+        await fx.seed({ ...SEED, keys: [...SEED.keys, { key: 'k-read', project: 'p1', type: 'read' }] });
+        resetSdk();
+        LangsysApp.seedCatalog({ UI: {} } as never, 'it-it');
+        mountEarly();
+        await LangsysApp.init({ projectid: 'p1', key: 'k-read', UserLocaleStore: createSignal('it-it'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        await sleep(SETTLE_MS);
+        expect(await heldIds()).not.toContain(NEW_BLOCK);
+        // Control: the double stores the same block from a session that may write.
+        resetSdk();
+        document.body.innerHTML = '';
+        await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('it-it'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        await until(() => currentlyLoadedLocale.get() === 'it-it');
+        mountEarly();
+        await until(async () => (await heldIds()).includes(NEW_BLOCK));
+    });
+});
