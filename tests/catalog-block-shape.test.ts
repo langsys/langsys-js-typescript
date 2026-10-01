@@ -28,7 +28,8 @@ const tokensOf = (html: string) => {
     h.innerHTML = html;
     return tokenizeElement(h).tokens;
 };
-const settle = () => new Promise((r) => setTimeout(r, 25));
+// Past the settle window (SRV-5, 250ms) and the flush debounce after it (400ms).
+const settle = () => new Promise((r) => setTimeout(r, 700));
 
 beforeEach(() => {
     sTranslations.set(bare());
