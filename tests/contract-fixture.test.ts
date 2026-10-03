@@ -193,6 +193,100 @@ describe('it holds state: a second read observes the first write', () => {
     });
 });
 
+describe('translations sent with the phrases are stored as human translations (MIG-9)', () => {
+    // ProvidedTranslationService at langsys main 17a191cd.
+    const QUOTA_SEED = {
+        ...BASE_SEED,
+        projects: [{ ...BASE_SEED.projects[0], target_locales: ['es-es', 'fr-fr'], human_translation_word_limit: 3 }, BASE_SEED.projects[1]],
+    };
+    const withTranslations = (text: string, translations: Record<string, string>, extra: Record<string, unknown> = {}) => ({
+        ...phrase(text),
+        translations,
+        ...extra,
+    });
+
+    it('a target locale is stored, served on a later catalog read, and counted as saved', async () => {
+        const res = await register('k-write', [withTranslations('Home', { 'es-es': 'Inicio' })]);
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ status: true, data: { human_translations_saved: 1, human_translations_skipped: 0 } });
+        expect((await catalog('k-read')).body.data.UI).toMatchObject({ Home: 'Inicio' });
+    });
+
+    it('a locale the project does not translate into is 422 on translations.<index>, and nothing is written', async () => {
+        const res = await register('k-write', [phrase('First'), withTranslations('Home', { 'es-es': 'Inicio', it_IT: 'Casa' })]);
+        expect(res.status).toBe(422);
+        expect(res.body).toEqual({
+            status: false,
+            error: {
+                message: 'The request failed validation.',
+                code: 'validation_failed',
+                template: 'The request failed validation.',
+                errors: [
+                    {
+                        field: 'translatable_items.1.translations',
+                        code: 'invalid_option',
+                        message: 'The locale it-it is not a target locale of this project.',
+                        template: 'The locale {locale} is not a target locale of this project.',
+                        params: { locale: 'it-it' },
+                    },
+                ],
+            },
+        });
+        const ui = (await catalog('k-read')).body.data.UI;
+        expect(ui).not.toHaveProperty('First');
+        expect(ui).not.toHaveProperty('Home');
+    });
+
+    it('control: the same request with only target locales is accepted', async () => {
+        const res = await register('k-write', [phrase('First'), withTranslations('Home', { 'es-es': 'Inicio' })]);
+        expect(res.status).toBe(200);
+        expect((await catalog('k-read')).body.data.UI).toMatchObject({ First: null, Home: 'Inicio' });
+    });
+
+    it('the base locale is not a target locale', async () => {
+        expect((await register('k-write', [withTranslations('Home', { 'en-us': 'Home' })])).status).toBe(422);
+    });
+
+    it('a content block ignores the map, and so does an untranslatable phrase', async () => {
+        const res = await register('k-write', [
+            { type: 'content_block', category: 'UI', custom_id: 'b1', content: '<p>A</p>', phrases: [{ phrase: 'Block A' }], translations: { 'es-es': 'Bloque' } },
+            withTranslations('Brand', { 'es-es': 'Marca' }, { translatable: false }),
+        ]);
+        expect(res.body.data).toEqual({ human_translations_saved: 0, human_translations_skipped: 0 });
+        const ui = (await catalog('k-read')).body.data.UI;
+        expect(ui.b1).toEqual({ 'Block A': null });
+        expect(ui.Brand).toBeNull();
+    });
+
+    it('a refused write stores no translation either', async () => {
+        await register('k-read', [withTranslations('Home', { 'es-es': 'Inicio' })]);
+        expect((await catalog('k-read')).body.data.UI).not.toHaveProperty('Home');
+    });
+
+    it('the quota: a new translation past what is left is skipped, and one within it is saved', async () => {
+        await fx.seed(QUOTA_SEED);
+        // Two words each, three allowed: es-es fits, fr-fr would be four.
+        const res = await register('k-write', [withTranslations('Hello there', { 'es-es': 'Hola', 'fr-fr': 'Salut' })]);
+        expect(res.body.data).toEqual({ human_translations_saved: 1, human_translations_skipped: 1 });
+        expect((await catalog('k-read', 'p1', 'es-es')).body.data.UI['Hello there']).toBe('Hola');
+        expect((await catalog('k-read', 'p1', 'fr-fr')).body.data.UI['Hello there']).toBeNull();
+        expect((await fx.state()).projects.p1.human_translation_words_used).toBe(2);
+    });
+
+    it('control: replacing a translation the phrase has is an update, and counts nothing even with the quota spent', async () => {
+        await fx.seed({ ...QUOTA_SEED, projects: [{ ...QUOTA_SEED.projects[0], human_translation_words_used: 3 }, BASE_SEED.projects[1]] });
+        const res = await register('k-write', [withTranslations('Hello', { 'es-es': 'Buenas' })]);
+        expect(res.body.data).toEqual({ human_translations_saved: 1, human_translations_skipped: 0 });
+        expect((await catalog('k-read')).body.data.UI.Hello).toBe('Buenas');
+        expect((await fx.state()).projects.p1.human_translation_words_used).toBe(3);
+    });
+
+    it('uncapped by default', async () => {
+        const res = await register('k-write', [withTranslations('Hello there friend', { 'es-es': 'Hola amigo' })]);
+        expect(res.body.data).toEqual({ human_translations_saved: 1, human_translations_skipped: 0 });
+    });
+});
+
 describe('write_enabled is computed from key, address and grant', () => {
     const writeEnabled = async (key: string, grant?: string) => (await api('/authorize-project/p1', { key, grant })).body.data.write_enabled;
 

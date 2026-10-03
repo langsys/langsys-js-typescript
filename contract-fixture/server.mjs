@@ -72,6 +72,10 @@ function seed(doc) {
             subscription_suspended: p.subscription_suspended === true,
             credits_exhausted: p.credits_exhausted === true,
             discovery_base_locale_only: p.discovery_base_locale_only ?? false,
+            // HumanTranslationLimitService: the plan's cap on words added as new human
+            // translations in a rolling window (null = uncapped), and the words already used.
+            human_translation_word_limit: p.human_translation_word_limit ?? null,
+            human_translation_words_used: p.human_translation_words_used ?? 0,
             phrases: new Map(),
             blocks: new Map(),
         };
@@ -439,6 +443,10 @@ function translatableItems(req, body, url) {
     const deduct = deductRequest(auth.key);
     if (deduct) return deduct;
     if (auth.key.project !== project.id) return [403, errorBody('This action is unauthorized.')];
+    // ProvidedTranslationService::assertTargetLocales: a translation for a locale the project
+    // does not translate into is refused before anything is written.
+    const refused = assertTargetLocales(project, items);
+    if (refused) return refused;
     // TranslatableItemService::_prepareBatchData: skips, never rejects.
     for (const item of items) {
         if (!item || typeof item !== 'object') continue;
@@ -457,7 +465,82 @@ function translatableItems(req, body, url) {
             upsertBlock(project, item.category ?? null, item.custom_id ?? null, item.content ?? null, item.label ?? null, phrases);
         }
     }
-    return [200, { status: true }];
+    const outcome = storeProvidedTranslations(project, items);
+    // RegisteredTranslatableItemsResource, through resourceResponse.
+    return [200, { status: true, data: { human_translations_saved: outcome.saved, human_translations_skipped: outcome.skipped } }];
+}
+
+// ---------------------------------------------------------------------------------------
+// Translations sent with the phrases: ProvidedTranslationService, ported
+// ---------------------------------------------------------------------------------------
+
+/** UsesLocales::formatLocale. */
+const formatLocale = (locale) => String(locale).replace(/_/g, '-').toLowerCase();
+
+/**
+ * A `translations` key that is not one of the project's target locales answers 422, as a
+ * FieldValidationException renders through ValidationExceptionHandler: one entry, on the
+ * item's `translations` field, with TranslationLocaleNotTargetFieldError's code and template.
+ */
+function assertTargetLocales(project, items) {
+    for (const [index, item] of items.entries()) {
+        const map = item && typeof item === 'object' && item.translations && typeof item.translations === 'object' ? item.translations : {};
+        for (const raw of Object.keys(map)) {
+            const locale = formatLocale(raw);
+            if (project.target_locales.includes(locale)) continue;
+            const template = 'The locale {locale} is not a target locale of this project.';
+            const message = template.replace('{locale}', locale);
+            return [
+                422,
+                {
+                    status: false,
+                    error: {
+                        message: 'The request failed validation.',
+                        code: 'validation_failed',
+                        template: 'The request failed validation.',
+                        errors: [{ field: `translatable_items.${index}.translations`, code: 'invalid_option', message, template, params: { locale } }],
+                    },
+                },
+            ];
+        }
+    }
+    return null;
+}
+
+/**
+ * Store each registered phrase's provided translations as human translations, served on
+ * later catalog reads. Content blocks, untranslatable phrases and items that registered
+ * nothing are ignored. A new translation counts its phrase's words against the cap; one
+ * that would exceed what is left is skipped (its locale is left for machine translation).
+ * Replacing a translation the phrase already has is an update and counts nothing.
+ */
+function storeProvidedTranslations(project, items) {
+    const outcome = { saved: 0, skipped: 0 };
+    const limit = project.human_translation_word_limit;
+    for (const item of items) {
+        if (!item || typeof item !== 'object' || !item.translations || typeof item.translations !== 'object') continue;
+        if ((item.type ?? 'phrase') !== 'phrase' || item.translatable === false) continue;
+        const phrase = item.phrase ? project.phrases.get(itemKey(item.category ?? null, item.phrase)) : null;
+        if (!phrase) continue;
+        for (const [raw, value] of Object.entries(item.translations)) {
+            const locale = formatLocale(raw);
+            const text = value === null || value === undefined ? '' : String(value);
+            const cost = words(phrase.phrase);
+            const isNew = !(locale in phrase.translations);
+            const remaining = limit === null ? null : Math.max(0, limit - project.human_translation_words_used);
+            if (isNew && remaining !== null && cost > remaining) {
+                outcome.skipped++;
+                continue;
+            }
+            outcome.saved++;
+            // TranslationService::createTranslation with no text undoes an untranslatable
+            // mark and writes no translation.
+            if (!text) continue;
+            phrase.translations[locale] = text;
+            if (isNew) project.human_translation_words_used += cost;
+        }
+    }
+    return outcome;
 }
 
 function discoveryHint(req, body) {
@@ -486,6 +569,7 @@ function acceptedState() {
     const projects = {};
     for (const p of state.projects.values()) {
         projects[p.id] = {
+            human_translation_words_used: p.human_translation_words_used,
             phrases: [...p.phrases.values()].map(({ category, phrase, translations }) => ({ category, phrase, translations })),
             blocks: [...p.blocks.values()].map(({ category, custom_id, content, label, phrases }) => ({
                 category,

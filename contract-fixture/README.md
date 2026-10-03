@@ -32,7 +32,7 @@ The real API routes an SDK calls:
 |---|---|
 | `GET /api/authorize-project/{project}` | Key type, computed `write_enabled`, `auto_discovery`, the project's `discovery_base_locale_only`, the batch limit in `langsys_settings.translatable_items.batch_limit`. |
 | `GET /api/translations`, `GET /api/translations/data` | The flat catalog for `project_id` and `locale`, with `write_enabled` and `discovery_base_locale_only` as top-level siblings of `data`. An empty project answers `data: []`. |
-| `POST /api/translatable-items` | Registers phrases and content blocks. `200 {status:true}` on success. |
+| `POST /api/translatable-items` | Registers phrases and content blocks, and stores the translations sent with phrases. `200 {status:true, data:{human_translations_saved, human_translations_skipped}}` on success. |
 | `POST /api/discovery/hint` | Always `204` once past the rate limit and URL validation. |
 
 And a setup namespace:
@@ -63,6 +63,9 @@ order:
 4. **Request binding** — an unknown project answers `404`.
 5. **Usage balance** — a key seeded with `usage_exhausted` answers `402`.
 6. **Project access** — a key used against another project answers `403`.
+7. **Translation locales** — on `POST /translatable-items`, a `translations` key that is not one
+   of the project's target locales (the base locale included) answers `422` before anything is
+   written, with one entry on `translatable_items.<index>.translations`, code `invalid_option`.
 
 **`write_enabled` is computed, never seeded.** A `write` key may write. An `ip_write` key may
 write when the source address is in its allow-list or in `renderer_egress_ips`. Any key may
@@ -84,6 +87,18 @@ never accepted as a category on registration, so the key only ever appears on th
 The seed option `drop_uncategorized_blocks` reproduces the backend's former behaviour, which
 answered `200` and stored nothing, for a regression test.
 
+**Translations sent with phrases are stored as human translations** (`ProvidedTranslationService`).
+A phrase item may carry `translations`, keyed by target locale; locales are compared as the
+backend formats them (`_` to `-`, lowercased). Each is stored on the registered phrase and
+served on later catalog reads. Content blocks, phrases sent with `translatable: false`, and
+items that registered nothing ignore the map. A new translation costs its phrase's words
+against the project's `human_translation_word_limit` (null, the default, is uncapped); one that
+would cost more than is left is skipped and counted in `human_translations_skipped`, and its
+locale stays untranslated. Replacing a translation the phrase already has is an update and
+costs nothing. A translation with no text is counted as saved and writes nothing, as the
+backend's `createTranslation` does with empty text. The words used are in
+`GET /__fixture/state` as `human_translation_words_used`.
+
 **Hints are accepted by the backend's rules, in its order.** The request is limited per source
 address (`hint_rate_per_minute`, `429`) and its `page_url` must be a URL of at most 2048
 characters (`422`). After that the answer is `204` in every case, including for an unknown
@@ -103,7 +118,10 @@ fragment kept only when it is a route (`#/…` or `#!/…`).
   row depends on the server's own check, so the double stores such a hint if it otherwise
   qualifies.
 - **App attestation** (`X-App-Attestation`), an arm of the write decision for mobile SDKs.
-- **Machine translation.** Translations exist only where the seed supplies them.
+- **Machine translation.** Translations exist only where the seed or a provided translation
+  supplies them. So the backend's exemption of a translation that post-edits a machine
+  translation the organization already paid for is not modelled: in the double, only an
+  existing translation exempts a provided one from the quota.
 - **Routes outside the conformance contract**, such as the locale display data an SDK may
   request at start-up (`/locales/{locale}/data`). They answer `404`.
 - **Word counts** in the catalog envelope count whitespace-separated words, which is close to
@@ -118,6 +136,8 @@ degradation tests.
 
 ## Error bodies
 
-Errors carry `{status:false, data:[], error:"…"}`, and `401` and `429` carry `{message}`, as
-the backend does today. Assert on the status and on state read back, never on the error text:
-the backend is replacing the string with a structured error object.
+The target-locale refusal carries the backend's structured validation body:
+`{status:false, error:{message, code:"validation_failed", template, errors:[{field, code, message, template, params}]}}`.
+The other errors carry `{status:false, data:[], error:"…"}`, and `401` and `429` carry
+`{message}`. Assert on the status, on a structured entry's `field` and `code`, and on state
+read back, never on message text.
