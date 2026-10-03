@@ -4,8 +4,8 @@
 |---|---|
 | **SDK** | `langsys-js-typescript` (browser reference implementation) |
 | **Profiles** | all, browser |
-| **specVersion** | 8.5.6 |
-| **Spec revision read** | langsys2 9c1c5e23…, docs/sdk-spec.mdx blob 68e3020ae3208c2ef88c52c09add0f9a8622eaa5 (specVersion 8.5.6). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 9c1c5e23 docs/sdk-spec.mdx` at this write and checked by `npm run verify:spec`, which also fails if the vector file cites a different blob. Every rule id is counted by `npm run tally:conformance`. |
+| **specVersion** | 8.5.8 |
+| **Spec revision read** | langsys2 83e26af1…, docs/sdk-spec.mdx blob d893ecf6f0d81230d34a22aeedd46e7fc1c6facb (specVersion 8.5.8). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 83e26af1 docs/sdk-spec.mdx` at this write and checked by `npm run verify:spec`, which also fails if the vector file cites a different blob. Every rule id is counted by `npm run tally:conformance`. |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
 | **Suite** | 1591 tests in 73 files, `npm test`, counted at the tip of this branch |
 
