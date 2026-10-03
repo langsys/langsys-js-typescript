@@ -242,3 +242,27 @@ describe('a block mounted before init() decides once the write capability is kno
         await until(async () => (await heldIds()).includes(NEW_BLOCK));
     });
 });
+
+describe('SRV-5: a Suspense fallback swapped out inside the settle window, against the double', () => {
+    // React's vector: a client-rendered <Translate> holding an intro and a lazy child
+    // behind <Suspense fallback={<p>Loading spinner</p>}>, the child resolving shortly after.
+    const REAL = generateCustomId('UI', ['Intro one', 'Real content']);
+    const SPINNER = generateCustomId('UI', ['Intro one', 'Loading spinner']);
+
+    it('holds the block keyed on the real content, never on the spinner', async () => {
+        await client('it-it');
+        const wrap = document.createElement('div');
+        wrap.innerHTML = '<div><p>Intro one</p><p>Loading spinner</p></div>';
+        document.body.appendChild(wrap);
+        const host = wrap.firstElementChild as HTMLElement;
+        live.push(new Translate(host, { category: 'UI' }));
+        await sleep(100);
+        const real = document.createElement('p');
+        real.textContent = 'Real content';
+        host.replaceChild(real, host.lastElementChild!);
+        await until(async () => (await heldIds()).includes(REAL));
+        await sleep(SETTLE_MS);
+        expect(await heldIds()).not.toContain(SPINNER);
+        expect((await fx.state()).projects.p1.blocks.find((b) => b.custom_id === REAL)!.phrases.map((p) => p.phrase)).toEqual(['Intro one', 'Real content']);
+    });
+});

@@ -29,7 +29,7 @@ import type { Unsubscriber } from './signal.js';
 import { claimHost, inertUnderScope, isHostManaged, releaseHost } from './hosts.js';
 import { Phrase } from './phrase.js';
 import { isBlockHandled, isServerCollected, markBlockHandled, recoverBlockSources, warnUnrecoveredSource } from './served-source.js';
-import { warnUnregistered } from './notices.js';
+import { debugNotice, warnUnregistered } from './notices.js';
 import { groupRuns, renderRun, runToken, type MarkerNode, type VarMarker, type VarRun } from './var-markers.js';
 import { RESOLVED_MARKER_ATTRS } from './identity.js';
 import type { iContentBlock } from './types/content-block.js';
@@ -62,6 +62,13 @@ export interface TranslateOptions {
 
 type iNode = Node & { originalNodeValue?: string | null };
 type iElement = HTMLElement & { originalAttributes?: Record<string, string> };
+
+/**
+ * How long a host's subtree must stay structurally quiet before the content it
+ * shows is taken as settled (SRV-5): a lazy child resolving inside the window
+ * replaces a loading placeholder before anything registers.
+ */
+const SETTLE_MS = 250;
 
 /** The id this SDK stamped on each host this session, so our own stamp is never read as a renderer's. */
 const ownStamps = new WeakMap<Element, string>();
@@ -115,6 +122,25 @@ export class Translate {
     private markedValues = new WeakMap<Node, string>();
     /** Marked hosts inside this one that no instance managed, taken over by this walk. */
     private takenOver: Array<{ destroy(): void }> = [];
+    /**
+     * SRV-5: the content captured at mount is provisional. A framework can mount a
+     * block showing a placeholder (a Suspense fallback, a lazy child's spinner)
+     * and swap in the real content a moment later. An observer watches the host's
+     * STRUCTURE (child lists, never text: a value update must not re-key a block);
+     * the first registration waits until it has been quiet for `SETTLE_MS`, and a
+     * later structural change re-derives the block and registers what it shows.
+     */
+    private observer: MutationObserver | null = null;
+    private settleTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Whether the subtree has been quiet for the settle window since mount. */
+    private settled = false;
+    private settleWaiters: Array<() => void> = [];
+    /** A structural change the tokens do not reflect yet. */
+    private dirty = false;
+    /** Whether the id is derived from the content, and so follows it when it changes. */
+    private derivedId = true;
+    /** The id this instance last registered under, so a re-key after the window can be reported. */
+    private registeredId: string | null = null;
 
     /**
      * @param byWalk Internal: set when an enclosing walk creates this instance for
@@ -148,6 +174,8 @@ export class Translate {
             this.custom_id = marker.id;
             if (isInResolvedScope(element)) this.adoptedId = marker.id;
         }
+        this.derivedId = !this.custom_id;
+        this.observeStructure();
 
         // First pass: tokenize + save + translate.
         void this.tokenizeContent();
@@ -231,8 +259,94 @@ export class Translate {
         if (locale) this.translateUpdate(locale);
     }
 
+    /**
+     * Watch the host's structure (SRV-5). Not for an adopted host or one in a
+     * resolved scope: served content is already what it shows, and registers
+     * nothing. Where there is no `MutationObserver`, the content is settled at mount.
+     */
+    private observeStructure(): void {
+        if (this.adoptedId || isInResolvedScope(this.element) || typeof MutationObserver === 'undefined') {
+            this.markSettled();
+            return;
+        }
+        this.observer = new MutationObserver((records) => {
+            if (!records.some((record) => this.isUnitStructure(record.target))) return;
+            this.dirty = true;
+            this.armSettle();
+        });
+        this.observer.observe(this.element, { childList: true, subtree: true });
+        this.armSettle();
+    }
+
+    /**
+     * Whether a changed child list belongs to this unit. An excised subtree, and
+     * each nested host, is another instance's. An `<option>`'s list is changed only
+     * by this class, writing its text.
+     */
+    private isUnitStructure(target: Node): boolean {
+        for (let node: Node | null = target; node && node !== this.element; node = node.parentNode) {
+            if (node.nodeType !== Node.ELEMENT_NODE) continue;
+            const element = node as Element;
+            if (element.localName === 'option' || isExcisedFromUnit(element)) return false;
+        }
+        return true;
+    }
+
+    private armSettle(): void {
+        if (this.settleTimer) clearTimeout(this.settleTimer);
+        this.settleTimer = setTimeout(() => {
+            this.settleTimer = null;
+            // Read again before settling, so the new read is the one that registers.
+            if (this.dirty && this.parseComplete && !this.isTokenizing) void this.rederive();
+            this.markSettled();
+        }, SETTLE_MS);
+    }
+
+    private markSettled(): void {
+        if (this.settled) return;
+        this.settled = true;
+        this.settleWaiters.forEach((resolve) => resolve());
+        this.settleWaiters = [];
+    }
+
+    private whenSettled(): Promise<void> {
+        if (this.settled) return Promise.resolve();
+        return new Promise((resolve) => this.settleWaiters.push(resolve));
+    }
+
+    /**
+     * The block's structure changed after it was read: read it again, under the id
+     * its content now derives (an app's or a stamped id stays), stamp it, render it,
+     * and register it if unknown. An id already sent for the earlier content stays
+     * registered; the core cannot take a registration back.
+     */
+    private async rederive(): Promise<void> {
+        this.dirty = false;
+        this.takenOver.forEach((instance) => instance.destroy());
+        this.takenOver = [];
+        if (this.derivedId) this.custom_id = '';
+        this.contentBlock = null;
+        this.parseComplete = false;
+        this.lastTranslatedLocale = '';
+        const before = this.registeredId;
+        await this.tokenizeContent();
+        // What registered before the change was what the block showed when its window
+        // closed: a placeholder, if one was still there. It stays registered; say so,
+        // naming both ids (SRV-5).
+        if (before && this.custom_id && this.custom_id !== before) {
+            debugNotice(
+                `rekey\0${before}`,
+                `A <Translate> block registered as ${before} changed its structure after it settled and is now ${this.custom_id}. If ${before} was a placeholder (a Suspense fallback still showing when the settle window closed), it stays registered.`
+            );
+        }
+    }
+
     /** Stop reacting to locale and catalog changes. Safe to call multiple times. */
     public destroy() {
+        this.observer?.disconnect();
+        this.observer = null;
+        if (this.settleTimer) clearTimeout(this.settleTimer);
+        this.settleTimer = null;
         this.unsubscribers.forEach((unsub) => unsub());
         this.unsubscribers = [];
         this.takenOver.forEach((instance) => instance.destroy());
@@ -363,13 +477,16 @@ export class Translate {
         // hold it, else leave what the server served, and record nothing on either lane.
         // A block the server's scope sends itself is recorded there, never again here;
         // and a unit that does not register records nothing at all (VAR-7).
-        const records = this.registers() && !isInResolvedScope(this.element) && !isServerCollected(this.custom_id);
+        const records = this.settled && this.registers() && !isInResolvedScope(this.element) && !isServerCollected(this.custom_id);
         const found = fromBlock !== null && fromBlock !== undefined;
 
         if (this.isSingleRun()) {
             // One sentence with its values (VAR-3): recorded as its template, written
             // around the values the framework owns.
-            if (!found && records) tWithParams(token, category, { ...this.vars.values, ...(this.options.params ?? {}) });
+            if (!found && records) {
+                tWithParams(token, category, { ...this.vars.values, ...(this.options.params ?? {}) });
+                this.registeredId = this.custom_id;
+            }
             const run = this.findRun();
             if (run) this.writeRun(run, found ? fromBlock : (LangsysApp.Translations.lookup(token, category) ?? token));
             return;
@@ -382,6 +499,7 @@ export class Translate {
             resolved = this.applyParams(LangsysApp.Translations.lookup(token, category) ?? token);
         } else {
             resolved = tWithParams(token, category, this.options.params ?? {});
+            this.registeredId = this.custom_id;
         }
 
         // Write the ONE text node. Never `innerText`, which replaces every
@@ -551,6 +669,12 @@ export class Translate {
             }
             this.stampContentBlockMarker();
             this.renderSingleToken(category);
+            // Rendered at once, recorded once the content has settled (SRV-5).
+            if (!this.settled) {
+                void this.whenSettled().then(() => {
+                    if (!this.dirty && this.usesSingleTextNodeFastPath()) this.renderSingleToken(category);
+                });
+            }
         } else {
             const contentBlock: iContentBlock = {
                 custom_id: '',
@@ -564,6 +688,8 @@ export class Translate {
 
         this.parseComplete = true;
         this.isTokenizing = false;
+        // The structure changed while this read was in flight: read it again (SRV-5).
+        if (this.dirty && this.settled) void this.rederive();
         return true;
     }
 
@@ -632,6 +758,20 @@ export class Translate {
             }
         }
 
+        // Not `tokens.length > 1`: an attribute-only block has ONE token and
+        // still belongs here, and that guard is what would silently skip its
+        // render after the routing above sent it down this path.
+        if (!this.usesSingleTextNodeFastPath() && this.element) {
+            this.translate(Array.from(this.element.childNodes));
+            this.lastTranslatedLocale = currentlyLoadedLocale.get();
+        }
+
+        // SRV-5: register what the host shows once it has settled, never a placeholder
+        // it showed at mount. A structural change in the meantime means this read is
+        // stale, and the read that follows it registers instead.
+        await this.whenSettled();
+        if (this.dirty) return;
+
         // Fire-and-forget: registerContentBlock handles its own errors via
         // the logger. We don't await here because the DOM render path below
         // doesn't depend on the POST completing — translations are looked up
@@ -655,16 +795,10 @@ export class Translate {
             logger.log('Skipping content block registration: the host sits in a resolved scope');
         } else {
             markBlockHandled(this.custom_id, 'mount');
+            this.registeredId = this.custom_id;
             void registerContentBlock(contentBlock);
         }
 
-        // Not `tokens.length > 1`: an attribute-only block has ONE token and
-        // still belongs here, and that guard is what would silently skip its
-        // render after the routing above sent it down this path.
-        if (!this.usesSingleTextNodeFastPath() && this.element) {
-            this.translate(Array.from(this.element.childNodes));
-            this.lastTranslatedLocale = currentlyLoadedLocale.get();
-        }
     }
 
     private translate(nodes: iNode[]) {

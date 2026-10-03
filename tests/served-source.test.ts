@@ -23,7 +23,8 @@ type Item = { type: string; phrase?: string; custom_id?: string };
 let sent: Item[] = [];
 let warn: ReturnType<typeof vi.fn>;
 const live: Array<{ destroy(): void }> = [];
-const settle = () => vi.advanceTimersByTimeAsync(600);
+// Past the settle window (SRV-5, 250ms) and the flush debounce after it (400ms).
+const settle = () => vi.advanceTimersByTimeAsync(1000);
 
 const ID = 'srv-block-1';
 const IT = { Hello: 'Ciao', Title: 'Titolo', World: 'Mondo' };

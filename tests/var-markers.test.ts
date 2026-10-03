@@ -23,7 +23,8 @@ type Item = { type: string; phrase?: string; custom_id?: string; phrases?: Array
 let sent: Item[] = [];
 let log: ReturnType<typeof vi.fn>;
 const live: Array<{ destroy(): void }> = [];
-const settle = () => vi.advanceTimersByTimeAsync(600);
+// Past the settle window (SRV-5, 250ms) and the flush debounce after it (400ms).
+const settle = () => vi.advanceTimersByTimeAsync(1000);
 const phrases = () => sent.filter((i) => i.type === 'phrase').map((i) => i.phrase);
 const blocks = () => sent.filter((i) => i.type === 'content_block').map((i) => (i.phrases ?? []).map((p) => p.phrase));
 const misses = () => (LangsysApp.Translations as unknown as { missingTokens: unknown[] }).missingTokens;

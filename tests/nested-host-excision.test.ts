@@ -25,7 +25,8 @@ import { Translate } from '../src/translate.js';
 type Item = { type: string; phrase?: string; custom_id?: string; phrases?: Array<{ phrase: string }> };
 let sent: Item[] = [];
 const live: Array<{ destroy(): void }> = [];
-const settle = () => vi.advanceTimersByTimeAsync(600);
+// Past the settle window (SRV-5, 250ms) and the flush debounce after it (400ms).
+const settle = () => vi.advanceTimersByTimeAsync(1000);
 
 function mount(html: string): HTMLElement {
     const host = document.createElement('div');
