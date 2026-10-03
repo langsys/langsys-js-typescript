@@ -181,6 +181,27 @@ describe('an attribute-only token must not take the single-token fast path', () 
         expect(el.querySelector('option')?.textContent).toBe('Elige');
     });
 
+    it('an <option> follows every locale switch, not only the first', async () => {
+        // The <select> branch writes an option's text, and the walk then reached the
+        // option's own text node and took the translation it had just written as that
+        // node's original: the second switch rendered the first locale's text again.
+        withBlock(['Pick', 'Other'], { Pick: 'Elige', Other: 'Otra' });
+        currentlyLoadedLocale.set('es-es');
+        const { el } = make('<select><option>Pick</option><option>Other</option></select>');
+        await new Promise((r) => setTimeout(r, 10));
+        expect([...el.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['Elige', 'Otra']);
+
+        withBlock(['Pick', 'Other'], { Pick: 'Choisis', Other: 'Autre' });
+        currentlyLoadedLocale.set('fr-fr');
+        await new Promise((r) => setTimeout(r, 10));
+        expect([...el.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['Choisis', 'Autre']);
+
+        currentlyLoadedLocale.set('en-us');
+        withBlock(['Pick', 'Other'], {});
+        await new Promise((r) => setTimeout(r, 10));
+        expect([...el.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['Pick', 'Other']);
+    });
+
     it('translates an aria-label and the element text together', async () => {
         withBlock(['Close', 'x'], { Close: 'Cerrar', x: 'X' });
         const { el } = make('<a href="#" aria-label="Close">x</a>');
@@ -466,18 +487,17 @@ describe('register and lookup agree on every path, including attributes', () => 
     });
 
     it('control: text nodes and options, which already resolved, still do', async () => {
-        // HONEST LIMIT, measured: reverting the <option> lookup site to `.trim()`
-        // turns nothing red. The text-node path translates an option's own text
-        // node first, so the select branch's lookup never decides the outcome here.
-        // That site uses `normalizeTokenText` for one definition, not because a test
-        // pins it.
+        // The <select> branch decides an option's text inside a block: the walk does
+        // not enter an option its <select> writes. Two options make this a block (one
+        // token alone takes the single-token path), so reverting the branch's lookup
+        // key to `.trim()` turns the option assertion red.
         seed('<p>A long\n     description</p>', { 'A long description': 'Descripción larga' });
         const text = make('<p>A long\n     description</p>');
         await settle();
         expect(text.el.querySelector('p')!.textContent).toBe('Descripción larga');
 
-        seed('<select><option>First\n   choice</option></select>', { 'First choice': 'Primera opción' });
-        const option = make('<select><option>First\n   choice</option></select>');
+        seed('<select><option>First\n   choice</option><option>Second</option></select>', { 'First choice': 'Primera opción', Second: 'Segunda' });
+        const option = make('<select><option>First\n   choice</option><option>Second</option></select>');
         await settle();
         expect(option.el.querySelector('option')!.textContent).toBe('Primera opción');
     });

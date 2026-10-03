@@ -827,6 +827,10 @@ export class Translate {
                 // not register, and a phrase host or a nested block renders itself.
                 if (isExcisedFromUnit(node as HTMLElement)) continue;
                 this.translateAttributes(node as iElement);
+                // A <select> writes its options' text (`translateAttributes`). Walking into
+                // an option after that would take the text just written as its original,
+                // and the next locale would render the previous one's.
+                if ((node as Element).localName === 'option' && (node as Element).closest('select')) continue;
             }
 
             if (node?.nodeType !== Node.TEXT_NODE) {
