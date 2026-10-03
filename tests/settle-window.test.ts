@@ -4,6 +4,8 @@ import { LangsysAppAPI } from '../src/api.js';
 import { generateCustomId } from '../src/content-block.js';
 import { _resetDiscoveryState } from '../src/discovery.js';
 import { LangsysApp } from '../src/langsys-app.js';
+import { logger } from '../src/logger.js';
+import { _resetNotices, settleNotices } from '../src/notices.js';
 import { _resetSeededBlocks } from '../src/served-source.js';
 import { config as configStore, currentlyLoadedLocale, sTranslations, writeEnabled } from '../src/stores.js';
 import { Translate } from '../src/translate.js';
@@ -48,6 +50,7 @@ beforeEach(() => {
     Object.assign(configStore, { projectid: 'p', key: 'k' });
     _resetDiscoveryState();
     _resetSeededBlocks();
+    _resetNotices();
     catalog({});
     writeEnabled.set(true);
     LangsysApp.Translations.settle();
@@ -116,6 +119,39 @@ describe('SRV-5: a structural change after the window re-keys the block', () => 
             ['Intro one', 'Real content'],
         ]);
         expect(host.getAttribute('data-ls-contentblock')).toBe(generateCustomId('UI', ['Intro one', 'Real content']));
+    });
+
+    it('and says so, naming the block it registered and the one it is now', async () => {
+        const log = vi.mocked(console.log);
+        logger.debugEnabled = true;
+        settleNotices();
+        try {
+            const host = mount('<p>Intro one</p><p>Loading spinner</p>');
+            await vi.advanceTimersByTimeAsync(1000);
+            resolveFallback(host, '<p>Real content</p>');
+            await vi.advanceTimersByTimeAsync(1000);
+            const said = log.mock.calls.map((call) => call.join(' ')).filter((line) => line.includes('changed its structure after it settled'));
+            expect(said).toHaveLength(1);
+            expect(said[0]).toContain(generateCustomId('UI', ['Intro one', 'Loading spinner']));
+            expect(said[0]).toContain(generateCustomId('UI', ['Intro one', 'Real content']));
+        } finally {
+            logger.debugEnabled = false;
+        }
+    });
+
+    it('a placeholder resolved inside the window is never reported', async () => {
+        const log = vi.mocked(console.log);
+        logger.debugEnabled = true;
+        settleNotices();
+        try {
+            const host = mount('<p>Intro one</p><p>Loading spinner</p>');
+            await vi.advanceTimersByTimeAsync(100);
+            resolveFallback(host, '<p>Real content</p>');
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(log.mock.calls.map((call) => call.join(' ')).filter((line) => line.includes('changed its structure after it settled'))).toEqual([]);
+        } finally {
+            logger.debugEnabled = false;
+        }
     });
 
     it('the hazard, pinned: a keyed list whose length changes re-keys, as a fresh mount of that state would', async () => {

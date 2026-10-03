@@ -29,7 +29,7 @@ import type { Unsubscriber } from './signal.js';
 import { claimHost, inertUnderScope, isHostManaged, releaseHost } from './hosts.js';
 import { Phrase } from './phrase.js';
 import { isBlockHandled, isServerCollected, markBlockHandled, recoverBlockSources, warnUnrecoveredSource } from './served-source.js';
-import { warnUnregistered } from './notices.js';
+import { debugNotice, warnUnregistered } from './notices.js';
 import { groupRuns, renderRun, runToken, type MarkerNode, type VarMarker, type VarRun } from './var-markers.js';
 import { RESOLVED_MARKER_ATTRS } from './identity.js';
 import type { iContentBlock } from './types/content-block.js';
@@ -139,6 +139,8 @@ export class Translate {
     private dirty = false;
     /** Whether the id is derived from the content, and so follows it when it changes. */
     private derivedId = true;
+    /** The id this instance last registered under, so a re-key after the window can be reported. */
+    private registeredId: string | null = null;
 
     /**
      * @param byWalk Internal: set when an enclosing walk creates this instance for
@@ -326,7 +328,17 @@ export class Translate {
         this.contentBlock = null;
         this.parseComplete = false;
         this.lastTranslatedLocale = '';
+        const before = this.registeredId;
         await this.tokenizeContent();
+        // What registered before the change was what the block showed when its window
+        // closed: a placeholder, if one was still there. It stays registered; say so,
+        // naming both ids (SRV-5).
+        if (before && this.custom_id && this.custom_id !== before) {
+            debugNotice(
+                `rekey\0${before}`,
+                `A <Translate> block registered as ${before} changed its structure after it settled and is now ${this.custom_id}. If ${before} was a placeholder (a Suspense fallback still showing when the settle window closed), it stays registered.`
+            );
+        }
     }
 
     /** Stop reacting to locale and catalog changes. Safe to call multiple times. */
@@ -471,7 +483,10 @@ export class Translate {
         if (this.isSingleRun()) {
             // One sentence with its values (VAR-3): recorded as its template, written
             // around the values the framework owns.
-            if (!found && records) tWithParams(token, category, { ...this.vars.values, ...(this.options.params ?? {}) });
+            if (!found && records) {
+                tWithParams(token, category, { ...this.vars.values, ...(this.options.params ?? {}) });
+                this.registeredId = this.custom_id;
+            }
             const run = this.findRun();
             if (run) this.writeRun(run, found ? fromBlock : (LangsysApp.Translations.lookup(token, category) ?? token));
             return;
@@ -484,6 +499,7 @@ export class Translate {
             resolved = this.applyParams(LangsysApp.Translations.lookup(token, category) ?? token);
         } else {
             resolved = tWithParams(token, category, this.options.params ?? {});
+            this.registeredId = this.custom_id;
         }
 
         // Write the ONE text node. Never `innerText`, which replaces every
@@ -779,6 +795,7 @@ export class Translate {
             logger.log('Skipping content block registration: the host sits in a resolved scope');
         } else {
             markBlockHandled(this.custom_id, 'mount');
+            this.registeredId = this.custom_id;
             void registerContentBlock(contentBlock);
         }
 

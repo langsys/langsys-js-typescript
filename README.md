@@ -292,7 +292,7 @@ const handle = new Translate(article, { category: 'Blog', label: 'Welcome post' 
 handle.destroy();
 ```
 
-What a block shows when it mounts is taken as provisional. A framework can mount a block with a placeholder in it, a Suspense fallback or a lazy child's spinner, and swap the real content in a moment later. `Translate` renders at once, but registers only once the element's structure has been quiet for 250ms. If the structure changes later, it reads the block again, under the id its new content derives (your own `custom_id` stays), and registers that. Only structure counts: a framework updating a value's text never re-keys a block. A block whose placeholder outlives the window has already registered under the placeholder's id, and that registration stays. A list inside a block that grows or shrinks re-keys it, as mounting the block in that state would.
+What a block shows when it mounts is taken as provisional. A framework can mount a block with a placeholder in it, a Suspense fallback or a lazy child's spinner, and swap the real content in a moment later. `Translate` renders at once, but registers only once the element's structure has been quiet for 250ms. If the structure changes later, it reads the block again, under the id its new content derives (your own `custom_id` stays), and registers that. Only structure counts: a framework updating a value's text never re-keys a block. A block whose placeholder outlives the window has already registered under the placeholder's id, and that registration stays; with `debug` on, a notice names both ids when the block re-keys. A list inside a block that grows or shrinks re-keys it, as mounting the block in that state would.
 
 Attributes honored on contained elements:
 
