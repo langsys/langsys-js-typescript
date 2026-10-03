@@ -96,9 +96,10 @@ describe('it can say no, and says yes under the condition that permits it', () =
         expect((await catalog('k-read')).status).toBe(200);
     });
 
-    it('a suspended subscription and an exhausted usage balance are 402', async () => {
+    it('a suspended subscription is 402 for a write key and 403 for any other; an exhausted usage balance is 402', async () => {
         await fx.seed({ ...BASE_SEED, projects: [{ ...BASE_SEED.projects[0], subscription_suspended: true }, BASE_SEED.projects[1]] });
-        expect((await catalog('k-read')).status).toBe(402);
+        expect((await catalog('k-write')).status).toBe(402);
+        expect((await catalog('k-read')).status).toBe(403);
         await fx.seed({ ...BASE_SEED, keys: [{ key: 'k-broke', project: 'p1', type: 'write', usage_exhausted: true }] });
         expect((await catalog('k-broke')).status).toBe(402);
     });
@@ -284,6 +285,97 @@ describe('translations sent with the phrases are stored as human translations (M
     it('uncapped by default', async () => {
         const res = await register('k-write', [withTranslations('Hello there friend', { 'es-es': 'Hola amigo' })]);
         expect(res.body.data).toEqual({ human_translations_saved: 1, human_translations_skipped: 0 });
+    });
+});
+
+describe('errors are the backend’s at langsys main 17a191cd: status, envelope, code, and check order', () => {
+    const code = (res: { body: { error: { code: string } } }) => res.body.error.code;
+    const E = (c: string, message: string) => ({ status: false, error: { message, code: c, template: message } });
+
+    it('every refusal on the API-key path names its case', async () => {
+        expect((await catalog('')).body).toEqual(E('unauthenticated', 'Unauthenticated.'));
+        expect((await api('/authorize-project/p1')).body).toEqual(E('unauthenticated', 'Unauthenticated.'));
+        expect((await catalog('nope')).body).toEqual(E('api_key_invalid', 'Invalid API key'));
+        expect(code(await catalog('k-orphan'))).toBe('api_key_invalid');
+        expect((await api('/authorize-project/p2', { key: 'k-read' })).body).toEqual(E('api_key_invalid', 'Invalid API key'));
+        expect((await register('k-read', [phrase('Refused')])).body).toEqual(E('api_key_write_not_allowed', 'This API key cannot make write requests.'));
+        expect((await catalog('k-read', 'p2')).body).toEqual(E('forbidden', 'Forbidden.'));
+    });
+
+    it('a suspended project tells a write key why, and any other key only that it is unavailable', async () => {
+        await fx.seed({ ...BASE_SEED, projects: [{ ...BASE_SEED.projects[0], subscription_suspended: true }, BASE_SEED.projects[1]] });
+        expect(code(await catalog('k-write'))).toBe('subscription_suspended');
+        expect((await catalog('k-read')).body).toEqual(E('project_unavailable', 'This project is not available. Its owners can see why in Langsys.'));
+    });
+
+    it('an exhausted balance is api_units_limit_exceeded, and wins over a missing project_id', async () => {
+        await fx.seed({ ...BASE_SEED, keys: [{ key: 'k-broke', project: 'p1', type: 'write', usage_exhausted: true }] });
+        const res = await api('/translatable-items', { key: 'k-broke', body: { translatable_items: [] } });
+        expect(res.status).toBe(402);
+        expect(code(res)).toBe('api_units_limit_exceeded');
+    });
+
+    it('an unknown project is 404 before the key is checked, on every route; no key at all is 401 first on the catalog', async () => {
+        expect((await catalog('nope', 'p-unknown')).body).toEqual(E('not_found', 'Resource not found'));
+        expect((await api('/authorize-project/p-unknown', { key: 'nope' })).status).toBe(404);
+        expect((await catalog('', 'p-unknown')).status).toBe(401);
+    });
+
+    it('validation failures carry one entry per failed rule', async () => {
+        const noLocale = await api('/translations?project_id=p1', { key: 'k-read' });
+        expect(noLocale.status).toBe(422);
+        expect(noLocale.body.error).toMatchObject({ code: 'validation_failed', errors: [{ field: 'locale', code: 'invalid_option', message: 'The locale is not valid.' }] });
+        const both = await api('/translatable-items', { key: 'k-write', body: { translatable_items: 'x' } });
+        expect(both.body.error.errors).toEqual([
+            { field: 'project_id', code: 'required', message: 'The project is required.', template: 'The project is required.' },
+            { field: 'translatable_items', code: 'invalid_type', message: 'The translatable items must be a list.', template: 'The translatable items must be a list.' },
+        ]);
+        const noUrl = await api('/discovery/hint', { body: {} });
+        expect(noUrl.body.error.errors).toEqual([{ field: 'page_url', code: 'required', message: 'The page URL is required.', template: 'The page URL is required.' }]);
+        const long = await api('/discovery/hint', { body: { page_url: 'not a url ' + 'x'.repeat(2050) } });
+        expect(long.body.error.errors.map((e: { code: string }) => e.code)).toEqual(['invalid_format', 'too_long']);
+        expect(long.body.error.errors[1]).toMatchObject({ template: 'The page URL must not be longer than {max} characters.', params: { max: 2048 } });
+    });
+
+    it('an over-limit batch is batch_size_exceeded, with its limit and count as details', async () => {
+        const res = await register('k-write', [phrase('a'), phrase('b'), phrase('c'), phrase('d')]);
+        expect(res.body).toEqual({
+            status: false,
+            error: {
+                message: 'The request has more translatable items than one batch allows.',
+                code: 'batch_size_exceeded',
+                template: 'The request has more translatable items than one batch allows.',
+                details: { limit: 3, item_count: 4 },
+            },
+        });
+    });
+
+    it('a body that is not JSON reads as empty, and the route’s own validation answers', async () => {
+        const res = await fetch(fx.baseUrl + '/discovery/hint', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{not json' });
+        expect(res.status).toBe(422);
+        expect((await res.json()).error.errors[0]).toMatchObject({ field: 'page_url', code: 'required' });
+    });
+
+    it('a known route with the wrong method is 405, and an unknown route 404', async () => {
+        expect((await api('/translatable-items', { key: 'k-write' })).body).toEqual(E('method_not_allowed', 'The requested method is not allowed for this route.'));
+        expect(code(await api('/no-such-route', { key: 'k-write' }))).toBe('not_found');
+    });
+
+    it('the duplicate guard and the hint throttle name their cases', async () => {
+        await fx.seed({ ...BASE_SEED, keys: [...BASE_SEED.keys, { key: 'k-dup', project: 'p1', type: 'read', duplicate_guard: { max_attempts: 1, window_seconds: 60 } }] });
+        await catalog('k-dup');
+        expect(code(await catalog('k-dup'))).toBe('duplicate_request');
+        await fx.seed({ ...BASE_SEED, config: { ...BASE_SEED.config, hint_rate_per_minute: 1 } });
+        await hint(undefined, 'https://www.site.local/a');
+        expect((await hint(undefined, 'https://www.site.local/b')).body).toEqual(E('too_many_requests', 'Too many requests. Please try again later.'));
+    });
+
+    it('an injected status renders as the case the backend maps it to, and any other as internal_error', async () => {
+        await fx.seed({ ...BASE_SEED, faults: [{ method: 'GET', path: '/translations', status: 503 }, { method: 'GET', path: '/translations', status: 418 }] });
+        const unavailable = await catalog('k-read');
+        expect([unavailable.status, code(unavailable)]).toEqual([503, 'service_unavailable']);
+        const teapot = await catalog('k-read');
+        expect([teapot.status, code(teapot)]).toEqual([418, 'internal_error']);
     });
 });
 
