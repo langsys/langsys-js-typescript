@@ -41,9 +41,8 @@
             // then the module body silently never runs. This build inlines its deps.
             import { LangsysApp, LangsysAppAPI, Translate, createSignal } from '../dist/langsys.browser.mjs';
 
-            // Defaults to https://api.langsys.dev/api. Uncomment to point at a local
-            // instance, a staging host, or a test double — must be called BEFORE
-            // init(). There is no `apiUrl` option on init(); this is it.
+            // Defaults to https://api.langsys.dev/api. To point at a local instance or a
+            // staging host, pass `apiUrl` to init() below, or call this before init().
             // LangsysAppAPI.setBaseUrl('http://langsys2.test/api');
             void LangsysAppAPI;
 
