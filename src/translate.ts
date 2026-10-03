@@ -234,6 +234,7 @@ export class Translate {
      */
     private reenterAfterNavigation(): void {
         if (!this.parseComplete || !this.element?.isConnected || this.adoptedId || !this.registers()) return;
+        if (this.hasUnreadChange()) return;
         const { category = '' } = this.options;
         if (this.usesSingleTextNodeFastPath()) {
             this.renderSingleToken(category);
@@ -295,6 +296,20 @@ export class Translate {
         if (!this.isUnitStructure(record.target)) return false;
         if (record.type === 'childList') return true;
         return !this.settled && record.target.nodeValue !== this.written.get(record.target);
+    }
+
+    /**
+     * Whether the unit changed since its tokens were read, counting changes the
+     * observer has not delivered yet: a framework's swap and a catalog arriving can
+     * fall in the same task, before the observer's callback runs.
+     */
+    private hasUnreadChange(): boolean {
+        const pending = this.observer?.takeRecords() ?? [];
+        if (pending.some((record) => this.isUnitChange(record))) {
+            this.dirty = true;
+            this.armSettle();
+        }
+        return this.dirty;
     }
 
     /** Write a text node, remembering the text, so the observer can tell this write from a framework's. */
@@ -411,6 +426,10 @@ export class Translate {
 
     private translateUpdate(currentLocale: string) {
         if (!this.element?.innerHTML || !this.parseComplete) return;
+        // The tokens were read before a change still waiting to be re-read: rendering
+        // them now would write the old content into the nodes that replaced it, and
+        // the re-read would then register that. The re-read renders instead (SRV-5).
+        if (this.hasUnreadChange()) return;
         if (this.lastTranslatedLocale === currentLocale) return;
 
         const { category = '' } = this.options;

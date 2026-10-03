@@ -127,6 +127,41 @@ describe('SRV-5: a placeholder swapped out inside the settle window never regist
         expect(blocks()).toEqual([['Hello {name}', 'Bye']]);
     });
 
+    it('a fallback element replaced, then the catalog landing inside the window: the content stays and registers (Vue)', async () => {
+        // Vue's Suspense removes the fallback <p> and inserts the content's <p>. A catalog
+        // arriving before the window closes re-renders the block; rendering its tokens, read
+        // from the fallback, wrote the fallback's text into the new <p>, and the re-read at
+        // the window's close then registered that text, which also stayed on the page.
+        const host = mount('<p>Loading the fast panel…</p>');
+        await vi.advanceTimersByTimeAsync(150);
+        resolveFallback(host, '<p>Delivered within the settle window</p>');
+        await vi.advanceTimersByTimeAsync(100);
+        catalog({});
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(host.textContent).toBe('Delivered within the settle window');
+        expect(phrases()).toEqual(['Delivered within the settle window']);
+    });
+
+    it('the same, with the catalog landing in the same task as the swap, before the observer has run', async () => {
+        const host = mount('<p>Loading the fast panel…</p>');
+        await vi.advanceTimersByTimeAsync(150);
+        resolveFallback(host, '<p>Delivered within the settle window</p>');
+        catalog({});
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(host.textContent).toBe('Delivered within the settle window');
+        expect(phrases()).toEqual(['Delivered within the settle window']);
+    });
+
+    it('a navigation inside the window after the swap does not record the fallback either', async () => {
+        const host = mount('<p>Loading the fast panel…</p>');
+        await vi.advanceTimersByTimeAsync(150);
+        resolveFallback(host, '<p>Delivered within the settle window</p>');
+        LangsysApp.notifyNavigation();
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(host.textContent).toBe('Delivered within the settle window');
+        expect(phrases()).toEqual(['Delivered within the settle window']);
+    });
+
     it('a single-token fallback swapped for the content registers only the content', async () => {
         const host = mount('<p>Loading spinner</p>');
         await vi.advanceTimersByTimeAsync(100);
