@@ -22,8 +22,8 @@ import { Translate } from '../src/translate.js';
 type Item = { type: string; phrase?: string; phrases?: Array<{ phrase: string }> };
 let sent: Item[] = [];
 const live: Translate[] = [];
-// Past the settle window (SRV-5, 250ms) and the flush debounce after it (400ms).
-const settle = () => vi.advanceTimersByTimeAsync(1000);
+// Past the settle window (SRV-5, 500ms) and the flush debounce after it (400ms).
+const settle = () => vi.advanceTimersByTimeAsync(1200);
 
 /**
  * Mount `html` as the content of a `<Translate>` host: the host is the wrapper, and

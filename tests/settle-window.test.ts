@@ -14,7 +14,7 @@ import { Translate } from '../src/translate.js';
  * SRV-5: the content a `<Translate>` shows at mount is provisional. A framework
  * mounts a block with a placeholder in it (a Suspense fallback, a lazy child's
  * spinner) and swaps in the real content a moment later; the block registers what
- * it shows once its structure has been quiet for the settle window (250ms), and a
+ * it shows once its structure has been quiet for the settle window (500ms), and a
  * later structural change re-derives it. Text changes never re-key it.
  */
 
@@ -82,17 +82,56 @@ describe('SRV-5: a placeholder swapped out inside the settle window never regist
         const host = mount('<p>Intro one</p><p>Loading spinner</p>');
         await vi.advanceTimersByTimeAsync(100);
         resolveFallback(host, '<p>Real content</p>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         expect(blocks()).toEqual([['Intro one', 'Real content']]);
         expect(JSON.stringify(sent)).not.toContain('Loading spinner');
         expect(host.getAttribute('data-ls-contentblock')).toBe(generateCustomId('UI', ['Intro one', 'Real content']));
+    });
+
+    it('a fallback React holds for its 300ms throttle registers nothing, and no re-key is reported', async () => {
+        // React's FALLBACK_THROTTLE_MS: a shown fallback stays up at least 300ms even when the
+        // lazy child resolves sooner (measured in Chromium: content at ~307ms for a child ready at 100ms).
+        const log = vi.mocked(console.log);
+        logger.debugEnabled = true;
+        settleNotices();
+        try {
+            const host = mount('<p>Intro one</p><p>Loading spinner</p>');
+            await vi.advanceTimersByTimeAsync(310);
+            resolveFallback(host, '<p>Real content</p>');
+            await vi.advanceTimersByTimeAsync(1500);
+            expect(blocks()).toEqual([['Intro one', 'Real content']]);
+            expect(log.mock.calls.map((call) => call.join(' ')).filter((line) => line.includes('changed its structure after it settled'))).toEqual([]);
+        } finally {
+            logger.debugEnabled = false;
+        }
+    });
+
+    it('a fallback whose text is swapped in place inside the window registers only the content (Vue)', async () => {
+        // The same element kept and its text replaced: no child list changes, so only the
+        // text says the block now shows its content.
+        const host = mount('<h3>Panel</h3><p>Loading the fast panel…</p>');
+        await vi.advanceTimersByTimeAsync(130);
+        host.querySelector('p')!.firstChild!.nodeValue = 'Delivered within the settle window';
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(blocks()).toEqual([['Panel', 'Delivered within the settle window']]);
+        expect(JSON.stringify(sent)).not.toContain('Loading the fast panel');
+    });
+
+    it('the text this class writes inside the window is not a change: params render, and the template registers', async () => {
+        const host = document.createElement('div');
+        host.innerHTML = '<p>Hello {name}</p><p>Bye</p>';
+        document.body.appendChild(host);
+        live.push(new Translate(host, { category: 'UI', params: { name: 'Ana' } }));
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(host.querySelector('p')!.textContent).toBe('Hello Ana');
+        expect(blocks()).toEqual([['Hello {name}', 'Bye']]);
     });
 
     it('a single-token fallback swapped for the content registers only the content', async () => {
         const host = mount('<p>Loading spinner</p>');
         await vi.advanceTimersByTimeAsync(100);
         resolveFallback(host, '<p>Real content</p>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         expect(phrases()).toEqual(['Real content']);
     });
 
@@ -101,7 +140,7 @@ describe('SRV-5: a placeholder swapped out inside the settle window never regist
         const host = mount('<p>Intro one</p><p>Loading spinner</p>');
         await vi.advanceTimersByTimeAsync(100);
         resolveFallback(host, '<p>Real content</p>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         expect(host.textContent).toBe('Intro unoContenido real');
         expect(sent).toEqual([]);
     });
@@ -110,9 +149,9 @@ describe('SRV-5: a placeholder swapped out inside the settle window never regist
 describe('SRV-5: a structural change after the window re-keys the block', () => {
     it('a placeholder that outlives the window registers, and the content registers when it arrives', async () => {
         const host = mount('<p>Intro one</p><p>Loading spinner</p>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         resolveFallback(host, '<p>Real content</p>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         // The provisional id was sent before the content existed; the core cannot take it back.
         expect(blocks()).toEqual([
             ['Intro one', 'Loading spinner'],
@@ -127,9 +166,9 @@ describe('SRV-5: a structural change after the window re-keys the block', () => 
         settleNotices();
         try {
             const host = mount('<p>Intro one</p><p>Loading spinner</p>');
-            await vi.advanceTimersByTimeAsync(1000);
+            await vi.advanceTimersByTimeAsync(1500);
             resolveFallback(host, '<p>Real content</p>');
-            await vi.advanceTimersByTimeAsync(1000);
+            await vi.advanceTimersByTimeAsync(1500);
             const said = log.mock.calls.map((call) => call.join(' ')).filter((line) => line.includes('changed its structure after it settled'));
             expect(said).toHaveLength(1);
             expect(said[0]).toContain(generateCustomId('UI', ['Intro one', 'Loading spinner']));
@@ -147,7 +186,7 @@ describe('SRV-5: a structural change after the window re-keys the block', () => 
             const host = mount('<p>Intro one</p><p>Loading spinner</p>');
             await vi.advanceTimersByTimeAsync(100);
             resolveFallback(host, '<p>Real content</p>');
-            await vi.advanceTimersByTimeAsync(1000);
+            await vi.advanceTimersByTimeAsync(1500);
             expect(log.mock.calls.map((call) => call.join(' ')).filter((line) => line.includes('changed its structure after it settled'))).toEqual([]);
         } finally {
             logger.debugEnabled = false;
@@ -156,11 +195,11 @@ describe('SRV-5: a structural change after the window re-keys the block', () => 
 
     it('the hazard, pinned: a keyed list whose length changes re-keys, as a fresh mount of that state would', async () => {
         const host = mount('<ul><li>One</li><li>Two</li></ul>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         const li = document.createElement('li');
         li.textContent = 'Three';
         host.querySelector('ul')!.appendChild(li);
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         expect(blocks()).toEqual([
             ['One', 'Two'],
             ['One', 'Two', 'Three'],
@@ -174,7 +213,7 @@ describe('SRV-5: a structural change after the window re-keys the block', () => 
         live.push(new Translate(host, { category: 'UI', custom_id: 'pricing-hero' }));
         await vi.advanceTimersByTimeAsync(100);
         resolveFallback(host, '<p>Real content</p>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         expect(sent.map((i) => [i.custom_id, (i.phrases ?? []).map((p) => p.phrase)])).toEqual([['pricing-hero', ['Intro one', 'Real content']]]);
     });
 });
@@ -182,9 +221,9 @@ describe('SRV-5: a structural change after the window re-keys the block', () => 
 describe('SRV-5: what the observer leaves alone', () => {
     it('a text change (a value the framework updates) never re-keys the block', async () => {
         const host = mount('<p>Hello</p><p>You have 3 items</p>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         host.querySelector('p:last-child')!.firstChild!.nodeValue = 'You have 4 items';
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         expect(blocks()).toEqual([['Hello', 'You have 3 items']]);
     });
 
@@ -192,9 +231,9 @@ describe('SRV-5: what the observer leaves alone', () => {
         const id = generateCustomId('UI', ['A1', 'A2']);
         catalog({ [id]: { A1: 'Ae1', A2: 'Ae2' } });
         const host = mount('<p>A1</p><p>A2</p>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         catalog({ [id]: { A1: 'Af1', A2: 'Af2' } }, 'fr-fr');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         expect(host.textContent).toBe('Af1Af2');
         expect(sent).toEqual([]);
         expect(host.getAttribute('data-ls-contentblock')).toBe(id);
@@ -202,12 +241,12 @@ describe('SRV-5: what the observer leaves alone', () => {
 
     it('a nested host’s own changes are its own', async () => {
         const host = mount('<p>A1</p><p>A2</p><section data-ls-contentblock><p>B1</p><p>B2</p></section>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         const outer = sent.filter((i) => i.custom_id === generateCustomId('UI', ['A1', 'A2']));
         const p = document.createElement('p');
         p.textContent = 'B3';
         host.querySelector('section')!.appendChild(p);
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         expect(sent.filter((i) => i.custom_id === generateCustomId('UI', ['A1', 'A2']))).toEqual(outer);
     });
 
@@ -220,17 +259,17 @@ describe('SRV-5: what the observer leaves alone', () => {
         live.push(new Translate(host, { category: 'UI' }));
         await vi.advanceTimersByTimeAsync(100);
         host.appendChild(Object.assign(document.createElement('p'), { textContent: 'Tres' }));
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         expect(sent).toEqual([]);
     });
 
     it('destroy() stops it', async () => {
         const host = mount('<p>Intro one</p><p>Loading spinner</p>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         live.pop()!.destroy();
         sent = [];
         resolveFallback(host, '<p>Real content</p>');
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1500);
         expect(sent).toEqual([]);
     });
 });

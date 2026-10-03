@@ -29,8 +29,8 @@ import { Translate } from '../src/translate.js';
 const SPANISH = 'Hola mundo';
 const priv = () => LangsysApp.Translations as unknown as { missingTokens: Array<{ token: string }> };
 const queue = () => priv().missingTokens.map((m) => m.token);
-// Past the settle window (SRV-5, 250ms) and the flush debounce after it (400ms).
-const settle = () => vi.advanceTimersByTimeAsync(1000);
+// Past the settle window (SRV-5, 500ms) and the flush debounce after it (400ms).
+const settle = () => vi.advanceTimersByTimeAsync(1200);
 
 let posted: string[] = [];
 let hinted: string[] = [];

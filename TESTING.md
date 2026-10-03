@@ -124,7 +124,7 @@ Suites: `request-scope`, `scope-from-seed`, `contract-served-block`.
 **The settle observer.** A block that mounts showing a placeholder registers the content it
 settles on. On a page with a write key (in the example page, inside its module script, where
 `Translate` is imported), mount `new Translate(el, { category: 'UI' })` on
-`<div><p>Intro</p><p>Loading…</p></div>`, then replace the second `<p>` within 250ms
+`<div><p>Intro</p><p>Loading…</p></div>`, then replace the second `<p>` within 500ms
 (`setTimeout(() => el.lastElementChild.replaceWith(Object.assign(document.createElement('p'), { textContent: 'Real content' })), 100)`):
 only the block with the real content is registered. Replace it
 after a second instead, with `debug: true`, and the console names both ids: the one first

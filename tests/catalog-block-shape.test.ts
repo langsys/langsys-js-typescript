@@ -28,8 +28,8 @@ const tokensOf = (html: string) => {
     h.innerHTML = html;
     return tokenizeElement(h).tokens;
 };
-// Past the settle window (SRV-5, 250ms) and the flush debounce after it (400ms).
-const settle = () => new Promise((r) => setTimeout(r, 700));
+// Past the settle window (SRV-5, 500ms) and the flush debounce after it (400ms).
+const settle = () => new Promise((r) => setTimeout(r, 1000));
 
 beforeEach(() => {
     sTranslations.set(bare());

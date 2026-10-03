@@ -67,8 +67,12 @@ type iElement = HTMLElement & { originalAttributes?: Record<string, string> };
  * How long a host's subtree must stay structurally quiet before the content it
  * shows is taken as settled (SRV-5): a lazy child resolving inside the window
  * replaces a loading placeholder before anything registers.
+ *
+ * Above React's `FALLBACK_THROTTLE_MS` (300), with margin: React keeps a Suspense
+ * fallback it has shown on screen for at least 300ms, even when the content is
+ * ready sooner, so a shorter window closes on the fallback and keys the block on it.
  */
-const SETTLE_MS = 250;
+const SETTLE_MS = 500;
 
 /** The id this SDK stamped on each host this session, so our own stamp is never read as a renderer's. */
 const ownStamps = new WeakMap<Element, string>();
@@ -141,6 +145,8 @@ export class Translate {
     private derivedId = true;
     /** The id this instance last registered under, so a re-key after the window can be reported. */
     private registeredId: string | null = null;
+    /** The text this class last wrote into each text node (see `isUnitChange`). */
+    private written = new WeakMap<Node, string>();
 
     /**
      * @param byWalk Internal: set when an enclosing walk creates this instance for
@@ -270,12 +276,32 @@ export class Translate {
             return;
         }
         this.observer = new MutationObserver((records) => {
-            if (!records.some((record) => this.isUnitStructure(record.target))) return;
+            if (!records.some((record) => this.isUnitChange(record))) return;
             this.dirty = true;
             this.armSettle();
         });
-        this.observer.observe(this.element, { childList: true, subtree: true });
+        this.observer.observe(this.element, { childList: true, subtree: true, characterData: true });
         this.armSettle();
+    }
+
+    /**
+     * Whether a mutation changes what this unit shows. A changed child list always
+     * does. A changed text does only until the window first closes, and only when it
+     * is not the text this class wrote: a framework can swap a placeholder's text for
+     * its content in place, and what registers is what the block shows when the
+     * window closes. After that, a text change is a value update and never re-keys.
+     */
+    private isUnitChange(record: MutationRecord): boolean {
+        if (!this.isUnitStructure(record.target)) return false;
+        if (record.type === 'childList') return true;
+        return !this.settled && record.target.nodeValue !== this.written.get(record.target);
+    }
+
+    /** Write a text node, remembering the text, so the observer can tell this write from a framework's. */
+    private writeText(node: Node, text: string): void {
+        if (node.nodeValue === text) return;
+        this.written.set(node, text);
+        node.nodeValue = text;
     }
 
     /**
@@ -522,7 +548,7 @@ export class Translate {
             );
             return;
         }
-        textNode.nodeValue = resolved;
+        this.writeText(textNode, resolved);
     }
 
     /**
@@ -624,7 +650,7 @@ export class Translate {
             text: (node) => this.runOriginal(node as unknown as Node),
             value: (marker) => this.markedValue(marker as unknown as VarMarker<Node>),
         });
-        for (const [node, text] of writes) if (node.nodeValue !== text) node.nodeValue = text;
+        for (const [node, text] of writes) this.writeText(node as unknown as Node, text);
     }
 
     /** A marked run inside a block: its translation under the block's id, else its source. */
@@ -858,9 +884,9 @@ export class Translate {
             if (translation && contentToken && node.originalNodeValue) {
                 // Replacer fn so `$`-patterns in translations/params stay literal.
                 const resolved = this.applyParams(translation);
-                node.nodeValue = node.originalNodeValue.replace(contentToken, () => resolved);
+                this.writeText(node, node.originalNodeValue.replace(contentToken, () => resolved));
             } else if (node.originalNodeValue) {
-                node.nodeValue = this.applyParams(node.originalNodeValue);
+                this.writeText(node, this.applyParams(node.originalNodeValue));
             }
         }
     }
@@ -937,7 +963,7 @@ export class Translate {
                     // reference to it stays live; `textContent =` would replace it.
                     const only = option.childNodes.length === 1 ? option.firstChild : null;
                     if (only && only.nodeType === Node.TEXT_NODE) {
-                        if (only.nodeValue !== text) only.nodeValue = text;
+                        this.writeText(only, text);
                     } else {
                         option.textContent = text;
                     }
