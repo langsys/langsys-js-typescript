@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     generateCustomId,
     isContentBlockKnown,
+    legacyTokenizeElement,
     registerContentBlock,
     tokenizeElement,
 } from '../src/content-block.js';
@@ -160,18 +161,13 @@ describe('tokenizeElement — token harvesting', () => {
         expect(tokens).toEqual(['Keep']);
     });
 
-    it('KNOWN DEFECT: double-counts <select> option text', () => {
-        // `_tokenizeAttributes` harvests option text via querySelectorAll, and
-        // then `_walkForTokens` recurses into those same options and pushes
-        // their text nodes again — so every option is registered twice.
-        //
-        // Pinned as-is rather than fixed because tokens feed generateCustomId:
-        // de-duplicating changes the custom_id of every content block that
-        // contains a select, orphaning its existing translations. Fix and
-        // re-key deliberately, not incidentally. This test will fail loudly
-        // when that happens, which is the point.
-        expect(tokenizeElement(mount('<select><option>Red</option><option>Blue</option></select>')).tokens)
-            .toEqual(['Red', 'Blue', 'Red', 'Blue']); // should be ['Red', 'Blue']
+    it('harvests <select> option text once', () => {
+        // Fixed and re-keyed deliberately in 0.6.3: option text used to be
+        // pushed twice. legacyTokenizeElement keeps the old shape so lookups
+        // can still find blocks registered under it.
+        const select = '<select><option>Red</option><option>Blue</option></select>';
+        expect(tokenizeElement(mount(select)).tokens).toEqual(['Red', 'Blue']);
+        expect(legacyTokenizeElement(mount(select))).toEqual(['Red', 'Blue', 'Red', 'Blue']);
     });
 
     it('walks nested elements', () => {
