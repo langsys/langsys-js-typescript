@@ -207,8 +207,8 @@ describe('WIRE-4: requireCredentials', () => {
         served.innerHTML = '<div data-ls-contentblock="0123456789abcdef0123456789abcdef"><p>Hola.</p><p>Adiós.</p></div>';
         document.body.append(phraseHost, blockHost, served);
 
-        // `register: false`: a phrase that never calls t() after the wait still rejects.
-        new Phrase(phraseHost, { register: false });
+        // A registering phrase calls t() after the wait, and t() rejects.
+        new Phrase(phraseHost);
         new Translate(blockHost);
         new Translate(served.firstElementChild as HTMLElement);
         await vi.advanceTimersByTimeAsync(100);
@@ -220,6 +220,41 @@ describe('WIRE-4: requireCredentials', () => {
         expect(byPhrase).toHaveLength(1);
         expect(byTranslate).toHaveLength(2);
         for (const error of [...byPhrase, ...byTranslate]) expect(error).toBeInstanceOf(LangsysConfigurationError);
+    });
+
+    it('a register: false block is a read on every path and never rejects, mounted before init() or after', async () => {
+        const { LangsysApp, createSignal } = await page();
+        const { Phrase } = await import('../src/phrase.js');
+        const { Translate } = await import('../src/translate.js');
+        const { registerBlock } = await import('../src/block-tree.js');
+        const rejected: unknown[] = [];
+        await rejectionsOf(Phrase.prototype, '_init', rejected);
+        await rejectionsOf(Translate.prototype, 'tokenizeContent', rejected);
+        const tree = [{ tag: 'p', attrs: {}, children: [{ text: 'First sentence.' }] }, { tag: 'p', attrs: {}, children: [{ text: 'Second sentence.' }] }];
+        const mountAll = () => {
+            const multi = document.createElement('div');
+            multi.innerHTML = '<p>First sentence.</p><p>Second sentence.</p>';
+            const single = document.createElement('p');
+            single.textContent = 'One sentence.';
+            const phrase = document.createElement('p');
+            phrase.textContent = 'Welcome back';
+            document.body.append(multi, single, phrase);
+            new Translate(multi, { register: false });
+            new Translate(single, { register: false });
+            new Phrase(phrase, { register: false });
+            return [
+                registerBlock(tree, { register: false }),
+                registerBlock({ custom_id: 'x', category: '', tokens: ['First sentence.'], shape: [], register: false } as never),
+            ];
+        };
+
+        const before = mountAll();
+        await LangsysApp.init({ projectid: 'p', key: '', UserLocaleStore: createSignal('en-us'), requireCredentials: true });
+        const after = mountAll();
+        await vi.advanceTimersByTimeAsync(2_000);
+
+        await expect(Promise.all([...before, ...after])).resolves.toBeDefined();
+        expect(rejected).toEqual([]);
     });
 
     it('control: without it, a block registered before init() resolves once init() refuses', async () => {
@@ -314,15 +349,19 @@ describe('WIRE-4: requireCredentials on the component path', () => {
         phraseHost.textContent = 'Welcome back';
         const blockHost = document.createElement('div');
         blockHost.innerHTML = '<p>First sentence.</p><p>Second sentence.</p>';
-        document.body.append(phraseHost, blockHost);
+        const singleHost = document.createElement('p');
+        singleHost.textContent = 'One sentence.';
+        document.body.append(phraseHost, blockHost, singleHost);
 
         expect(() => new Phrase(phraseHost)).not.toThrow();
         expect(() => new Translate(blockHost)).not.toThrow();
+        expect(() => new Translate(singleHost)).not.toThrow();
         await vi.advanceTimersByTimeAsync(2_000);
 
-        // A multi-phrase block never calls t(), so its rejection is Translate's own check.
+        // A multi-phrase block never calls t(), and a single-phrase one calls it only once
+        // it records, so both rejections are Translate's own check.
         expect(byPhrase.length).toBeGreaterThan(0);
-        expect(byTranslate.length).toBeGreaterThan(0);
+        expect(byTranslate).toHaveLength(2);
         for (const error of [...byPhrase, ...byTranslate]) expect(error).toBeInstanceOf(LangsysConfigurationError);
         expect(phraseHost.textContent).toBe('Welcome back');
         expect(blockHost.textContent).toBe('First sentence.Second sentence.');

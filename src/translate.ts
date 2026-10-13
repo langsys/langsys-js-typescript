@@ -683,10 +683,6 @@ export class Translate {
     }
 
     private async tokenizeContent(): Promise<boolean> {
-        // WIRE-4: under `requireCredentials` an unconfigured client fails loudly here, as a
-        // rejected render and never as a throw from the constructor. A multi-phrase block
-        // never calls `t()`, so without this it would render source text silently.
-        LangsysApp.Translations.assertConfigured();
         if (this.isTokenizing) return false;
         if (!this.element || !this.element.childNodes.length) {
             this.parseComplete = true;
@@ -703,6 +699,19 @@ export class Translate {
         const { tokens, content, vars } = tokenizeElement(this.element);
         this.tokens = tokens;
         this.vars = vars;
+        // WIRE-4: under `requireCredentials` an unconfigured client fails loudly here, as a
+        // rejected render and never as a throw from the constructor. A multi-phrase block
+        // never calls `t()`, so without this it would render source text silently. A block
+        // that registers nothing (`register: false`, or only value markers) is a read and
+        // never rejects.
+        if (this.registers()) {
+            try {
+                LangsysApp.Translations.assertConfigured();
+            } catch (error) {
+                this.isTokenizing = false;
+                throw error;
+            }
+        }
         this.checkParams();
         this.takeOverUnmanagedHosts();
 
@@ -747,7 +756,7 @@ export class Translate {
             // A stamped identity: render from the catalog entry under it, or leave the
             // source text, and register nothing (MARK-3).
             await LangsysApp.Translations.ready();
-            LangsysApp.Translations.assertConfigured();
+            if (this.registers()) LangsysApp.Translations.assertConfigured();
             if (this.element) {
                 if (this.recoverServedSources(false)) this.translate(Array.from(this.element.childNodes));
                 // The host shows this locale either way: rendered now, or as served.
@@ -769,7 +778,7 @@ export class Translate {
         await LangsysApp.Translations.ready();
         // Again after the wait: a block mounted before `init()` passed the first check,
         // and under `requireCredentials` a refusing `init()` must still reach it (WIRE-4).
-        LangsysApp.Translations.assertConfigured();
+        if (this.registers()) LangsysApp.Translations.assertConfigured();
 
         if (isContentBlockKnown(contentBlock.category, this.custom_id)) {
             // Backend already has this block — translate locally, no POST.

@@ -127,11 +127,11 @@ To fail loudly instead, pass `requireCredentials: true`: `t()` then throws
 `Phrase` and `Translate` still construct without throwing, and their
 asynchronous render rejects with that error instead, as does the promise
 `registerBlock` returns for a block rendered as a tree. That holds for a
-component mounted before `init()` too: it rejects once `init()` refuses. A block rendered
-through `renderBlock` alone and never passed to `registerBlock`, as a binding
-may do with `register: false` content, is a read that never reaches `t()`, so
-it shows its source text without failing: the option fails on the first `t()`
-call or registration.
+component mounted before `init()` too: it rejects once `init()` refuses. The
+option fails on the first `t()` call or registration, so a block that only
+reads never fails: one with `register: false`, on any path, and one rendered
+through `renderBlock` alone and never passed to `registerBlock`. Both show their
+source text.
 
 ## Quick start
 
@@ -658,7 +658,7 @@ A translation that keeps each placeholder once and in order is written around th
 
 Placeholder names come from the source expression (`derivePlaceholderNames`): `user.firstName` → `first_name`, `items.length` → `items_count`, `price.value` → `price`. The shared vectors are in `tests/fixtures/var-naming-vectors.json`.
 
-A `Translate` or `Phrase` created with `register: false`, and `registerBlock(nodes, { register: false })`, renders from the catalog and registers nothing. A binding uses this for content it cannot name without its transform, and one debug notice says so.
+A `Translate` or `Phrase` created with `register: false`, and `registerBlock(nodes, { register: false })`, renders from the catalog and registers nothing. A binding uses this for content it cannot name without its transform, and one debug notice says so. Such a block is a read on every path: under `requireCredentials` it never rejects.
 
 ## Asking your own API for the user's language
 

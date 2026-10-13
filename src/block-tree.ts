@@ -237,7 +237,8 @@ const RENDERED_BY_BINDING = { destroy(): void {} };
  * Under `requireCredentials` an unconfigured client fails loudly here as on the
  * DOM classes (WIRE-4): on the page the promise rejects with
  * `LangsysConfigurationError`, checked again once `init()` has answered, so a
- * block registered before `init()` refuses rejects too. A binding that leaves the
+ * block registered before `init()` refuses rejects too. A `register: false` block
+ * is a read and never rejects. A binding that leaves the
  * promise unhandled surfaces it. On a server it never rejects, since an unhandled
  * rejection would end a Node process rather than one request, and the request's
  * `t()` throws already.
@@ -270,7 +271,10 @@ export function registerBlock(input: readonly BlockNode[] | SeededBlock, options
         );
         return Promise.resolve();
     }
-    if (!activeScope()) {
+    // A `register: false` block, passed as an option or seeded with the flag, is a read:
+    // under `requireCredentials` it never rejects (WIRE-4).
+    const registers = options.register !== false && (Array.isArray(input) || (input as SeededBlock).register !== false);
+    if (registers && !activeScope()) {
         try {
             LangsysApp.Translations.assertConfigured();
         } catch (error) {
@@ -301,7 +305,7 @@ export function registerBlock(input: readonly BlockNode[] | SeededBlock, options
         return Promise.resolve();
     }
     return LangsysApp.Translations.ready().then(() => {
-        LangsysApp.Translations.assertConfigured();
+        if (registers) LangsysApp.Translations.assertConfigured();
         register();
     });
 }
