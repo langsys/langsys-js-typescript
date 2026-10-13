@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerBlock } from '../src/block-tree.js';
-import { isContentBlockKnown, registerContentBlock } from '../src/content-block.js';
+import { generateCustomId, isContentBlockKnown, registerContentBlock } from '../src/content-block.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { createSignal } from '../src/signal.js';
 import { batchLimit, catalogUnavailable, currentlyLoadedLocale, discoveryBaseLocaleOnly, writeEnabled } from '../src/stores.js';
@@ -170,6 +170,69 @@ describe('REG-10: a registration never reports success for work that did not hap
         expect(await blockIds()).toContain('b-reg10');
         await LangsysApp.refresh();
         expect(isContentBlockKnown('UI', 'b-reg10')).toBe(true);
+    });
+});
+
+describe('One registration request per block in flight', () => {
+    const tree = [
+        { tag: 'p', children: [{ text: 'Once A' }] },
+        { tag: 'p', children: [{ text: 'Once B' }] },
+    ];
+    const id = generateCustomId('UI', ['Once A', 'Once B']);
+    const heldAs = async (customId: string) => (await fx.state()).projects.p1.blocks.filter((b) => b.custom_id === customId);
+
+    /**
+     * How many registration requests carried the block, read at the transport seam. The double
+     * folds a repeat into the block it already holds, so its state cannot tell one request from two.
+     */
+    function countSends(customId: string): () => number {
+        const real = globalThis.fetch;
+        let sends = 0;
+        vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
+            if (init?.method === 'POST' && typeof init.body === 'string' && init.body.includes(`"custom_id":"${customId}"`)) sends += 1;
+            return real(url, init);
+        });
+        return () => sends;
+    }
+
+    /** A page whose binding renders the block through the tree path: `registerBlock` on mount and on every change `t` goes through. */
+    async function pageLoad() {
+        resetSdk();
+        const init = LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        const unmount = LangsysApp.Translations.tSignal.subscribe(() => void registerBlock(tree, { category: 'UI' }));
+        await init;
+        await until(() => currentlyLoadedLocale.get() === 'es-es');
+        await sleep(SETTLE_MS);
+        unmount();
+    }
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('a block mounted as init() starts is sent once, though the page load changes t again before the request answers', async () => {
+        const sends = countSends(id);
+        await pageLoad();
+        expect(await heldAs(id)).toHaveLength(1);
+        expect(sends()).toBe(1);
+    });
+
+    it('control: a request the double refuses is not shared with a later t change, which sends the block again', async () => {
+        await fx.seed({ ...SEED, faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
+        const sends = countSends(id);
+        await pageLoad();
+        expect(await heldAs(id)).toHaveLength(1);
+        expect(sends()).toBeGreaterThanOrEqual(2);
+    });
+
+    it('two registrations of one block before the first answers make one request, and both report its result', async () => {
+        await session('k-write');
+        const block = { custom_id: 'b-shared', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['A', 'B'] };
+        const sends = countSends('b-shared');
+        const results = await Promise.all([registerContentBlock(block as never), registerContentBlock(block as never)]);
+        expect(results).toEqual([{ status: true }, { status: true }]);
+        expect(sends()).toBe(1);
+        expect(await heldAs('b-shared')).toHaveLength(1);
     });
 });
 

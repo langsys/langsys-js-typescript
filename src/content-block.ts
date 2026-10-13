@@ -332,15 +332,6 @@ export type RegistrationResult =
     | { status: false; skipped: true; reason: 'not-configured' | 'not-write-enabled' | 'catalog-unavailable' | 'base-locale-gate' | 'deferred' | 'client-strategy' }
     | { status: false; skipped?: false; reason: 'refused' | 'failed'; errors?: unknown[] };
 
-/**
- * POST a content block to the backend, then stamp its custom_id into the local
- * translations cache, so later mounts in this session, and later reloads since
- * the cache is persisted, skip the POST.
- *
- * One behaviour on every path (REG-10): never throws, always logs, and never
- * reports success for work that did not happen. A skipped write returns a
- * non-success result naming its reason.
- */
 /** Resolves once the session's write capability is known: `writeEnabled` is true or false. */
 function capabilityKnown(): Promise<void> {
     return new Promise((resolve) => {
@@ -355,6 +346,24 @@ function capabilityKnown(): Promise<void> {
     });
 }
 
+/** Each block's registration request while it is unanswered, by category and id. */
+const registrationsInFlight = new Map<string, Promise<RegistrationResult>>();
+
+/**
+ * POST a content block to the backend, then stamp its custom_id into the local
+ * translations cache, so later mounts in this session, and later reloads since
+ * the cache is persisted, skip the POST.
+ *
+ * A block has one request in flight at a time. A call for a block whose request
+ * has not answered yet resolves with that request's result and sends nothing: a
+ * binding calls `registerBlock` on every change `t` goes through, and a page load
+ * makes several of those before the first request returns. Once it answers, the
+ * block is known, or, refused or failed, may be sent again.
+ *
+ * One behaviour on every path (REG-10): never throws, always logs, and never
+ * reports success for work that did not happen. A skipped write returns a
+ * non-success result naming its reason.
+ */
 export async function registerContentBlock(contentBlock: iContentBlock): Promise<RegistrationResult> {
     // WIRE-4: a client without credentials reports the skipped write rather than throwing,
     // because a component reaches this and a component path never throws.
@@ -434,6 +443,16 @@ export async function registerContentBlock(contentBlock: iContentBlock): Promise
         return { status: false, skipped: true, reason: 'not-write-enabled' };
     }
 
+    const key = `${contentBlock.category}\0${contentBlock.custom_id}`;
+    const inFlight = registrationsInFlight.get(key);
+    if (inFlight) return inFlight;
+    const request = sendContentBlock(contentBlock).finally(() => registrationsInFlight.delete(key));
+    registrationsInFlight.set(key, request);
+    return request;
+}
+
+/** The registration request itself: success only once the server stored the block. */
+async function sendContentBlock(contentBlock: iContentBlock): Promise<RegistrationResult> {
     try {
         const response = await LangsysAppAPI.createTranslatableItems([
             {

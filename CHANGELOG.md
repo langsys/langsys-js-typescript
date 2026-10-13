@@ -115,6 +115,8 @@ heading records the INTENT rather than the number. There is no summary-regenerat
 
 ### Fixed
 
+- **A content block has one registration request in flight at a time.** Two registrations of the same block before the first was answered each sent a request: two `<Translate>` instances over the same content mounting together, or a binding calling `registerBlock` on each change `t` goes through, several of which a page load makes before the request returns. A registration for a block whose request is unanswered now resolves with that request's result and sends nothing. Once the request answers, the block is known, or, refused or failed, is sent again by the next registration.
+
 - **`t()` rejected the gender argument Langsys asks for.** Langsys promotes a plain `{username}` to `{username_gender, select, …}` in gendered target locales, and the docs tell you to pass `username_gender` alongside `username`. But `ParamsFor` only allowed the phrase's own placeholders, so in TypeScript `t('{username} has been invited', 'Team', { username, username_gender })` failed with TS2353 ("Object literal may only specify known properties"). Every placeholder now accepts an optional `<name>_gender` companion (`GenderParamsFor`); anything else extra is still an error, and the companion never replaces the placeholder itself. Types only, no runtime change: without the argument the neutral `other` branch renders, as since 0.6.4.
 
   Covered by `tests/types/t-signature.ts`, which `type-level.test.ts` compiles.
