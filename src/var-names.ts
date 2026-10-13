@@ -70,6 +70,16 @@ function derive(shape: ExpressionShape): { name: string; prev: string | null } |
 const key = (shape: ExpressionShape) => JSON.stringify(shape);
 
 /**
+ * Whether a shape identifies its expression, so that an equal shape is the same
+ * expression. An `other` shape, anywhere in it, does not: `a + b` and `c * d` are both
+ * `{ other: 'binary' }`, and so are the arguments of `fmt(a + b)` and `fmt(c * d)`.
+ */
+function identifies(shape: ExpressionShape): boolean {
+    if ('call' in shape) return shape.call.args.every(identifies);
+    return !('other' in shape);
+}
+
+/**
  * The placeholder name of each value in one phrase, in order (VAR-2):
  *
  * - an explicit name wins;
@@ -77,7 +87,8 @@ const key = (shape: ExpressionShape) => JSON.stringify(shape);
  *   chain ending in `length`, `size` or `count` the segment before plus `_count`;
  *   one ending in `value` or `current` the segment before; a call with one
  *   argument the argument's name;
- * - the same expression twice is the same placeholder;
+ * - the same expression twice is the same placeholder, where the shape identifies
+ *   it: two shapes containing `other` are two placeholders, however equal;
  * - names that collide are prefixed with their previous segment, then suffixed
  *   `_2`, `_3`, and a reserved name (`m0o`) counts as taken;
  * - anything else is `value`, `value_2`, ….
@@ -88,9 +99,10 @@ export function derivePlaceholderNames(expressions: readonly NamedExpression[]):
     const derived = expressions.map((e, i) => (names[i] === null ? derive(e.shape) : null));
 
     // The same expression is one placeholder: its later occurrences take the first's name.
+    // Only a shape that identifies its expression can be the same as another.
     const firstOf = new Map<string, number>();
     const sameAs = expressions.map((e, i) => {
-        if (names[i] !== null) return i;
+        if (names[i] !== null || !identifies(e.shape)) return i;
         const k = key(e.shape);
         if (!firstOf.has(k)) firstOf.set(k, i);
         return firstOf.get(k)!;
