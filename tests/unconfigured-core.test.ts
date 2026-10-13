@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -34,8 +35,6 @@ async function page(answer: (url: string) => ReturnType<typeof respond> = () => 
         requests.push(String(url));
         return answer(String(url));
     }));
-    vi.stubGlobal('window', { addEventListener: () => {}, location: { href: 'https://site.local/p' } });
-    vi.stubGlobal('document', { addEventListener: () => {}, visibilityState: 'visible' });
     vi.resetModules();
     const { LangsysApp } = await import('../src/langsys-app.js');
     const { LangsysAppAPI, LangsysConfigurationError } = await import('../src/api.js');
@@ -156,6 +155,25 @@ describe('WIRE-4: requireCredentials', () => {
         expect(() => t('Hello')).toThrow(/without an API key/);
     });
 
+    it('control: without it, Phrase and Translate render source and nothing rejects', async () => {
+        const { LangsysApp, createSignal } = await page();
+        const { Phrase } = await import('../src/phrase.js');
+        const { Translate } = await import('../src/translate.js');
+        await LangsysApp.init({ projectid: 'p', key: '', UserLocaleStore: createSignal('en-us') });
+        const host = document.createElement('div');
+        host.innerHTML = '<p>First sentence.</p><p>Second sentence.</p>';
+        const phraseHost = document.createElement('p');
+        phraseHost.textContent = 'Welcome back';
+        document.body.append(host, phraseHost);
+
+        new Translate(host);
+        new Phrase(phraseHost);
+        await vi.advanceTimersByTimeAsync(2_000);
+
+        expect(host.textContent).toBe('First sentence.Second sentence.');
+        expect(phraseHost.textContent).toBe('Welcome back');
+    });
+
     it('stops throwing once a later init() is configured', async () => {
         const { LangsysApp, createSignal, t } = await page();
         await LangsysApp.init({ projectid: 'p', key: '', UserLocaleStore: createSignal('en-us'), requireCredentials: true });
@@ -186,5 +204,50 @@ describe('WIRE-4: a refused authorization settles the capability as not writable
 
         expect(queued()).toBe(0);
         expect(requests.length).toBe(after);
+    });
+});
+
+describe('WIRE-4: requireCredentials on the component path', () => {
+    /**
+     * A component never throws from its constructor, which would take the page down. Under
+     * `requireCredentials` the core's `Phrase` and `Translate` construct normally, and their
+     * asynchronous render rejects with the configuration error: that rejection is the loud
+     * failure the option asks for.
+     */
+    async function rejectionsOf<T extends object>(proto: T, method: string, into: unknown[]) {
+        const original = (proto as Record<string, (...args: unknown[]) => Promise<unknown>>)[method]!;
+        vi.spyOn(proto as Record<string, (...args: unknown[]) => Promise<unknown>>, method as never).mockImplementation(function (this: unknown, ...args: unknown[]) {
+            const run = original.apply(this, args);
+            run.catch((error: unknown) => into.push(error));
+            return run;
+        } as never);
+    }
+
+    it('Phrase and Translate construct without throwing, and their render rejects with the configuration error', async () => {
+        const { LangsysApp, LangsysConfigurationError, createSignal } = await page();
+        const { Phrase } = await import('../src/phrase.js');
+        const { Translate } = await import('../src/translate.js');
+        await LangsysApp.init({ projectid: 'p', key: '', UserLocaleStore: createSignal('en-us'), requireCredentials: true });
+        const byPhrase: unknown[] = [];
+        const byTranslate: unknown[] = [];
+        await rejectionsOf(Phrase.prototype, '_init', byPhrase);
+        await rejectionsOf(Translate.prototype, 'tokenizeContent', byTranslate);
+
+        const phraseHost = document.createElement('p');
+        phraseHost.textContent = 'Welcome back';
+        const blockHost = document.createElement('div');
+        blockHost.innerHTML = '<p>First sentence.</p><p>Second sentence.</p>';
+        document.body.append(phraseHost, blockHost);
+
+        expect(() => new Phrase(phraseHost)).not.toThrow();
+        expect(() => new Translate(blockHost)).not.toThrow();
+        await vi.advanceTimersByTimeAsync(2_000);
+
+        // A multi-phrase block never calls t(), so its rejection is Translate's own check.
+        expect(byPhrase.length).toBeGreaterThan(0);
+        expect(byTranslate.length).toBeGreaterThan(0);
+        for (const error of [...byPhrase, ...byTranslate]) expect(error).toBeInstanceOf(LangsysConfigurationError);
+        expect(phraseHost.textContent).toBe('Welcome back');
+        expect(blockHost.textContent).toBe('First sentence.Second sentence.');
     });
 });

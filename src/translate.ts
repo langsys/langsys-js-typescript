@@ -683,6 +683,10 @@ export class Translate {
     }
 
     private async tokenizeContent(): Promise<boolean> {
+        // WIRE-4: under `requireCredentials` an unconfigured client fails loudly here, as a
+        // rejected render and never as a throw from the constructor. A multi-phrase block
+        // never calls `t()`, so without this it would render source text silently.
+        LangsysApp.Translations.assertConfigured();
         if (this.isTokenizing) return false;
         if (!this.element || !this.element.childNodes.length) {
             this.parseComplete = true;

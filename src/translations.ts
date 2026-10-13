@@ -295,6 +295,15 @@ export class Translations {
         this.settle();
     }
 
+    /**
+     * Under `requireCredentials`, throw the configuration error while the client is
+     * unconfigured (WIRE-4). `t()` calls it, and so does `Translate`'s render, whose
+     * multi-phrase blocks never reach `t()`.
+     */
+    public assertConfigured(): void {
+        if (this.credentialsError) throw this.credentialsError;
+    }
+
     /** `init()` accepted credentials: undo an earlier refusal, so the first catalog decides afresh. */
     public markConfigured(): void {
         if (this.credentialsError === null && !catalogUnavailable.get()) return;
@@ -375,7 +384,7 @@ export class Translations {
         //   t(phrase, 'Category')                      → category='Category', params=undefined
         //   t(phrase, 'Category', {params...})         → category='Category', params={params}
         const fn = ((phrase: string, ...rest: unknown[]): string => {
-            if (this.credentialsError) throw this.credentialsError;
+            this.assertConfigured();
             // Inside a request scope (SRV-7), the scope's catalog and miss collection,
             // never the page's: the page's state is shared by every render in the process.
             const scope = activeScope();

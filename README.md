@@ -123,7 +123,9 @@ write, such as `LangsysAppAPI.createTranslatableItems`, throws
 `LangsysConfigurationError`. `LangsysApp.isConfigured()` reports the state.
 
 To fail loudly instead, pass `requireCredentials: true`: `t()` then throws
-`LangsysConfigurationError` while the client is unconfigured.
+`LangsysConfigurationError` while the client is unconfigured. The core's
+`Phrase` and `Translate` still construct without throwing, and their
+asynchronous render rejects with that error instead.
 
 ## Quick start
 
