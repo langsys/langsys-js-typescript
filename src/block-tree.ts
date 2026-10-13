@@ -225,11 +225,16 @@ export function warnUnrenderedBlock(reason: string): void {
  * request scope it is held for `close()`. Fire-and-forget, and never throws
  * synchronously: the returned promise settles once the registration has run.
  *
+ * On a server outside every request scope it resolves at once and registers
+ * nothing: there is no scope to hold the block for `close()`, and no `init()` to
+ * wait for when the client is the one that initialises, so waiting would keep the
+ * tree alive for the life of the process. A debug notice says so, once.
+ *
  * Under `requireCredentials` an unconfigured client fails loudly here as on the
  * DOM classes (WIRE-4): on the page the promise rejects with
  * `LangsysConfigurationError`, so a binding that leaves it unhandled surfaces it.
- * Inside a request scope it does not reject, since an unhandled rejection would end
- * a Node process rather than one request, and the request's `t()` throws already.
+ * On a server it never rejects, since an unhandled rejection would end a Node
+ * process rather than one request, and the request's `t()` throws already.
  *
  * One-shot: it records what the block is now. A binding calls it again on each
  * change `t` goes through — a locale switch, a new catalog, a navigation — as
@@ -246,6 +251,13 @@ export function warnUnrenderedBlock(reason: string): void {
  * block the seed marks `register: false`, whose tokens hold per-user values.
  */
 export function registerBlock(input: readonly BlockNode[] | SeededBlock, options: BlockOptions = {}): Promise<void> {
+    if (typeof window === 'undefined' && !activeScope()) {
+        debugNotice(
+            'register-block\0no-scope',
+            'registerBlock() was called on a server outside a request scope, so it registered nothing: there is no scope to hold the block for close(). Render and register inside createRequestScope().run(), or register from the client.'
+        );
+        return Promise.resolve();
+    }
     if (!activeScope()) {
         try {
             LangsysApp.Translations.assertConfigured();
