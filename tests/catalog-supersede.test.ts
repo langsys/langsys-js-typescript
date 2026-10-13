@@ -265,3 +265,78 @@ describe('controls: a fetch that is still current publishes', () => {
         expect(stored('de-de')).toContain('Hallo');
     });
 });
+
+describe('a pair’s cache key holds only a published catalog (CACHE-2)', () => {
+    /**
+     * Switching to a locale with nothing cached resets the page catalog to the empty skeleton,
+     * so the previous locale's text is not shown under the new one. That reset is not a
+     * catalog: a fetch, a seed or a snapshot produces one. Persisted, it would sit under the
+     * pair's key after the fetch failed or was superseded, and the next load's restore would
+     * adopt it as that pair's catalog.
+     */
+    const key = (locale: string) => `langsys:translations:p1:${locale}`;
+
+    it('a switch whose fetch fails leaves no key for that pair', async () => {
+        const { tr } = await page({
+            'fr-fr': { after: 10, response: catalogFor('Hello', 'Bonjour') },
+            'de-de': { after: 10, response: failed },
+        });
+
+        void tr.change('fr-fr');
+        await run(200);
+        void tr.change('de-de');
+        await run(200);
+
+        expect(storage[key('fr-fr')]).toContain('Bonjour');
+        expect(storage).not.toHaveProperty(key('de-de'));
+    });
+
+    it('a switch whose fetch is superseded leaves no key for that pair', async () => {
+        const { tr } = await page({
+            'fr-fr': { after: 10, response: catalogFor('Hello', 'Bonjour') },
+            'de-de': { after: 500, response: catalogFor('Hello', 'Hallo') },
+            'es-es': { after: 10, response: catalogFor('Hello', 'Hola') },
+        });
+
+        void tr.change('fr-fr');
+        await run(200);
+        void tr.change('de-de');
+        await run(20);
+        void tr.change('es-es');
+        await run(1_000);
+
+        expect(storage[key('es-es')]).toContain('Hola');
+        expect(storage).not.toHaveProperty(key('de-de'));
+    });
+
+    it('a successful fetch still persists its catalog under its pair', async () => {
+        const { tr } = await page({
+            'fr-fr': { after: 10, response: catalogFor('Hello', 'Bonjour') },
+            'de-de': { after: 10, response: catalogFor('Hello', 'Hallo') },
+        });
+
+        void tr.change('fr-fr');
+        await run(200);
+        void tr.change('de-de');
+        await run(200);
+
+        expect(storage[key('de-de')]).toContain('Hallo');
+    });
+
+    it('control: a catalog stored for that pair earlier is untouched by a later failure, and keeps serving', async () => {
+        storage[key('de-de')] = JSON.stringify({ __uncategorized__: { __category__: '__uncategorized__', __symbol__: '__uncategorized__', Hello: 'Hallo-STORED' } });
+        const before = storage[key('de-de')];
+        const { tr, t } = await page({
+            'fr-fr': { after: 10, response: catalogFor('Hello', 'Bonjour') },
+            'de-de': { after: 10, response: failed },
+        });
+
+        void tr.change('fr-fr');
+        await run(200);
+        void tr.change('de-de');
+        await run(200);
+
+        expect(storage[key('de-de')]).toBe(before);
+        expect(t('Hello')).toBe('Hallo-STORED');
+    });
+});

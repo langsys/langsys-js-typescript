@@ -124,7 +124,10 @@ export function persist<T>(key: string, initial: T, legacyKey?: string): Signal<
  *   - `scope(s)` with data stored under `s`: adopt it.
  *   - `scope(s)` with nothing stored, and a PREVIOUS scope was set: reset to
  *     `initial`. Leaving the old scope's value in place is the bug — it is how
- *     project A's catalog gets served to project B.
+ *     project A's catalog gets served to project B. The reset is not written:
+ *     `initial` is no catalog, and stored under `s` it would be read back as
+ *     that scope's catalog after a fetch for it failed or was superseded
+ *     (CACHE-2). Only a value set afterwards is persisted.
  *   - `scope(s)` with nothing stored and no previous scope: leave the signal
  *     alone, so an SSR-seeded catalog survives.
  *   - `scope(null)`: stop persisting.
@@ -143,13 +146,15 @@ export function persistScoped<T>(
     // came from this request, for this locale — and must beat anything stored.
     let seededBeforeScope = false;
     let emissions = 0;
+    // Set while `scope()` resets the signal, so the reset value is not persisted.
+    let resetting = false;
 
     signal.subscribe((value) => {
         emissions += 1;
         // `subscribe` fires immediately with the current value, so emission 1
         // is creation, not a write.
         if (!everScoped && emissions > 1) seededBeforeScope = true;
-        if (!currentKey) return;
+        if (!currentKey || resetting) return;
         const target = activeStorage();
         if (!target) return;
         try {
@@ -196,7 +201,14 @@ export function persistScoped<T>(
         // Nothing stored for the new scope. Clear only if we are LEAVING a
         // scope — otherwise this is the first scoping and there is nothing to
         // discard.
-        if (hadScope && key !== null) signal.set(structuredCloneShim(initial));
+        if (hadScope && key !== null) {
+            resetting = true;
+            try {
+                signal.set(structuredCloneShim(initial));
+            } finally {
+                resetting = false;
+            }
+        }
     };
 
     // Drop the unscoped keys this replaces, once, when identity first arrives.
