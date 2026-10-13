@@ -747,6 +747,7 @@ export class Translate {
             // A stamped identity: render from the catalog entry under it, or leave the
             // source text, and register nothing (MARK-3).
             await LangsysApp.Translations.ready();
+            LangsysApp.Translations.assertConfigured();
             if (this.element) {
                 if (this.recoverServedSources(false)) this.translate(Array.from(this.element.childNodes));
                 // The host shows this locale either way: rendered now, or as served.
@@ -766,6 +767,9 @@ export class Translate {
         // to POST — otherwise on a cold cache the lookup misses and we'd POST
         // every CB on every first visit even when the backend already has it.
         await LangsysApp.Translations.ready();
+        // Again after the wait: a block mounted before `init()` passed the first check,
+        // and under `requireCredentials` a refusing `init()` must still reach it (WIRE-4).
+        LangsysApp.Translations.assertConfigured();
 
         if (isContentBlockKnown(contentBlock.category, this.custom_id)) {
             // Backend already has this block — translate locally, no POST.

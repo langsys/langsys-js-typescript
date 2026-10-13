@@ -147,6 +147,9 @@ export class Phrase {
         // We ignore t()'s interpolated return — Phrase renders itself so it can
         // supply the markup-token sentinel values and reconstitute real elements.
         await LangsysApp.Translations.ready();
+        // WIRE-4: under `requireCredentials` an unconfigured client rejects this render,
+        // also when the phrase mounted before a refusing `init()` and registers nothing.
+        LangsysApp.Translations.assertConfigured();
         // Not inside a resolved scope: there the host's text is a translation a server
         // produced, and `t()` is the call that would register it as a source phrase.
         // Nor with `register: false` (VAR-7), nor for a phrase made only of value markers,

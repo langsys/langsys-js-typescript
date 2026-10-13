@@ -126,7 +126,8 @@ To fail loudly instead, pass `requireCredentials: true`: `t()` then throws
 `LangsysConfigurationError` while the client is unconfigured. The core's
 `Phrase` and `Translate` still construct without throwing, and their
 asynchronous render rejects with that error instead, as does the promise
-`registerBlock` returns for a block rendered as a tree. A block rendered
+`registerBlock` returns for a block rendered as a tree. That holds for a
+component mounted before `init()` too: it rejects once `init()` refuses. A block rendered
 through `renderBlock` alone and never passed to `registerBlock`, as a binding
 may do with `register: false` content, is a read that never reaches `t()`, so
 it shows its source text without failing: the option fails on the first `t()`

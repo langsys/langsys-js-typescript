@@ -55,6 +55,16 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | 'pending'
     return raced;
 }
 
+/** Collect the rejections of an async method on every instance, so none goes unhandled. */
+async function rejectionsOf<T extends object>(proto: T, method: string, into: unknown[]) {
+    const original = (proto as Record<string, (...args: unknown[]) => Promise<unknown>>)[method]!;
+    vi.spyOn(proto as Record<string, (...args: unknown[]) => Promise<unknown>>, method as never).mockImplementation(function (this: unknown, ...args: unknown[]) {
+        const run = original.apply(this, args);
+        run.catch((error: unknown) => into.push(error));
+        return run;
+    } as never);
+}
+
 beforeEach(() => {
     for (const m of ['log', 'warn', 'error', 'info', 'group', 'groupCollapsed', 'groupEnd'] as const) {
         vi.spyOn(console, m).mockImplementation(() => {});
@@ -168,6 +178,60 @@ describe('WIRE-4: requireCredentials', () => {
         expect(() => renderBlock(nodes)).not.toThrow();
     });
 
+    it('a block registered before init() rejects once init() refuses, as a framework that mounts children first does', async () => {
+        const { LangsysApp, LangsysConfigurationError, createSignal } = await page();
+        const { registerBlock } = await import('../src/block-tree.js');
+
+        const registration = registerBlock([{ tag: 'p', attrs: {}, children: [{ text: 'First sentence.' }] }, { tag: 'p', attrs: {}, children: [{ text: 'Second sentence.' }] }]);
+        const rejection = expect(registration).rejects.toBeInstanceOf(LangsysConfigurationError);
+        await LangsysApp.init({ projectid: 'p', key: '', UserLocaleStore: createSignal('en-us'), requireCredentials: true });
+
+        await rejection;
+    });
+
+    it('Phrase and Translate mounted before init() reject once init() refuses', async () => {
+        const { LangsysApp, LangsysConfigurationError, createSignal } = await page();
+        const { Phrase } = await import('../src/phrase.js');
+        const { Translate } = await import('../src/translate.js');
+        const byPhrase: unknown[] = [];
+        const byTranslate: unknown[] = [];
+        await rejectionsOf(Phrase.prototype, '_init', byPhrase);
+        await rejectionsOf(Translate.prototype, 'tokenizeContent', byTranslate);
+        const phraseHost = document.createElement('p');
+        phraseHost.textContent = 'Welcome back';
+        const blockHost = document.createElement('div');
+        blockHost.innerHTML = '<p>First sentence.</p><p>Second sentence.</p>';
+        // A block a server rendered and stamped, which Translate adopts (MARK-3).
+        const served = document.createElement('div');
+        served.setAttribute('data-ls-resolved', 'es-es');
+        served.innerHTML = '<div data-ls-contentblock="0123456789abcdef0123456789abcdef"><p>Hola.</p><p>Adiós.</p></div>';
+        document.body.append(phraseHost, blockHost, served);
+
+        // `register: false`: a phrase that never calls t() after the wait still rejects.
+        new Phrase(phraseHost, { register: false });
+        new Translate(blockHost);
+        new Translate(served.firstElementChild as HTMLElement);
+        await vi.advanceTimersByTimeAsync(100);
+        expect([...byPhrase, ...byTranslate]).toEqual([]);
+
+        await LangsysApp.init({ projectid: 'p', key: '', UserLocaleStore: createSignal('en-us'), requireCredentials: true });
+        await vi.advanceTimersByTimeAsync(2_000);
+
+        expect(byPhrase).toHaveLength(1);
+        expect(byTranslate).toHaveLength(2);
+        for (const error of [...byPhrase, ...byTranslate]) expect(error).toBeInstanceOf(LangsysConfigurationError);
+    });
+
+    it('control: without it, a block registered before init() resolves once init() refuses', async () => {
+        const { LangsysApp, createSignal } = await page();
+        const { registerBlock } = await import('../src/block-tree.js');
+
+        const registration = registerBlock([{ tag: 'p', attrs: {}, children: [{ text: 'First sentence.' }] }, { tag: 'p', attrs: {}, children: [{ text: 'Second sentence.' }] }]);
+        await LangsysApp.init({ projectid: 'p', key: '', UserLocaleStore: createSignal('en-us') });
+
+        await expect(registration).resolves.toBeUndefined();
+    });
+
     it('control: without it, registerBlock resolves', async () => {
         const { LangsysApp, createSignal } = await page();
         const { registerBlock } = await import('../src/block-tree.js');
@@ -236,15 +300,6 @@ describe('WIRE-4: requireCredentials on the component path', () => {
      * asynchronous render rejects with the configuration error: that rejection is the loud
      * failure the option asks for.
      */
-    async function rejectionsOf<T extends object>(proto: T, method: string, into: unknown[]) {
-        const original = (proto as Record<string, (...args: unknown[]) => Promise<unknown>>)[method]!;
-        vi.spyOn(proto as Record<string, (...args: unknown[]) => Promise<unknown>>, method as never).mockImplementation(function (this: unknown, ...args: unknown[]) {
-            const run = original.apply(this, args);
-            run.catch((error: unknown) => into.push(error));
-            return run;
-        } as never);
-    }
-
     it('Phrase and Translate construct without throwing, and their render rejects with the configuration error', async () => {
         const { LangsysApp, LangsysConfigurationError, createSignal } = await page();
         const { Phrase } = await import('../src/phrase.js');

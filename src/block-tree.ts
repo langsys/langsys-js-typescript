@@ -232,9 +232,11 @@ export function warnUnrenderedBlock(reason: string): void {
  *
  * Under `requireCredentials` an unconfigured client fails loudly here as on the
  * DOM classes (WIRE-4): on the page the promise rejects with
- * `LangsysConfigurationError`, so a binding that leaves it unhandled surfaces it.
- * On a server it never rejects, since an unhandled rejection would end a Node
- * process rather than one request, and the request's `t()` throws already.
+ * `LangsysConfigurationError`, checked again once `init()` has answered, so a
+ * block registered before `init()` refuses rejects too. A binding that leaves the
+ * promise unhandled surfaces it. On a server it never rejects, since an unhandled
+ * rejection would end a Node process rather than one request, and the request's
+ * `t()` throws already.
  *
  * One-shot: it records what the block is now. A binding calls it again on each
  * change `t` goes through — a locale switch, a new catalog, a navigation — as
@@ -288,7 +290,10 @@ export function registerBlock(input: readonly BlockNode[] | SeededBlock, options
         register();
         return Promise.resolve();
     }
-    return LangsysApp.Translations.ready().then(register);
+    return LangsysApp.Translations.ready().then(() => {
+        LangsysApp.Translations.assertConfigured();
+        register();
+    });
 }
 
 /**
