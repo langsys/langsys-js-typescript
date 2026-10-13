@@ -652,7 +652,7 @@ Where the text is rendered first and read afterwards (`<Translate>`, `<Phrase>`,
 <p>Hello <span data-ls-param="name">Ana</span>, welcome back</p>   <!-- where comments cannot be written -->
 ```
 
-Both register `Hello {name}, welcome back` with `name` = `Ana` as its param, unless you pass `name` yourself. In a tree for `renderBlock`, the same marker is `{ comment: 'ls:name' }` … `{ comment: '/ls' }`. The framework bindings' build-time transforms emit these for you. The value is text only: an element inside the pair makes it ordinary markup. A unit holding nothing but markers registers nothing.
+Both register `Hello {name}, welcome back` with `name` = `Ana` as its param, unless you pass `name` yourself. In a tree for `renderBlock`, the same marker is `{ comment: 'ls:name' }` … `{ comment: '/ls' }`. The framework bindings' build-time transforms emit these for you. The value is text only: an element inside the pair makes it ordinary markup. A unit holding nothing but markers registers nothing. The content a block registers with shows `{name}` where the value was, never the value.
 
 A translation that keeps each placeholder once and in order is written around the framework's own value node, so the framework's later updates to the value still show. A translation that moves or repeats one is written as a whole sentence with the value in it.
 

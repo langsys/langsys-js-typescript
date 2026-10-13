@@ -14,6 +14,7 @@ import {
     tokenizeNodes,
     tokenizeUnit,
     isMarkerOnlyUnit,
+    scrubContent,
     type UnitVars,
     TRANSLATABLE_ATTRIBUTES,
     VALUE_TRANSLATABLE_ELEMENTS,
@@ -404,7 +405,7 @@ function isTranslatableAttribute(tag: string, name: string, attrs: Record<string
 
 /** Serialise a block's content as HTML, for the content snapshot a block registers with. Not identity. */
 export function serializeTree(nodes: readonly BlockNode[]): string {
-    return nodes.map(serializeNode).join('');
+    return nodes.map((node) => serializeNode(node)).join('');
 }
 
 // ---------------------------------------------------------------------
@@ -788,7 +789,25 @@ function registerView(root: ViewNode[], options: BlockOptions, input: readonly B
     const id = options.id ?? resolveId(root, tokens, category, undefined);
     if (isContentBlockKnown(category, id) || isServerCollected(id) || isBlockHandled(id, 'seed')) return;
     if (!activeScope()) markBlockHandled(id, 'mount');
-    void registerContentBlock({ custom_id: id, category, label, content: serializeTree(input), tokens });
+    void registerContentBlock({ custom_id: id, category, label, content: contentOf(input), tokens });
+}
+
+/** A unit's `content`: its nodes as HTML, with no value and no nested unit's content (`scrubContent`). */
+function contentOf(input: readonly BlockNode[]): string {
+    const shown = view(input);
+    scrubContent(shown, (host) => void ((host as ViewElement).childNodes = []));
+    // The input serialised node for node with its scrubbed view, so tag and attribute
+    // names keep their case (an SVG's `viewBox`). An emptied host's view has no children.
+    const serialize = (nodes: readonly BlockNode[], views: readonly ViewNode[]): string =>
+        views
+            .map((seen, i) => {
+                const node = nodes[i]!;
+                if ('text' in node) return escapeText(seen.nodeValue ?? '');
+                if ('comment' in node) return serializeNode(node);
+                return serializeNode(node, serialize(node.children ?? [], seen.childNodes));
+            })
+            .join('');
+    return serialize(input, shown);
 }
 
 /** A seeded block: a phrase records its miss as `t()` does; an unknown block registers under its id. */
@@ -842,7 +861,8 @@ function registerNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved 
 
 const VOID_ELEMENTS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 
-function serializeNode(node: BlockNode): string {
+/** One node as HTML; an element's content is `inner` when given, else its children's. */
+function serializeNode(node: BlockNode, inner?: string): string {
     if ('text' in node) return escapeText(node.text);
     if ('comment' in node) return `<!--${node.comment}-->`;
     const tag = node.tag.toLowerCase();
@@ -850,7 +870,7 @@ function serializeNode(node: BlockNode): string {
         .map(([name, value]) => (value === true ? ` ${name}` : ` ${name}="${escapeAttr(value)}"`))
         .join('');
     if (VOID_ELEMENTS.has(tag)) return `<${tag}${attrs}>`;
-    return `<${tag}${attrs}>${(node.children ?? []).map(serializeNode).join('')}</${tag}>`;
+    return `<${tag}${attrs}>${inner ?? (node.children ?? []).map((child) => serializeNode(child)).join('')}</${tag}>`;
 }
 
 function escapeText(value: string): string {

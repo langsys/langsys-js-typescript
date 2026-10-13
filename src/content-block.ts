@@ -489,7 +489,8 @@ async function sendContentBlock(contentBlock: iContentBlock): Promise<Registrati
  *
  * The returned `content` is a string snapshot — the live element is not
  * mutated. Computed semantic styles (color, font, spacing, etc.) are inlined
- * onto the clone so translators see content styled the way end-users do.
+ * onto the clone so translators see content styled the way end-users do. It
+ * holds no value and no nested unit's content (`scrubContent`).
  *
  * Requires that `element` is mounted in the document so `getComputedStyle`
  * can read its style. For SSR / pre-mount callers, the style capture step
@@ -500,7 +501,30 @@ export function tokenizeElement(element: HTMLElement): { tokens: string[]; conte
     const vars: UnitVars = { values: {}, runs: [], markerOnly: [] };
     const clone = element.cloneNode(true) as HTMLElement;
     _walkForTokens(element, Array.from(clone.childNodes), tokens, [], false, true, undefined, vars);
+    scrubContent(clone.childNodes as unknown as ArrayLike<MarkerNode>, (host) => (host as unknown as Element).replaceChildren());
     return { tokens, content: normalizeMarkupPlaceholders(clone.outerHTML), vars };
+}
+
+/**
+ * Rewrite a copy of a unit's content into the `content` it registers with. Each
+ * marked value holds its `{NAME}` placeholder instead of the value (VAR-1). A
+ * nested phrase or block host keeps its element and attributes and loses its
+ * content (MARK-4): it is a unit of its own, and what it shows is rendered, with
+ * its own values. `empty` removes an element's children.
+ */
+export function scrubContent<N extends MarkerNode>(nodes: ArrayLike<N>, empty: (host: N) => void): void {
+    for (const item of groupRuns(nodes)) {
+        if ('run' in item) {
+            for (const part of item.run.parts) {
+                if ('marker' in part) part.marker.value.forEach((node, i) => (node.nodeValue = i === 0 ? `{${part.marker.name}}` : ''));
+            }
+            continue;
+        }
+        if (item.node.nodeType !== ELEMENT_NODE) continue;
+        const element = item.node as unknown as Element;
+        if (isPhraseMarked(element) || isContentBlockMarked(element)) empty(item.node);
+        else scrubContent(item.node.childNodes as ArrayLike<N>, empty);
+    }
 }
 
 /**
