@@ -222,7 +222,14 @@ export function warnUnrenderedBlock(reason: string): void {
  * does; a block the catalog lacks, under no historical id, registers with its
  * content; an adopted id (`customId`) registers nothing; nested phrase hosts and
  * declared or unresolved-stamped blocks register as their own units. Inside a
- * request scope it is held for `close()`. Fire-and-forget; never throws.
+ * request scope it is held for `close()`. Fire-and-forget, and never throws
+ * synchronously: the returned promise settles once the registration has run.
+ *
+ * Under `requireCredentials` an unconfigured client fails loudly here as on the
+ * DOM classes (WIRE-4): on the page the promise rejects with
+ * `LangsysConfigurationError`, so a binding that leaves it unhandled surfaces it.
+ * Inside a request scope it does not reject, since an unhandled rejection would end
+ * a Node process rather than one request, and the request's `t()` throws already.
  *
  * One-shot: it records what the block is now. A binding calls it again on each
  * change `t` goes through — a locale switch, a new catalog, a navigation — as
@@ -238,14 +245,21 @@ export function warnUnrenderedBlock(reason: string): void {
  * is never registered, since the server's scope sends it itself, and neither is a
  * block the seed marks `register: false`, whose tokens hold per-user values.
  */
-export function registerBlock(input: readonly BlockNode[] | SeededBlock, options: BlockOptions = {}): void {
+export function registerBlock(input: readonly BlockNode[] | SeededBlock, options: BlockOptions = {}): Promise<void> {
+    if (!activeScope()) {
+        try {
+            LangsysApp.Translations.assertConfigured();
+        } catch (error) {
+            return Promise.reject(error);
+        }
+    }
     if (!Array.isArray(input)) rememberSeededBlock(input as SeededBlock);
     // GATE-10: text inside a resolved scope is never recorded. The walk starts at the
     // host's PARENT. A host carries data-ls-resolved itself only when it was rendered
     // from the catalog (`hostAttrs`), and then its block is known and registering it is
     // a no-op; counting the host would instead let that client-side stamp silence the
     // re-entry registration HINT-13 asks for on every later `t` change.
-    if (options.host && isInResolvedScope(options.host.parentElement)) return;
+    if (options.host && isInResolvedScope(options.host.parentElement)) return Promise.resolve();
     const root = Array.isArray(input) ? view(input) : null;
     const register = () => {
         try {
@@ -258,8 +272,11 @@ export function registerBlock(input: readonly BlockNode[] | SeededBlock, options
     // Inside a scope the scope's catalog is in hand. On a page, what is known is decided
     // once the first catalog has settled, as `Translate` decides it: before then every
     // block and phrase looks unknown, and one the catalog holds would be sent.
-    if (activeScope()) register();
-    else void LangsysApp.Translations.ready().then(register);
+    if (activeScope()) {
+        register();
+        return Promise.resolve();
+    }
+    return LangsysApp.Translations.ready().then(register);
 }
 
 /**

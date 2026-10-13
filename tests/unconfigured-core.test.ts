@@ -155,6 +155,28 @@ describe('WIRE-4: requireCredentials', () => {
         expect(() => t('Hello')).toThrow(/without an API key/);
     });
 
+    it('registerBlock, the tree path, rejects with the configuration error and never throws synchronously', async () => {
+        const { LangsysApp, LangsysConfigurationError, createSignal } = await page();
+        const { registerBlock, renderBlock } = await import('../src/block-tree.js');
+        await LangsysApp.init({ projectid: 'p', key: '', UserLocaleStore: createSignal('en-us'), requireCredentials: true });
+        const nodes = [{ tag: 'p', attrs: {}, children: [{ text: 'First sentence.' }] }, { tag: 'p', attrs: {}, children: [{ text: 'Second sentence.' }] }];
+
+        let registration!: Promise<void>;
+        expect(() => (registration = registerBlock(nodes))).not.toThrow();
+        await expect(registration).rejects.toBeInstanceOf(LangsysConfigurationError);
+        // The render itself stays synchronous and shows source, as Translate's does.
+        expect(() => renderBlock(nodes)).not.toThrow();
+    });
+
+    it('control: without it, registerBlock resolves', async () => {
+        const { LangsysApp, createSignal } = await page();
+        const { registerBlock } = await import('../src/block-tree.js');
+        await LangsysApp.init({ projectid: 'p', key: '', UserLocaleStore: createSignal('en-us') });
+
+        await expect(registerBlock([{ tag: 'p', attrs: {}, children: [{ text: 'First sentence.' }] }, { tag: 'p', attrs: {}, children: [{ text: 'Second sentence.' }] }])).resolves.toBeUndefined();
+        expect(requests).toEqual([]);
+    });
+
     it('control: without it, Phrase and Translate render source and nothing rejects', async () => {
         const { LangsysApp, createSignal } = await page();
         const { Phrase } = await import('../src/phrase.js');
