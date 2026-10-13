@@ -6,6 +6,20 @@ import { logger } from './logger.js';
 
 type Method = 'GET' | 'POST' | 'DELETE' | 'PATCH' | 'PUT';
 
+/**
+ * The client has no credentials (WIRE-4): `init()` was refused for a missing project id,
+ * API key or locale store, or was never called. An explicit write throws this rather than
+ * sending, and so does `t()` under `requireCredentials`. A read renders source text instead,
+ * and a call whose result reports a skipped write resolves skipped with reason
+ * `not-configured`, since a component reaches it and a component path never throws.
+ */
+export class LangsysConfigurationError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'LangsysConfigurationError';
+    }
+}
+
 export interface SendOptions {
     /**
      * Let the request outlive the page that started it (`fetch` keepalive).
@@ -38,6 +52,11 @@ class LangsysAppAPIClass {
         if (config?.key && config?.projectid) {
             this.config = config;
         }
+    }
+
+    /** Forget the credentials: `init()` was refused for missing ones, so nothing may send under old ones. */
+    public clearCredentials(): void {
+        this.config = { ...this.config, projectid: '', key: '', writeGrant: undefined };
     }
 
     /** True when a write grant is configured (in either form). */
@@ -158,6 +177,13 @@ class LangsysAppAPIClass {
         opts: SendOptions = {},
     ): Promise<ResponseObject> {
         if (!this.config.projectid || !this.config.key) {
+            // WIRE-4: an explicit write without credentials is a programming error and says
+            // so. A read answers with the error envelope below and never throws.
+            if (method !== 'GET') {
+                throw new LangsysConfigurationError(
+                    `Langsys is not configured: cannot ${method} ${path} without a project id and an API key. Call LangsysApp.init() with both first.`
+                );
+            }
             return {
                 status: false,
                 errors: ['Missing projectid or API key in configuration'],

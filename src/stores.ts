@@ -91,6 +91,13 @@ export const pageCatalog = (): iCategories => catalogCache.signal.get();
  */
 export const scopeCatalogCache = catalogCache.scope;
 
+/**
+ * Whether the client has credentials (WIRE-4): `undefined` until `init()` runs, `false` when
+ * `init()` was refused for a missing project id, API key or locale store, `true` once it
+ * accepted them. `LangsysApp.isConfigured()` reports it.
+ */
+export const configured = createSignal<boolean | undefined>(undefined);
+
 /** The scope a project and locale's catalog is cached, fetched and failure-tracked under (CACHE-1). */
 export const catalogScopeOf = (projectid: string, locale: string): string => `${projectid}:${locale}`;
 

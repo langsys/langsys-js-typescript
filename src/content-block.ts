@@ -31,7 +31,7 @@ import { recordMissForDiscovery } from './discovery.js';
 import { normalizeMarkupPlaceholders } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
 import { logger } from './logger.js';
-import { catalogUnavailable, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations, writeEnabled } from './stores.js';
+import { catalogUnavailable, config as configStore, configured, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations, writeEnabled } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
 import { groupRuns, isMarkerOnly, runToken, runValues, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
@@ -297,6 +297,8 @@ export function resolveHistoricalBlockId(
 /**
  * Why a registration did not reach the server, or did not take (REG-10).
  *
+ * - `not-configured`: the client has no credentials, so nothing can be sent
+ *   (WIRE-4);
  * - `not-write-enabled`: the session may not write, so the block was handed to
  *   the discovery lane instead;
  * - `catalog-unavailable`: the catalog fetch failed, so an unknown block cannot
@@ -310,6 +312,7 @@ export function resolveHistoricalBlockId(
  * - `failed`: the request did not complete.
  */
 export type RegistrationReason =
+    | 'not-configured'
     | 'not-write-enabled'
     | 'catalog-unavailable'
     | 'base-locale-gate'
@@ -326,7 +329,7 @@ export type RegistrationReason =
  */
 export type RegistrationResult =
     | { status: true }
-    | { status: false; skipped: true; reason: 'not-write-enabled' | 'catalog-unavailable' | 'base-locale-gate' | 'deferred' | 'client-strategy' }
+    | { status: false; skipped: true; reason: 'not-configured' | 'not-write-enabled' | 'catalog-unavailable' | 'base-locale-gate' | 'deferred' | 'client-strategy' }
     | { status: false; skipped?: false; reason: 'refused' | 'failed'; errors?: unknown[] };
 
 /**
@@ -353,6 +356,10 @@ function capabilityKnown(): Promise<void> {
 }
 
 export async function registerContentBlock(contentBlock: iContentBlock): Promise<RegistrationResult> {
+    // WIRE-4: a client without credentials reports the skipped write rather than throwing,
+    // because a component reaches this and a component path never throws.
+    if (configured.get() === false) return { status: false, skipped: true, reason: 'not-configured' };
+
     // Inside a request scope (SRV-7) nothing is sent on the request path: the scope holds
     // the block and its close() decides, after the response, whether to send it (SRV-3).
     const scope = activeScope();

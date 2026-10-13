@@ -1,7 +1,7 @@
-import { LangsysAppAPI } from './api.js';
+import { LangsysAppAPI, LangsysConfigurationError } from './api.js';
 import { canonicalizeLocale, maximizedLangScript } from './locale.js';
 import { Logger, logger } from './logger.js';
-import { autoDiscovery, batchLimit, catalogScopeOf, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, pageCatalog, pageLocale, scopeCatalogCache, sTranslations } from './stores.js';
+import { autoDiscovery, batchLimit, catalogScopeOf, config as configStore, configured, currentlyLoadedLocale, discoveryBaseLocaleOnly, pageCatalog, pageLocale, scopeCatalogCache, sTranslations } from './stores.js';
 import { DEFAULT_SERVER_MESSAGE_CATEGORY, fillTemplate, type ServerMessage } from './server-messages.js';
 import { parseSnapshot, type CatalogSnapshot } from './snapshot.js';
 import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
@@ -311,6 +311,31 @@ class LangsysAppClass {
      * `key`, and `UserLocaleStore` (anything satisfying `LocaleSource` — see
      * its docstring for framework-specific adapters).
      */
+    /**
+     * Whether `init()` accepted a project id, an API key and a locale store (WIRE-4). False
+     * before `init()` runs and after one refused for missing credentials. Authorization is a
+     * separate question: a configured client whose key the server refuses is still configured.
+     */
+    public isConfigured(): boolean {
+        return configured.get() === true;
+    }
+
+    /**
+     * `init()` without credentials (WIRE-4). Nothing throws here: `t()` renders source text with
+     * its params filled, no miss is queued and no request is made, a component's block
+     * registration resolves skipped with reason `not-configured`, and an explicit write throws
+     * `LangsysConfigurationError`. With `requireCredentials`, `t()` throws it too.
+     */
+    private refuseUnconfigured(missing: string, errorText: string, requireCredentials: boolean): ResponseObject {
+        configured.set(false);
+        LangsysAppAPI.clearCredentials();
+        this.Translations.markUnconfigured(
+            new LangsysConfigurationError(`Langsys is not configured: LangsysApp.init() was called without ${missing}.`),
+            requireCredentials
+        );
+        return { status: false, errors: [errorText] };
+    }
+
     public async init(initConfig: iLangsysInitConfig): Promise<ResponseObject> {
         const projectid = initConfig.projectid;
         const key = initConfig.key;
@@ -322,6 +347,7 @@ class LangsysAppClass {
         const initialTranslations = initConfig.initialTranslations;
         const initialTranslationsLocale = initConfig.initialTranslationsLocale;
         const writeGrant = initConfig.writeGrant;
+        const requireCredentials = initConfig.requireCredentials === true;
 
         this.debug.debugEnabled = debug;
 
@@ -345,27 +371,26 @@ class LangsysAppClass {
             });
         }
 
-        // Every early return below settles the ready() gate. No catalog is
-        // coming on these paths, and `Phrase`/`Translate` await that gate
-        // before rendering — so leaving it pending renders nothing, forever,
-        // with no error, on the commonest misconfigurations there are.
+        // Every early return below leaves the client unconfigured (WIRE-4) and settles the
+        // ready() gate. No catalog is coming on these paths, and `Phrase`/`Translate` await
+        // that gate before rendering — so leaving it pending renders nothing, forever, with
+        // no error, on the commonest misconfigurations there are.
         if (!projectid) {
             this.debug.error('LangsysApp.init missing projectid in configuration object!');
-            this.Translations.settle();
-            return { status: false, errors: ['Missing projectid'] };
+            return this.refuseUnconfigured('a project id', 'Missing projectid', requireCredentials);
         }
         if (!key) {
             this.debug.error('LangsysApp.init missing API key in configuration object!');
-            this.Translations.settle();
-            return { status: false, errors: ['Missing API key'] };
+            return this.refuseUnconfigured('an API key', 'Missing API key', requireCredentials);
         }
         if (!UserLocaleStore?.subscribe || typeof UserLocaleStore.get !== 'function') {
             this.debug.error(
                 "LangsysApp.init missing UserLocaleStore — pass any object satisfying LocaleSource (get + subscribe). createSignal('en-US') works if you have nothing of your own."
             );
-            this.Translations.settle();
-            return { status: false, errors: ['Missing UserLocaleStore'] };
+            return this.refuseUnconfigured('a locale store', 'Missing UserLocaleStore', requireCredentials);
         }
+        configured.set(true);
+        this.Translations.markConfigured();
 
         // Lowercase `xx-yy` (`en-us`, `zh-hant-tw`) — the form the backend
         // stores and every internal cache key uses as the identity.
@@ -430,7 +455,10 @@ class LangsysAppClass {
             // Authorization failed — bad key, wrong host, unreachable server.
             // The locale subscription installed below short-circuits on
             // `!validateResponse.status`, so no catalog will ever load and
-            // nothing else would resolve the gate.
+            // nothing else would resolve the gate. Nor would anything answer the
+            // capability, so it settles as not writable: a block registration
+            // waiting on it resolves skipped instead of waiting forever.
+            this.Translations.settleNotWritable();
             this.Translations.settle();
         }
 

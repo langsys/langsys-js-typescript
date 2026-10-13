@@ -112,6 +112,19 @@ const res = await LangsysApp.init({ /* ... */ });
 if (!res.status) console.error('Langsys init failed', res.errors);
 ```
 
+### Running without credentials
+
+`init()` without a project id, an API key or a locale store does not throw: it
+resolves `{ status: false, errors }` and leaves the client unconfigured, so a
+preview build or a test run without secrets still renders. `t()` shows the
+source text with its params filled and makes no request, and a `<Translate>`
+block's registration resolves skipped with reason `not-configured`. An explicit
+write, such as `LangsysAppAPI.createTranslatableItems`, throws
+`LangsysConfigurationError`. `LangsysApp.isConfigured()` reports the state.
+
+To fail loudly instead, pass `requireCredentials: true`: `t()` then throws
+`LangsysConfigurationError` while the client is unconfigured.
+
 ## Quick start
 
 ```ts

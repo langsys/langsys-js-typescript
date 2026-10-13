@@ -6,6 +6,7 @@ import {
     autoDiscovery,
     batchLimit,
     catalogUnavailable,
+    configured,
     currentlyLoadedLocale,
     discoveryBaseLocaleOnly,
     sTranslations,
@@ -71,7 +72,10 @@ export function resetSdk(): void {
         catalogFailures: new Map(),
         catalogRequests: new Map(),
         catalogFromSnapshot: false,
+        // WIRE-4: a session starts before any init(), configured or not.
+        credentialsError: null,
     });
+    configured.set(undefined);
     writeEnabled.set(undefined);
     autoDiscovery.set(undefined);
     catalogUnavailable.set(false);

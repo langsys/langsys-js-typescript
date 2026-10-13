@@ -1,4 +1,4 @@
-import { LangsysAppAPI } from './api.js';
+import { LangsysAppAPI, type LangsysConfigurationError } from './api.js';
 import { recordMissForDiscovery } from './discovery.js';
 import { isServerCollectedPhrase } from './served-source.js';
 import { warnUnregistered } from './notices.js';
@@ -195,6 +195,8 @@ export class Translations {
     private isFirstClientRun = true;
     /** Process-level write decision for the SSR lane. See `canWrite`. */
     private ssrWriteEnabled: boolean | undefined = undefined;
+    /** Thrown by `t()` when `init()` was refused for missing credentials under `requireCredentials`. */
+    private credentialsError: LangsysConfigurationError | null = null;
     private readyResolve: () => void = () => {};
     private readyPromise: Promise<void> = new Promise((resolve) => {
         this.readyResolve = resolve;
@@ -280,6 +282,36 @@ export class Translations {
     }
 
     /**
+     * WIRE-4: `init()` was refused for missing credentials. Reads render source through the
+     * catalog-failed path, so no miss is recorded and nothing is sent; and the capability
+     * settles as not writable, so nothing waits on it, and the read-only release drops what
+     * an earlier render queued, since it can never be sent. With `requireCredentials`, `t()`
+     * throws `error`.
+     */
+    public markUnconfigured(error: LangsysConfigurationError, requireCredentials: boolean): void {
+        this.credentialsError = requireCredentials ? error : null;
+        this.settleNotWritable();
+        catalogUnavailable.set(true);
+        this.settle();
+    }
+
+    /** `init()` accepted credentials: undo an earlier refusal, so the first catalog decides afresh. */
+    public markConfigured(): void {
+        if (this.credentialsError === null && !catalogUnavailable.get()) return;
+        this.credentialsError = null;
+        catalogUnavailable.set(false);
+    }
+
+    /**
+     * The capability is known to be "no": the client has no credentials, or authorization was
+     * refused. Without this a block registration waiting for the capability would wait forever.
+     */
+    public settleNotWritable(): void {
+        setWriteEnabled(false);
+        if (typeof window === 'undefined') this.ssrWriteEnabled = false;
+    }
+
+    /**
      * A route change re-enters the SDK (HINT-13). Call it from the router's after-navigation
      * hook. It publishes a fresh `t` through `tSignal` — the same dependency a locale change
      * advances — so a component bound to `t` re-renders its mounted nodes, and each miss is
@@ -343,6 +375,7 @@ export class Translations {
         //   t(phrase, 'Category')                      → category='Category', params=undefined
         //   t(phrase, 'Category', {params...})         → category='Category', params={params}
         const fn = ((phrase: string, ...rest: unknown[]): string => {
+            if (this.credentialsError) throw this.credentialsError;
             // Inside a request scope (SRV-7), the scope's catalog and miss collection,
             // never the page's: the page's state is shared by every render in the process.
             const scope = activeScope();

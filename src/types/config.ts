@@ -90,6 +90,16 @@ export interface iLangsysInitConfig {
     apiUrl?: string;
 
     /**
+     * Fail loudly when credentials are missing (WIRE-4). Off by default: `init()` without a
+     * project id, API key or locale store leaves the client unconfigured, and `t()` renders
+     * source text with its params filled. On, `t()` throws `LangsysConfigurationError`
+     * instead, so a build or test run with missing credentials stops at the first render.
+     *
+     * @default false
+     */
+    requireCredentials?: boolean;
+
+    /**
      * Enable debug console messages.
      * @default false
      */
