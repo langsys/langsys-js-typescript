@@ -11,7 +11,7 @@ import { createLegacyKeys, type LegacyKeyFile, type LegacyKeys } from './legacy-
 import { canonicalizeLocale } from './locale.js';
 import { Logger, logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
-import { batchLimit, catalogUnavailable, pageCatalog, pageLocale, currentlyLoadedLocale, discoveryBaseLocaleOnly, navigationEpoch, scopeCatalogCache, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
+import { batchLimit, catalogScopeOf, catalogUnavailable, pageCatalog, pageLocale, currentlyLoadedLocale, discoveryBaseLocaleOnly, navigationEpoch, scopeCatalogCache, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
 import type { TFunction } from './types/translation-fn.js';
@@ -986,7 +986,7 @@ export class Translations {
 
     /** The project and locale a catalog belongs to: its cache key, request key and CACHE-2 pair. */
     private catalogScope(locale: string): string {
-        return `${this.config.projectid}:${locale}`;
+        return catalogScopeOf(this.config.projectid, locale);
     }
 
     /** One catalog request for a project and locale, recording the outcome for CACHE-2's window. */

@@ -85,11 +85,14 @@ export const sTranslations: Signal<iCategories> = followScope(catalogCache.signa
 export const pageCatalog = (): iCategories => catalogCache.signal.get();
 
 /**
- * Point the catalog cache at a `<projectid>:<locale>` scope. Called by
- * `Translations.change()` before a fetch, so a hit warms and a miss simply
- * misses — never serves another scope's catalog.
+ * Point the catalog cache at a `<projectid>:<locale>` scope. Called by `init()`
+ * as soon as it holds both, and by `Translations.change()` before a fetch, so a
+ * hit warms and a miss simply misses — never serves another scope's catalog.
  */
 export const scopeCatalogCache = catalogCache.scope;
+
+/** The scope a project and locale's catalog is cached, fetched and failure-tracked under (CACHE-1). */
+export const catalogScopeOf = (projectid: string, locale: string): string => `${projectid}:${locale}`;
 
 const pageLocaleSignal = createSignal<string>('');
 

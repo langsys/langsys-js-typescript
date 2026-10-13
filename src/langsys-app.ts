@@ -1,7 +1,7 @@
 import { LangsysAppAPI } from './api.js';
 import { canonicalizeLocale, maximizedLangScript } from './locale.js';
 import { Logger, logger } from './logger.js';
-import { autoDiscovery, batchLimit, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, pageCatalog, pageLocale, sTranslations } from './stores.js';
+import { autoDiscovery, batchLimit, catalogScopeOf, config as configStore, currentlyLoadedLocale, discoveryBaseLocaleOnly, pageCatalog, pageLocale, scopeCatalogCache, sTranslations } from './stores.js';
 import { DEFAULT_SERVER_MESSAGE_CATEGORY, fillTemplate, type ServerMessage } from './server-messages.js';
 import { parseSnapshot, type CatalogSnapshot } from './snapshot.js';
 import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
@@ -393,6 +393,17 @@ class LangsysAppClass {
             };
             // Keep the exported config singleton in sync (used by Translate + API).
             Object.assign(configStore, this.config);
+
+            // Restore this project and locale's cached catalog now, while authorization is
+            // in flight, so `t()` renders it during the round trip instead of source text:
+            // both halves of the cache key are known here (CACHE-1). The cache holds the
+            // catalog and never the write decision (GATE-4), registration still decides
+            // only against the live catalog (REG-13), and a refused authorization leaves
+            // the restored catalog rendering, as a preloaded snapshot does. The loaded
+            // locale is not set: it names a catalog this session fetched or was handed,
+            // and that is what lets `initialTranslations` below replace a stale copy.
+            const startLocale = canonicalizeLocale(UserLocaleStore.get() || '');
+            if (startLocale) scopeCatalogCache(catalogScopeOf(projectid, startLocale));
         }
 
         // A grant makes write capability per-user, while the SSR write lane can
@@ -450,7 +461,7 @@ class LangsysAppClass {
 
         // Prefetch and wire up reactive locale change handling. The store
         // emits whatever the app put in it — canonicalize here so downstream
-        // caches and API routes only ever see BCP 47 canonical form.
+        // caches and API routes only ever see the lowercase `xx-yy` form.
         this.config.sUserLocale.subscribe((rawLocale) => {
             if (!validateResponse.status) return;
             const locale = canonicalizeLocale(rawLocale);
