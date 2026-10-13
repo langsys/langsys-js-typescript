@@ -72,10 +72,12 @@ const key = (shape: ExpressionShape) => JSON.stringify(shape);
 /**
  * Whether a shape identifies its expression, so that an equal shape is the same
  * expression. An `other` shape, anywhere in it, does not: `a + b` and `c * d` are both
- * `{ other: 'binary' }`, and so are the arguments of `fmt(a + b)` and `fmt(c * d)`.
+ * `{ other: 'binary' }`, and so are the arguments of `fmt(a + b)` and `fmt(c * d)`. Nor
+ * does a call whose callee cannot be spelled (`''`): `getA()(n)` and `getB()(n)` are
+ * both a call over `n`.
  */
 function identifies(shape: ExpressionShape): boolean {
-    if ('call' in shape) return shape.call.args.every(identifies);
+    if ('call' in shape) return shape.call.callee !== '' && shape.call.args.every(identifies);
     return !('other' in shape);
 }
 
