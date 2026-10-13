@@ -927,7 +927,7 @@ export class Translations {
         // writes the catalog. A hit warms the start; a miss simply misses.
         // Previously the cache was keyed by neither, so a page load restored
         // whatever was stored and served it until a fetch replaced it.
-        scopeCatalogCache(`${this.config.projectid}:${locale}`);
+        scopeCatalogCache(this.catalogScope(locale));
 
         if (skipFetch) {
             this.debug.log('Using pre-fetched translations for locale', locale);
@@ -950,7 +950,7 @@ export class Translations {
 
         this.debug.log('Locale change detected!', locale);
         this.locale = locale;
-        const scope = `${this.config.projectid}:${locale}`;
+        const scope = this.catalogScope(locale);
 
         // CACHE-2: inside the window after a failure, keep rendering source text for this pair
         // and fetch nothing, so an outage is not paid again on every locale emission. An
@@ -982,6 +982,11 @@ export class Translations {
         // backstop at all.
         if (this.missingTokens.length && !catalogUnavailable.get()) this.scheduleTokenFlush();
         return true;
+    }
+
+    /** The project and locale a catalog belongs to: its cache key, request key and CACHE-2 pair. */
+    private catalogScope(locale: string): string {
+        return `${this.config.projectid}:${locale}`;
     }
 
     /** One catalog request for a project and locale, recording the outcome for CACHE-2's window. */
@@ -1215,25 +1220,46 @@ export class Translations {
         this.readyResolve();
     }
 
-    /** Fetch and publish the catalog for `this.locale`. Resolves false when it could not. */
+    /**
+     * Fetch and publish the catalog for `this.locale`. Resolves false when it could not.
+     *
+     * The response publishes only while the locale and cache scope it was requested for are
+     * still current. A locale change while it is in flight supersedes it, and it is dropped
+     * when it lands: published, it would show the previous locale's catalog under the new
+     * one, persist it under the new locale's cache key, and stamp the new locale as loaded,
+     * so `change()` would not fetch that locale for another 60s. A superseded response still
+     * resolves true or false, which `fetchCatalog` records against its own pair (CACHE-2).
+     */
     private async getTranslations(): Promise<boolean> {
         if (!LangsysAppAPI.config.projectid && this.config.projectid) {
             LangsysAppAPI.setup(this.config);
         }
 
+        const locale = this.locale;
+        const scope = this.catalogScope(locale);
+        const current = () => locale === this.locale && scope === this.catalogScope(this.locale);
+
         let response: ResponseObject;
         try {
-            response = await LangsysAppAPI.getTranslations(this.locale);
+            response = await LangsysAppAPI.getTranslations(locale);
         } catch (err) {
             // `send()` already turns a network failure into an error envelope, so this
             // is the client itself throwing. Still an expected condition (WIRE-4), and
             // `change()` runs un-awaited from the locale subscription, where a
             // rejection has no caller to land on.
             this.debug.error('Catalog fetch threw', err);
-            this.markCatalogUnavailable();
+            if (current()) this.markCatalogUnavailable();
             return false;
         }
         this.debug.log('GET TRANSLATIONS API RESPONSE', response);
+
+        if (!current()) {
+            this.debug.log('Catalog response dropped: the locale changed while it was in flight', {
+                requested: locale,
+                current: this.locale,
+            });
+            return !response.errors;
+        }
 
         // Envelope-level, alongside `words` / `untranslated_words` — never
         // inside `data`, which IS the category map. Refreshed on every catalog
@@ -1290,16 +1316,17 @@ export class Translations {
             trans[cat]['__category__'] = cat;
         }
 
-        this.debug.log('GET TRANSLATIONS ' + this.locale, trans);
+        this.debug.log('GET TRANSLATIONS ' + locale, trans);
 
         // Before publishing, so subscribers re-rendering off this catalog record their
         // misses normally.
         catalogUnavailable.set(false);
         this.catalogFromSnapshot = false;
         sTranslations.set(trans);
-        // Small delay so consumers see translations + locale updates on the same tick.
-        setTimeout(() => currentlyLoadedLocale.set(this.locale), 100);
-        this.lastLoaded[this.locale] = new Date().getTime() / 1000;
+        // Small delay so consumers see translations + locale updates on the same tick. The
+        // locale is the one this catalog was fetched for, even if a switch has begun since.
+        setTimeout(() => currentlyLoadedLocale.set(locale), 100);
+        this.lastLoaded[locale] = new Date().getTime() / 1000;
         this.readyResolve();
         return true;
     }
