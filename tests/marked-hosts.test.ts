@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangsysAppAPI } from '../src/api.js';
 import { generateCustomId } from '../src/content-block.js';
 import { _resetDiscoveryState } from '../src/discovery.js';
+import { registerBlock } from '../src/block-tree.js';
 import { isHostManaged } from '../src/hosts.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { Phrase } from '../src/phrase.js';
@@ -252,5 +253,41 @@ describe('MARK-2: an unmanaged phrase host registers whole, as the one string it
         outer.destroy();
         expect(isHostManaged(host.querySelector('section')!)).toBe(false);
         expect(isHostManaged(host.querySelector('span')!)).toBe(false);
+    });
+});
+
+describe('MARK-2: a host a binding renders through the tree path is the binding’s', () => {
+    /**
+     * A binding renders a block itself (renderBlock on the server, registerBlock after mount)
+     * inside a `Translate` it does not render that way. The enclosing walk sees the inner
+     * host's stamp; unclaimed, it would take the host over with the OUTER's params and
+     * re-render it, overwriting the values the binding rendered.
+     */
+    const B = [{ tag: 'p', attrs: {}, children: [{ text: 'B1' }] }, { tag: 'p', attrs: {}, children: [{ text: 'B2' }] }];
+    const walkedHosts = (spy: { mock: { instances: unknown[] } }) => spy.mock.instances.map((i) => (i as { element: Element }).element);
+
+    it('registerBlock with host claims it, so an enclosing Translate does not take it over', async () => {
+        const host = mount(nested('data-ls-contentblock', INNER_ID));
+        const inner = host.querySelector('section')!;
+        const tokenized = vi.spyOn(Translate.prototype as never, 'tokenizeContent' as never);
+
+        void registerBlock(B, { category: 'UI', host: inner });
+        expect(isHostManaged(inner)).toBe(true);
+        translate(host);
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        expect(walkedHosts(tokenized)).toContain(host);
+        expect(walkedHosts(tokenized)).not.toContain(inner);
+    });
+
+    it('control: without it, the enclosing Translate takes the stamped host over', async () => {
+        const host = mount(nested('data-ls-contentblock', INNER_ID));
+        const inner = host.querySelector('section')!;
+        const tokenized = vi.spyOn(Translate.prototype as never, 'tokenizeContent' as never);
+
+        translate(host);
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        expect(walkedHosts(tokenized)).toContain(inner);
     });
 });

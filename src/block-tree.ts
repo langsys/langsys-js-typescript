@@ -27,6 +27,7 @@ import { markupTokenValues, splitSentinels, stripSentinels } from './richtext.js
 import { activeCatalog, activeScope } from './scope-context.js';
 import { isBlockHandled, isServerCollected, markBlockHandled, rememberSeededBlock } from './served-source.js';
 import { debugNotice } from './notices.js';
+import { claimHost } from './hosts.js';
 import { groupRuns, renderRun, runToken, toRichNodes, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
 import { config as configStore, currentlyLoadedLocale } from './stores.js';
 import type { CatalogView } from './translations.js';
@@ -215,6 +216,9 @@ export function warnUnrenderedBlock(reason: string): void {
     );
 }
 
+/** The claim on a host a binding renders through the tree path; it has nothing to destroy. */
+const RENDERED_BY_BINDING = { destroy(): void {} };
+
 /**
  * Register a block for discovery, with no DOM: what `Translate` registers when
  * it mounts, for a framework that owns the host's text nodes and renders
@@ -238,6 +242,9 @@ export function warnUnrenderedBlock(reason: string): void {
  * rejection would end a Node process rather than one request, and the request's
  * `t()` throws already.
  *
+ * With `host`, the host is the binding's from this call on: an enclosing
+ * `Translate` leaves it alone rather than taking it over as an unmanaged marked host.
+ *
  * One-shot: it records what the block is now. A binding calls it again on each
  * change `t` goes through — a locale switch, a new catalog, a navigation — as
  * `Translate` re-enters its lookup (HINT-13).
@@ -253,6 +260,9 @@ export function warnUnrenderedBlock(reason: string): void {
  * block the seed marks `register: false`, whose tokens hold per-user values.
  */
 export function registerBlock(input: readonly BlockNode[] | SeededBlock, options: BlockOptions = {}): Promise<void> {
+    // The binding renders this host itself: claim it, so an enclosing `Translate`'s walk
+    // never takes it over with its own params (MARK-2). Synchronous, before anything else.
+    if (options.host) claimHost(options.host, RENDERED_BY_BINDING);
     if (typeof window === 'undefined' && !activeScope()) {
         debugNotice(
             'register-block\0no-scope',
