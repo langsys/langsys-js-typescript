@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { defaultedArguments, findUnusedParamKeys, interpolate, isICU } from '../src/interpolate.js';
+import { defaultedArguments, findUnusedParamKeys, interpolate, isICU, warnUnmatchedParams } from '../src/interpolate.js';
 import { logger } from '../src/logger.js';
 
 describe('isICU', () => {
@@ -479,5 +479,46 @@ describe('interpolate — notices routed to the caller (ICU-4 and ICU-6 for a ho
         expect(defaultedArguments(SELECT('e'), {})).toEqual(['g', 'count']);
         expect(defaultedArguments(SELECT('e'), { g: null, count: 3 })).toEqual(['g']);
         expect(defaultedArguments('Plain {name} text', {})).toEqual([]);
+    });
+});
+
+describe('a <name>_gender companion counts as used wherever name is a placeholder', () => {
+    /**
+     * Langsys promotes `{username}` to `{username_gender, select, …}` in gendered target
+     * locales, so an app passes `username_gender` beside `username` (issue #5). The source
+     * text never names it, and a debug session at the base locale was told to write
+     * `%username_gender%`, a placeholder that does not exist.
+     */
+    const SOURCE = '{username} has been invited';
+    const GENDERED = '{username_gender, select, female {{username} ha sido invitada} other {{username} ha sido invitado}}';
+
+    it('is not reported beside its placeholder, in either spelling', () => {
+        expect(findUnusedParamKeys([SOURCE], { username: 'Ada', username_gender: 'female' })).toEqual([]);
+        expect(findUnusedParamKeys(['%username% has been invited'], { username: 'Ada', username_gender: 'female' })).toEqual([]);
+    });
+
+    it('and the gendered translation does select on it, which is why', () => {
+        expect(interpolate(GENDERED, { username: 'Ada', username_gender: 'female' }, 'es')).toBe('Ada ha sido invitada');
+        expect(findUnusedParamKeys([GENDERED], { username: 'Ada', username_gender: 'female' })).toEqual([]);
+    });
+
+    it('is still reported when the text has no such placeholder', () => {
+        expect(findUnusedParamKeys([SOURCE], { username: 'Ada', team_gender: 'female' })).toEqual(['team_gender']);
+        expect(findUnusedParamKeys(['Welcome back'], { username_gender: 'female' })).toEqual(['username_gender']);
+    });
+
+    it('warnUnmatchedParams stays quiet for it under debug, and still names a real stray', () => {
+        logger.debugEnabled = true;
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            warnUnmatchedParams('<Translate>', [SOURCE], { username: 'Ada', username_gender: 'female' });
+            expect(warn).not.toHaveBeenCalled();
+            warnUnmatchedParams('<Translate>', [SOURCE], { username: 'Ada', team_gender: 'female' });
+            expect(warn).toHaveBeenCalledTimes(1);
+            expect(String(warn.mock.calls[0]!.join(' '))).toContain('%team_gender%');
+        } finally {
+            warn.mockRestore();
+            logger.debugEnabled = false;
+        }
     });
 });

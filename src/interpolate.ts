@@ -56,6 +56,9 @@ function adoptPercentPlaceholders(template: string, params: Record<string, unkno
 /** Keys `%name%` can carry — the same shape `adoptPercentPlaceholders` matches. */
 const IDENTIFIER_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/** `name_gender` → `name`: the gender companion of a placeholder (see `findUnusedParamKeys`). */
+const GENDER_COMPANION = /^(.+)_gender$/;
+
 /** Escape a params key for literal use inside a RegExp. */
 function escapeForRegExp(key: string): string {
     return key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -83,6 +86,12 @@ function escapeForRegExp(key: string): string {
  * The percent spelling is accepted only for keys that are IDENTIFIERS, matching
  * `adoptPercentPlaceholders` exactly. A key like `a.b` never resolves from
  * `%a.b%` — accepting it here would suppress a warning that is correct.
+ *
+ * A `<name>_gender` key counts as used wherever `name` is a placeholder. Langsys
+ * promotes a plain `{name}` to `{name_gender, select, …}` in gendered target
+ * locales, so an app passes the gender beside the value (`GenderParamsFor` types
+ * it), and the source text a caller checks never names it. Only a placeholder's
+ * companion: `team_gender` with no `{team}` in the text is still reported.
  */
 export function findUnusedParamKeys(texts: string[], params: Record<string, unknown> | undefined): string[] {
     if (!params) return [];
@@ -94,10 +103,15 @@ export function findUnusedParamKeys(texts: string[], params: Record<string, unkn
     // diff, no blame, no 3-way merge, and every change to this file becomes
     // invisible to review while still shipping. It hid here once already.
     const haystack = texts.join('\0');
-    return keys.filter((key) => {
+    const isPlaceholder = (key: string): boolean => {
         const escaped = escapeForRegExp(key);
         const percent = IDENTIFIER_KEY.test(key) ? `|%${escaped}%` : '';
-        return !new RegExp(`\\{\\s*${escaped}\\s*[,}]${percent}`).test(haystack);
+        return new RegExp(`\\{\\s*${escaped}\\s*[,}]${percent}`).test(haystack);
+    };
+    return keys.filter((key) => {
+        if (isPlaceholder(key)) return false;
+        const genderOf = GENDER_COMPANION.exec(key)?.[1];
+        return !(genderOf && isPlaceholder(genderOf));
     });
 }
 
@@ -303,10 +317,10 @@ interface IcuNode {
  *
  * Why this is reachable without any caller mistake: langsys-ai's ICU promoter
  * can *introduce* a select argument the source phrase never had — a plain
- * `{name}` becomes `{name_gender, select, …}` in gendered target locales. The
- * application cannot supply `name_gender`; it doesn't exist in the phrase the
- * developer wrote, and nothing tells them the target grew one. Every app
- * translating into a gendered locale hits this.
+ * `{name}` becomes `{name_gender, select, …}` in gendered target locales. An
+ * application may pass `name_gender` beside `name`, and most never do: the
+ * argument appears nowhere in the phrase the developer wrote, and few apps know
+ * the user's gender. Every app translating into a gendered locale hits this.
  *
  * The recovery, agreed with `langsys-php` so a shared catalog can't render two
  * different sentences for the same input:

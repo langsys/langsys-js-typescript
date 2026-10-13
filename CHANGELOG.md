@@ -118,6 +118,8 @@ heading records the INTENT rather than the number. There is no summary-regenerat
 
   Covered by `tests/types/t-signature.ts`, which `type-level.test.ts` compiles.
 
+  The unmatched-params check agrees: `findUnusedParamKeys` counts `<name>_gender` as used wherever `{name}` is a placeholder, so a debug session no longer warns about it on `<Phrase>` or `<Translate>` and advises writing `%username_gender%`. A companion of no placeholder, such as `team_gender`, is still reported.
+
 - **An `<option>` inside a translated `<select>` follows every locale switch.** The `<select>` writes its options' text, and the walk then entered each option and took the text just written as its original, so the second switch rendered the first locale's text again. The walk no longer enters an option its `<select>` writes.
 
 - **A content block mounted before `init()` is registered once the write capability is known.** On a hydrated page the served catalog is seeded first, which settles `ready()`, and components mount before the app calls `init()`. A block reaching registration then found the capability still unknown, took that as a refusal, and was never registered. It now waits for `init()`'s answer and decides then: a write key registers it, and a read key hands it to discovery as before.
