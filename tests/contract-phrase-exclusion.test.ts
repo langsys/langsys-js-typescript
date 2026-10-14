@@ -275,6 +275,21 @@ describe('a caller’s param inside an author’s exclusion is filled as plain t
         );
     });
 
+    it('a value fills as it prints elsewhere: %name% as {name}, a boolean as true or false, a number its digits; a date, a null and code stay as written', async () => {
+        await client();
+        const fill = { email: 'ana@example.com', on: true, off: false, count: 3, ratio: 2.5, when: new Date('2026-10-14T12:00:00Z'), other: null } as never;
+        const inner = '%email% {on} {off} {count} {ratio} {when} %when% {other} <i>{email}</i><math><mi>{on}</mi></math><noscript>{on}</noscript>';
+        const filled = 'ana@example.com true false 3 2.5 {when} %when% {other} <i>ana@example.com</i><math><mi>{on}</mi></math><noscript>{on}</noscript>';
+        const host = mount(`Write to <b translate="no">${inner}<template>{on}</template></b> for help`);
+        live.push(new Phrase(host, { category: 'UI', params: fill }));
+
+        await until(() => host.innerHTML.includes('ana@example.com'));
+        expect(host.innerHTML).toBe(`Write to <b translate="no">${filled}<template>{on}</template></b> for help`);
+        expect(serializeTree(renderBlock(phraseHost(`Write to <b translate="no">${inner}</b> for help`), { category: 'UI', params: fill }).nodes)).toBe(
+            `<span data-ls-phrase>Write to <b translate="no">${filled}</b> for help</span>`
+        );
+    });
+
     it('code is never filled, inside a phrase or an exclusion', async () => {
         await client();
         const host = mount('Run <script>var a = "{email}";</script> or <b translate="no">%email% <style>.x{email}</style></b> now');

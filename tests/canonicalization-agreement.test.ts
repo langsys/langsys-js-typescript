@@ -155,19 +155,25 @@ describe('this SDK keys every rich phrase as published (phrase_cases, TOK-1)', (
         expect(encoded(control.html).earlier).toBeUndefined();
     });
 
-    it('each row records this lane as measured and agreeing, and every other lane as awaited until it measures', () => {
+    it('each row records every lane that measured it as agreeing, and every other lane as awaited until it measures', () => {
         let agreed = 0;
+        let checked = 0;
         for (const row of doc.phrase_cases) {
             expect(row.added_by).toBe('spec 8.5.9 TOK-1 exclusion');
             for (const lane of row.awaiting ?? []) expect(row.measured[lane], `${row.id}: ${lane} is awaited but has a measurement`).toBeNull();
-            const js = row.measured['langsys-js-typescript'];
-            expect(js, `${row.id}: the JS lane, which authors the row, must have measured it`).not.toBeNull();
-            expect(js!.phrase).toBe(row.expected_phrase);
-            expect(js!.values).toEqual(row.expected_values);
-            expect(js!.registers).toBe(row.registers);
-            expect(js!.earlier_phrase).toBe(row.earlier_phrase);
+            expect(row.measured['langsys-js-typescript'], `${row.id}: the JS lane, which authors the row, must have measured it`).not.toBeNull();
+            for (const [lane, m] of Object.entries(row.measured)) {
+                if (m === null || !row.agree) continue;
+                expect(m.phrase, `${row.id}: ${lane}'s phrase`).toBe(row.expected_phrase);
+                expect(m.values, `${row.id}: ${lane}'s values`).toEqual(row.expected_values);
+                expect(m.registers, `${row.id}: ${lane}'s registration`).toBe(row.registers);
+                expect(m.earlier_phrase, `${row.id}: ${lane}'s earlier key`).toBe(row.earlier_phrase);
+                checked++;
+            }
             if (row.agree) agreed++;
         }
+        // Two measuring lanes per agreed row, less the lanes it still awaits.
+        expect(checked).toBe(doc.phrase_cases.reduce((n, row) => n + (row.agree ? 2 - (row.awaiting?.length ?? 0) : 0), 0));
         expect(agreed).toBe(doc.phrase_agreement.agree);
         expect(doc.phrase_cases.length - agreed).toBe(doc.phrase_agreement.diverge);
     });
