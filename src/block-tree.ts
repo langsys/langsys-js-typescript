@@ -21,15 +21,15 @@ import {
     VALUE_TRANSLATABLE_INPUT_TYPES,
     type WalkNode,
 } from './content-block.js';
-import { encodeRichPhrase, generateCustomId, historicalCustomIds, normalizeMarkupPlaceholders, normalizeTokenText } from './identity.js';
+import { encodeRichPhrase, generateCustomId, historicalCustomIds, NON_TRANSLATABLE_ELEMENTS, normalizeMarkupPlaceholders, normalizeTokenText } from './identity.js';
 import { interpolate, isICU } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
-import { markupTokenValues, splitSentinels, stripSentinels } from './richtext.js';
+import { fillOpaqueText, markupTokenValues, splitSentinels, stripSentinels, takesParams } from './richtext.js';
 import { activeCatalog, activeScope } from './scope-context.js';
 import { isBlockHandled, isServerCollected, markBlockHandled, rememberSeededBlock } from './served-source.js';
 import { debugNotice } from './notices.js';
 import { claimHost } from './hosts.js';
-import { groupRuns, renderRun, runToken, toRichNodes, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
+import { earlierRichPhrase, groupRuns, renderRun, runToken, toRichNodes, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
 import { config as configStore, currentlyLoadedLocale } from './stores.js';
 import type { CatalogView } from './translations.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -733,10 +733,21 @@ function renderNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved = 
 function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] {
     const { category = '', params = {} } = options;
     const values: Record<string, string> = {};
-    const rich = toRichNodes(host.childNodes as unknown as MarkerNode[], (element) => element as unknown as ViewElement, values);
-    const { phrase, slots } = encodeRichPhrase(rich);
+    const children = host.childNodes as unknown as MarkerNode[];
+    const slotOf = (element: MarkerNode, opaque: boolean) => ({ element: element as unknown as ViewElement, opaque });
+    const { phrase, slots: keyed } = encodeRichPhrase(toRichNodes(children, slotOf, values));
     if (!phrase) return host.childNodes;
-    const translated = LangsysApp.Translations.lookup(phrase, category);
+    let translated = LangsysApp.Translations.lookup(phrase, category);
+    let slots = keyed;
+    // A miss looks up the key the phrase was registered under before an opaque element
+    // was one empty pair (TOK-1), and renders it through that key's slots; never registered.
+    const earlier = translated === null ? earlierRichPhrase(children, slotOf) : null;
+    const fromEarlier = earlier ? LangsysApp.Translations.lookup(earlier.phrase, category) : null;
+    if (earlier && fromEarlier !== null) {
+        translated = fromEarlier;
+        slots = earlier.slots;
+        for (const [name, value] of Object.entries(earlier.values)) if (!(name in values)) values[name] = value;
+    }
     // Served as source, a phrase with marked values keeps its markers (VAR-3), so a
     // reader on the client reads the same phrase.
     if (translated === null && Object.keys(values).length) return host.childNodes;
@@ -757,12 +768,25 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
         else if ('open' in part) {
             const slot = slots[part.open];
             if (!slot) return [new ViewText(stripSentinels(resolved))];
-            const clone = new ViewElement(slot.tagName, Object.fromEntries(slot.attrs), [], slot.source);
+            const { element, opaque } = slot;
+            // Opaque (TOK-1): its source content as given, the caller's params filled into an
+            // author's exclusion as plain text, and whatever a translation put inside its pair dropped.
+            const shown = !opaque ? [] : takesParams(element as unknown as Element) ? withParams(element.childNodes, params) : element.childNodes;
+            const clone = new ViewElement(element.tagName, Object.fromEntries(element.attrs), shown, element.source);
             current.push(clone);
-            stack.push(clone.childNodes);
+            stack.push(opaque ? [] : clone.childNodes);
         } else stack.pop();
     }
     return top;
+}
+
+/** Opaque content copied with the caller's params filled into its text (`fillOpaqueText`); code is copied as it is. */
+function withParams(nodes: readonly ViewNode[], params: Readonly<Record<string, unknown>>): ViewNode[] {
+    return nodes.map((node) => {
+        if (node instanceof ViewText) return new ViewText(fillOpaqueText(node.nodeValue, params));
+        if (!(node instanceof ViewElement) || NON_TRANSLATABLE_ELEMENTS.includes(node.tagName.toLowerCase())) return node;
+        return new ViewElement(node.tagName, Object.fromEntries(node.attrs), withParams(node.childNodes, params), node.source);
+    });
 }
 
 function registerView(root: ViewNode[], options: BlockOptions, input: readonly BlockNode[]): void {
@@ -846,11 +870,11 @@ function registerNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved 
         const category = nestedOptions(node, options, resolved).category ?? '';
         if (isPhraseMarked(node as unknown as Element)) {
             const values: Record<string, string> = {};
-            const { phrase } = encodeRichPhrase(toRichNodes(node.childNodes as unknown as MarkerNode[], () => null, values));
-            // Text inside a resolved scope is never recorded (GATE-10), nor a phrase made
-            // only of value markers (VAR-3).
-            const markersOnly = Object.keys(values).length > 0 && !phrase.replace(/\{[a-z][a-z0-9_]*\}/g, '').trim();
-            if (phrase && !here && !markersOnly) (LangsysApp.Translations.t as unknown as (p: string, c: string) => string)(phrase, category);
+            const { phrase, slots } = encodeRichPhrase(toRichNodes(node.childNodes as unknown as MarkerNode[], (_element, opaque) => opaque, values));
+            // Text inside a resolved scope is never recorded (GATE-10), nor a phrase with no
+            // text of its own: only value markers (VAR-3) or opaque elements (TOK-1).
+            const textless = !phrase.replace(/\{[a-z][a-z0-9_]*\}/g, '').trim() && (Object.keys(values).length > 0 || slots.some(Boolean));
+            if (phrase && !here && !textless) (LangsysApp.Translations.t as unknown as (p: string, c: string) => string)(phrase, category);
             continue;
         }
         const marker = readContentBlockMarker(node as unknown as Element);

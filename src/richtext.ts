@@ -29,8 +29,8 @@
 // never registered, never sent over the wire (the wire form uses {mNo}/{mNc}).
 //   open(i)  = U+E000  <i>  U+E001
 //   close(i) = U+E002  <i>  U+E003
-import { encodeRichPhrase } from './identity.js';
-import { paramElementName, toRichNodes, type MarkerNode } from './var-markers.js';
+import { encodeRichPhrase, isOpaqueInPhrase, isTranslationExcluded, NON_TRANSLATABLE_ELEMENTS } from './identity.js';
+import { earlierRichPhrase, paramElementName, toRichNodes, type MarkerNode } from './var-markers.js';
 
 const SENT_OPEN_START = String.fromCharCode(0xe000);
 const SENT_OPEN_END = String.fromCharCode(0xe001);
@@ -44,6 +44,12 @@ const SENT_SCAN = /\uE000(\d+)\uE001|\uE002(\d+)\uE003/g;
 export interface RichSlot {
     /** Shallow clone of the original element — preserves tag, class, href, etc. */
     template: HTMLElement;
+    /**
+     * For an element opaque in the phrase (TOK-1), the element itself: it renders its
+     * own content as given, so reconstitution moves it rather than a copy, and what a
+     * framework renders inside it stays the framework's.
+     */
+    source?: HTMLElement;
 }
 
 export interface EncodedRichText {
@@ -56,6 +62,12 @@ export interface EncodedRichText {
     slots: RichSlot[];
     /** Each marked value, by name (VAR-3): the params the phrase renders with, unless the caller names them. */
     values: Record<string, string>;
+    /**
+     * For a phrase holding an opaque element, the key it was registered under before
+     * TOK-1 bound this path, with that key's slots and values: looked up on a miss for
+     * `phrase`, never registered.
+     */
+    earlier?: { phrase: string; slots: RichSlot[]; values: Record<string, string> };
 }
 
 /**
@@ -97,9 +109,15 @@ export function encodeRichText(root: HTMLElement): EncodedRichText {
     // Shallow clone: tag + attributes, no children. Preserves the framework's
     // scoped-CSS class, which is the whole point of reusing the real element at
     // reconstitution. A marked value is its placeholder, and its value a param (VAR-3).
-    const nodes = toRichNodes(root.childNodes as unknown as ArrayLike<MarkerNode>, (element) => (element as unknown as HTMLElement).cloneNode(false) as HTMLElement, values);
-    const { phrase, slots } = encodeRichPhrase(nodes);
-    return { phrase, slots: slots.map((template) => ({ template })), values };
+    // An opaque element keeps itself as its source (TOK-1).
+    const slotOf = (element: MarkerNode, opaque: boolean): RichSlot => {
+        const live = element as unknown as HTMLElement;
+        return opaque ? { template: live.cloneNode(false) as HTMLElement, source: live } : { template: live.cloneNode(false) as HTMLElement };
+    };
+    const children = root.childNodes as unknown as ArrayLike<MarkerNode>;
+    const { phrase, slots } = encodeRichPhrase(toRichNodes(children, slotOf, values));
+    const earlier = earlierRichPhrase(children, slotOf);
+    return earlier ? { phrase, slots, values, earlier } : { phrase, slots, values };
 }
 
 
@@ -199,7 +217,9 @@ export function applyInPlace(host: Node, resolved: string, slotOf?: (element: El
                 const index = slotOf ? slotOf(child as Element) : place;
                 if (!open || !('open' in open) || open.open !== index) return false;
                 next++;
-                if (!walk(child)) return false;
+                // An opaque element (TOK-1) shows its source content as given: nothing in
+                // it is written, and its pair holds nothing.
+                if (!isOpaqueInPhrase(child as Element) && !walk(child)) return false;
                 const close = parts[next];
                 if (!close || !('close' in close) || close.close !== index) return false;
                 next++;
@@ -225,6 +245,7 @@ export function reconstitute(
     let lastIndex = 0;
     let match: RegExpExecArray | null;
     SENT_SCAN.lastIndex = 0;
+    const moved = new Set<HTMLElement>();
 
     try {
         while ((match = SENT_SCAN.exec(resolved)) !== null) {
@@ -238,6 +259,16 @@ export function reconstitute(
             if (isOpen) {
                 const slot = slots[slotIndex];
                 if (!slot) throw new Error('unknown markup slot');
+                if (slot.source) {
+                    // Opaque (TOK-1): the element itself, its content as given, and whatever
+                    // a translation put inside its pair dropped.
+                    const el = moved.has(slot.source) ? (slot.source.cloneNode(true) as HTMLElement) : slot.source;
+                    moved.add(slot.source);
+                    onElement?.(el, slotIndex);
+                    top().appendChild(el);
+                    stack.push(doc.createDocumentFragment());
+                    continue;
+                }
                 const el = slot.template.cloneNode(false) as HTMLElement;
                 onElement?.(el, slotIndex);
                 top().appendChild(el);
@@ -258,6 +289,54 @@ export function reconstitute(
     }
 
     return Array.from(root.childNodes);
+}
+
+/**
+ * An opaque element's text with each `{name}` or `%name%` the caller passes as a param
+ * filled in, as plain text (TOK-1): a string, number or boolean as it prints, with no ICU
+ * and no formatting. The key never holds it. Anything else, an unfilled placeholder
+ * included, stays as written.
+ */
+export function fillOpaqueText(text: string, params: Readonly<Record<string, unknown>>): string {
+    return text.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}|%([A-Za-z_][A-Za-z0-9_]*)%/g, (whole, braced?: string, percent?: string) => {
+        const name = (braced ?? percent)!;
+        const value = Object.prototype.hasOwnProperty.call(params, name) ? params[name] : undefined;
+        return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : whole;
+    });
+}
+
+/**
+ * Whether an opaque element's text takes the caller's params: an author's own exclusion
+ * does, code never (`<script>`, `<style>` and the rest of TOK-1's list, at any depth).
+ */
+export function takesParams(element: Element): boolean {
+    return isTranslationExcluded(element) && !NON_TRANSLATABLE_ELEMENTS.includes(element.tagName.toLowerCase());
+}
+
+/** Each text node's text as the page gave it, and as `fillOpaque` last wrote it. */
+const opaqueTexts = new WeakMap<Node, { original: string; written: string }>();
+
+/**
+ * Fill the caller's params into the text of each opaque slot's element (`fillOpaqueText`),
+ * always from the text the page gave it: a text the framework has rewritten since is its
+ * new original. Code inside is left as it is.
+ */
+export function fillOpaque(slots: readonly RichSlot[], params: Readonly<Record<string, unknown>>): void {
+    const visit = (parent: Node): void => {
+        for (const child of Array.from(parent.childNodes)) {
+            if (child.nodeType === 1) {
+                if (!NON_TRANSLATABLE_ELEMENTS.includes((child as Element).tagName.toLowerCase())) visit(child);
+                continue;
+            }
+            if (child.nodeType !== 3) continue;
+            const seen = opaqueTexts.get(child);
+            const original = seen && child.nodeValue === seen.written ? seen.original : child.nodeValue ?? '';
+            const written = fillOpaqueText(original, params);
+            if (child.nodeValue !== written) child.nodeValue = written;
+            opaqueTexts.set(child, { original, written });
+        }
+    };
+    for (const slot of slots) if (slot.source && takesParams(slot.source)) visit(slot.source);
 }
 
 /** Remove any sentinel markers from a string, leaving the bare text. */

@@ -1,4 +1,4 @@
-import { normalizeMarkupPlaceholders, normalizeTokenText, type RichTextNode } from './identity.js';
+import { encodeRichPhrase, isOpaqueInPhrase, normalizeMarkupPlaceholders, normalizeTokenText, type AttributeReader, type RichTextNode } from './identity.js';
 import { interpolate, isICU } from './interpolate.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
 
@@ -244,12 +244,18 @@ function splitAtMarkers(template: string, names: string[]): string[] | null {
 /**
  * A rich phrase's nodes (`encodeRichPhrase`), reading value markers: each marked
  * value is its `{NAME}` placeholder, its value goes into `values`, and a comment
- * that marks nothing is dropped. Every other element is a markup slot, as before.
+ * that marks nothing is dropped. Every other element is a markup slot. An element
+ * opaque in a phrase (`isOpaqueInPhrase`) is a slot with nothing inside, and nothing
+ * in it is read (TOK-1). `payload` is told whether its element is opaque.
+ *
+ * `exclude: false` walks into opaque elements, as the reader did before TOK-1 bound
+ * this path: the earlier key a phrase holding one was registered under (`earlierRichPhrase`).
  */
 export function toRichNodes<N extends MarkerNode, T>(
     children: ArrayLike<N>,
-    payload: (element: N) => T,
-    values: Record<string, string> = {}
+    payload: (element: N, opaque: boolean) => T,
+    values: Record<string, string> = {},
+    exclude = true
 ): RichTextNode<T>[] {
     const out: RichTextNode<T>[] = [];
     for (const item of groupRuns(children)) {
@@ -267,7 +273,27 @@ export function toRichNodes<N extends MarkerNode, T>(
         }
         const node = item.node;
         if (node.nodeType === TEXT) out.push({ text: node.nodeValue ?? '' });
-        else if (node.nodeType === ELEMENT) out.push({ children: toRichNodes(node.childNodes as ArrayLike<N>, payload, values), payload: payload(node) });
+        else if (node.nodeType === ELEMENT) {
+            const opaque = isOpaqueInPhrase(node as unknown as AttributeReader);
+            const children = opaque && exclude ? [] : toRichNodes(node.childNodes as ArrayLike<N>, payload, values, exclude);
+            out.push({ children, payload: payload(node, opaque) });
+        }
     }
     return out;
+}
+
+/**
+ * The key a phrase holding an opaque element was registered under before TOK-1 bound
+ * this path, with its slots and values, or null when it holds none and so has one key.
+ * Lookup only: a phrase renders a translation found under it and registers only its
+ * current key.
+ */
+export function earlierRichPhrase<N extends MarkerNode, T>(
+    children: ArrayLike<N>,
+    payload: (element: N, opaque: boolean) => T
+): { phrase: string; slots: T[]; values: Record<string, string> } | null {
+    let holds = false;
+    const values: Record<string, string> = {};
+    const nodes = toRichNodes(children, (element, opaque) => ((holds ||= opaque), payload(element, opaque)), values, false);
+    return holds ? { ...encodeRichPhrase(nodes), values } : null;
 }

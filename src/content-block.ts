@@ -38,6 +38,7 @@ import { groupRuns, isMarkerOnly, runNodes, runSource, runToken, runValues, type
 import {
     blockContentMatches,
     CONTENT_BLOCK_MARKER_ATTRS,
+    isTranslationExcluded,
     NON_TRANSLATABLE_ELEMENTS,
     normalizeTokenText,
     PHRASE_MARKER_ATTRS,
@@ -57,6 +58,7 @@ export {
     CONTENT_BLOCK_MARKER_ATTRS,
     generateCustomId,
     generateLegacyCustomId,
+    isTranslationExcluded,
     NON_TRANSLATABLE_ELEMENTS,
     normalizeTokenText,
     PHRASE_MARKER_ATTR,
@@ -85,33 +87,6 @@ export {
  * additive — `data-langsys-phrase` never appears in DOM our components emit.
  */
 
-/**
- * True when an element opts out of translation entirely — it and its subtree
- * are skipped by the tokenizer.
- *
- * Mirrors `langsys-php`'s `HtmlParser::isTranslationExcluded()` exactly:
- *  - `translate="no"` — the HTML standard attribute, matched case-insensitively.
- *  - `data-notrans` — PHP's author-facing alias, for hosts whose templating
- *    strips unknown bare attributes or where `translate` collides with another
- *    tool. Presence is intent; an explicit `"false"`/`"0"` opts out of the
- *    opt-out, compared after trimming.
- *
- * Honoring PHP's alias matters for the same reason as the phrase marker: on SSR
- * handoff there is ONE DOM, and content an author marked "do not translate"
- * must not be extracted and registered by whichever SDK happens to walk it.
- *
- * Both this and `isPhraseMarked` trim before comparing. They briefly differed
- * — PHP's phrase check predated the trim its exclusion check gained — and the
- * gap was resolved by asking rather than tidying: mirror exactly, flag the
- * wart, let the owner decide. Divergence-by-tidying is the same failure class
- * as divergence-by-oversight, just better intentioned.
- */
-export function isTranslationExcluded(element: Element): boolean {
-    if ((element.getAttribute('translate') ?? '').toLowerCase() === 'no') return true;
-    if (!element.hasAttribute('data-notrans')) return false;
-    const value = (element.getAttribute('data-notrans') ?? '').trim().toLowerCase();
-    return value !== 'false' && value !== '0';
-}
 
 /**
  * True when an element is marked as a self-managed phrase by either SDK.

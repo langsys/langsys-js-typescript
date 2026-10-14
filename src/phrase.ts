@@ -1,6 +1,7 @@
 import { interpolate, warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
-import { applyInPlace, encodeRichText, markupTokenValues, reconstitute, type RichSlot } from './richtext.js';
+import { isOpaqueInPhrase } from './identity.js';
+import { applyInPlace, encodeRichText, fillOpaque, markupTokenValues, reconstitute, takesParams, type EncodedRichText, type RichSlot } from './richtext.js';
 import type { Unsubscriber } from './signal.js';
 import { currentlyLoadedLocale, navigationEpoch, sTranslations } from './stores.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -58,6 +59,15 @@ export class Phrase {
     private values: Record<string, string> = {};
     private phrase = '';
     private slots: RichSlot[] = [];
+    /** The key a phrase holding an opaque element was registered under before TOK-1: looked up on a miss, never registered. */
+    private earlier: EncodedRichText['earlier'];
+    /**
+     * A phrase made only of value markers (VAR-3) or of opaque elements (TOK-1) has no
+     * text of its own, and registers nothing, on mount or on a navigation.
+     */
+    private textless = false;
+    /** The text of each opaque element that takes params, as the page gave it: where a caller's param can land (TOK-1). */
+    private opaqueTexts: string[] = [];
     /**
      * The markup slot each element in the host renders. An element's place is its
      * slot only while the host shows the source's order; a translation that
@@ -107,7 +117,7 @@ export class Phrase {
                     initialNavigation = false;
                     return;
                 }
-                if (!this.ready || !this.phrase || !this.register || !this.host.isConnected || isInResolvedScope(this.host)) return;
+                if (!this.ready || !this.phrase || !this.register || this.textless || !this.host.isConnected || isInResolvedScope(this.host)) return;
                 LangsysApp.Translations.t(this.phrase, this.category);
             })
         );
@@ -136,10 +146,12 @@ export class Phrase {
             return;
         }
 
-        const { phrase, slots, values } = encodeRichText(this.host);
+        const { phrase, slots, values, earlier } = encodeRichText(this.host);
         this.phrase = phrase;
         this.slots = slots;
         this.values = values;
+        this.earlier = earlier;
+        this.opaqueTexts = slots.flatMap((slot) => (slot.source && takesParams(slot.source) ? [slot.source.textContent ?? ''] : []));
         hostElements(this.host).forEach((element, i) => this.slotOf.set(element, i));
         this._checkParams();
 
@@ -152,10 +164,10 @@ export class Phrase {
         // (`register: false`) is a read and never rejects.
         // Not inside a resolved scope: there the host's text is a translation a server
         // produced, and `t()` is the call that would register it as a source phrase.
-        // Nor with `register: false` (VAR-7), nor for a phrase made only of value markers,
-        // which has no text of its own (VAR-3).
+        // Nor with `register: false` (VAR-7), nor for a phrase with no text of its own.
+        this.textless = isOnlyPlaceholders(this.phrase) && (Object.keys(values).length > 0 || slots.some((slot) => slot.source));
         if (isInResolvedScope(this.host)) this.servedUnrecovered = !this.recoverServed();
-        else if (this.register && !(Object.keys(values).length && isOnlyPlaceholders(this.phrase))) LangsysApp.Translations.t(this.phrase, this.category);
+        else if (this.register && !this.textless) LangsysApp.Translations.t(this.phrase, this.category);
 
         this.ready = true;
         this._render();
@@ -175,7 +187,7 @@ export class Phrase {
         if (signature === this.checkedParamKeys) return;
         this.checkedParamKeys = signature;
 
-        warnUnmatchedParams('<Phrase>', [this.phrase], this.params, this.category || undefined);
+        warnUnmatchedParams('<Phrase>', [this.phrase, ...this.opaqueTexts], this.params, this.category || undefined);
     }
 
     /**
@@ -205,16 +217,30 @@ export class Phrase {
         if (!this.phrase) return;
         if (this.servedUnrecovered) this.servedUnrecovered = !this.recoverServed();
 
-        const raw = LangsysApp.Translations.lookup(this.phrase, this.category) ?? this.phrase;
+        const translated = LangsysApp.Translations.lookup(this.phrase, this.category);
+        // A miss for the key looks up the one this phrase was registered under before an
+        // opaque element was one empty pair (TOK-1), and renders it through that key's slots.
+        const earlier = translated === null && this.earlier ? LangsysApp.Translations.lookup(this.earlier.phrase, this.category) : null;
+        if (earlier !== null) {
+            const { slots, values } = this.earlier!;
+            const resolved = interpolate(earlier, { ...values, ...this.values, ...this.params, ...markupTokenValues(slots.length) }, currentlyLoadedLocale.get());
+            this.host.replaceChildren(...reconstitute(resolved, slots, this.host.ownerDocument ?? document));
+            fillOpaque(slots, this.params);
+            return;
+        }
+        const raw = translated ?? this.phrase;
         const params = { ...this.values, ...this.params, ...markupTokenValues(this.slots.length) };
         const resolved = interpolate(raw, params, currentlyLoadedLocale.get());
         // Into the nodes already there when the translation keeps the markup's shape, so a
         // framework's references to them stay live; rebuilt only when it does not.
-        if (applyInPlace(this.host, resolved, (element) => this.slotOf.get(element))) return;
-        const nodes = reconstitute(resolved, this.slots, this.host.ownerDocument ?? document, (element, slot) =>
-            this.slotOf.set(element, slot)
-        );
-        this.host.replaceChildren(...nodes);
+        if (!applyInPlace(this.host, resolved, (element) => this.slotOf.get(element))) {
+            const nodes = reconstitute(resolved, this.slots, this.host.ownerDocument ?? document, (element, slot) =>
+                this.slotOf.set(element, slot)
+            );
+            this.host.replaceChildren(...nodes);
+        }
+        // The caller's params land inside an opaque element too, as plain text (TOK-1).
+        fillOpaque(this.slots, this.params);
     }
 }
 
@@ -225,7 +251,8 @@ function isOnlyPlaceholders(phrase: string): boolean {
 
 /**
  * The host's elements in pre-order, the order `encodeRichText` numbers its slots
- * in. A `data-ls-param` element marks a value (VAR-3), and is no slot.
+ * in. A `data-ls-param` element marks a value (VAR-3), and is no slot; an opaque
+ * element is a slot with none inside it (TOK-1).
  */
 function hostElements(host: Element): Element[] {
     const out: Element[] = [];
@@ -233,7 +260,7 @@ function hostElements(host: Element): Element[] {
         for (const child of Array.from(parent.children)) {
             if (paramElementName(child as unknown as MarkerNode) !== null) continue;
             out.push(child);
-            visit(child);
+            if (!isOpaqueInPhrase(child)) visit(child);
         }
     };
     visit(host);

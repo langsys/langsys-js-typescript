@@ -131,6 +131,51 @@ export const TRANSLATABLE_ATTRIBUTES = [
 export const NON_TRANSLATABLE_ELEMENTS = ['script', 'style', 'template', 'noscript', 'math'];
 
 /**
+ * True when an element opts out of translation entirely — it and its subtree
+ * are skipped by the tokenizer.
+ *
+ * Mirrors `langsys-php`'s `HtmlParser::isTranslationExcluded()` exactly:
+ *  - `translate="no"` — the HTML standard attribute, matched case-insensitively.
+ *  - `data-notrans` — PHP's author-facing alias, for hosts whose templating
+ *    strips unknown bare attributes or where `translate` collides with another
+ *    tool. Presence is intent; an explicit `"false"`/`"0"` opts out of the
+ *    opt-out, compared after trimming.
+ *
+ * Honoring PHP's alias matters for the same reason as the phrase marker: on SSR
+ * handoff there is ONE DOM, and content an author marked "do not translate"
+ * must not be extracted and registered by whichever SDK happens to walk it.
+ *
+ * Both this and `isPhraseMarked` trim before comparing. They briefly differed
+ * — PHP's phrase check predated the trim its exclusion check gained — and the
+ * gap was resolved by asking rather than tidying: mirror exactly, flag the
+ * wart, let the owner decide. Divergence-by-tidying is the same failure class
+ * as divergence-by-oversight, just better intentioned.
+ */
+export function isTranslationExcluded(element: AttributeReader): boolean {
+    if ((element.getAttribute('translate') ?? '').toLowerCase() === 'no') return true;
+    if (!element.hasAttribute('data-notrans')) return false;
+    const value = (element.getAttribute('data-notrans') ?? '').trim().toLowerCase();
+    return value !== 'false' && value !== '0';
+}
+
+/** The element shape the exclusion reads: the DOM's, or a tree view's. */
+export interface AttributeReader {
+    readonly tagName: string;
+    getAttribute(name: string): string | null;
+    hasAttribute(name: string): boolean;
+}
+
+/**
+ * Whether an element is opaque in a rich phrase (TOK-1): an author's own exclusion,
+ * or code and notation. It is one markup pair with nothing between, `{mNo}{mNc}`,
+ * whatever it holds, so no text or value inside it enters the phrase, and it renders
+ * its source content as given.
+ */
+export function isOpaqueInPhrase(element: AttributeReader): boolean {
+    return isTranslationExcluded(element) || NON_TRANSLATABLE_ELEMENTS.includes(element.tagName.toLowerCase());
+}
+
+/**
  * THE definition. `phrase.ts` re-exports this rather than restating it — the
  * literal used to appear in both files, so renaming one side left the other
  * silently stale: the tokenizer would stop recognising the marker `Phrase`

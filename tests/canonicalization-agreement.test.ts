@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import { generateCustomId, tokenizeElement } from '../src/content-block.js';
+import { encodeRichText } from '../src/richtext.js';
 import fixture from './fixtures/canonicalization-reference.json';
 
 /**
@@ -50,8 +51,26 @@ interface Row {
     awaiting?: string[];
 }
 
+/** A rich phrase (`<Phrase>`), keyed by its encoded string (TOK-1). */
+interface PhraseRow {
+    id: string;
+    why: string;
+    html: string;
+    expected_phrase: string;
+    expected_values: Record<string, string>;
+    registers: boolean;
+    /** The key the JS family's reader produced for this host before TOK-1 bound rich phrases. */
+    earlier_phrase?: string;
+    added_by: string;
+    awaiting?: string[];
+    measured: Record<string, { phrase: string; values: Record<string, string>; registers: boolean; earlier_phrase?: string } | null>;
+    agree: boolean;
+}
+
 const doc = fixture as unknown as {
     cases: Row[];
+    phrase_cases: PhraseRow[];
+    phrase_agreement: { rows: number; agree: number; diverge: number };
     agreement: { rows: number; agree: number; diverge: number };
     resolved_divergences: { note: string; rows: { row: string; was: string; now: string; note: string }[] };
 };
@@ -88,6 +107,69 @@ describe('this SDK matches every published expectation', () => {
             expect(row.expected_content).toMatch(/\{(email|name)\}/);
             expect(row.expected_content).not.toMatch(/a@b\.c|Ana|ls:|data-ls-param/);
         }
+    });
+});
+
+describe('this SDK keys every rich phrase as published (phrase_cases, TOK-1)', () => {
+    const encoded = (html: string) => {
+        const host = document.createElement('span');
+        host.innerHTML = html;
+        return encodeRichText(host);
+    };
+
+    it('the rows are whole, and cover each shape TOK-1 names', () => {
+        expect(doc.phrase_cases).toHaveLength(doc.phrase_agreement.rows);
+        expect(doc.phrase_cases.map((row) => row.id)).toEqual([
+            'tok1-rich-no-literal',
+            'tok1-rich-no-marked',
+            'tok1-rich-no-mixed',
+            'tok1-rich-notrans-literal',
+            'tok1-rich-notrans-marked',
+            'tok1-rich-notrans-mixed',
+            'tok1-rich-notrans-false',
+            'tok1-rich-script',
+            'tok1-rich-slot-numbering',
+            'tok1-rich-param-inside',
+            'tok1-rich-opaque-only',
+            'tok1-rich-earlier-key',
+            'tok1-rich-earlier-key-control',
+        ]);
+        // Every excluded form of the same sentence is the one key.
+        const sentence = doc.phrase_cases.filter((row) => /^tok1-rich-(no|notrans)-(literal|marked|mixed)$/.test(row.id));
+        expect(new Set(sentence.map((row) => row.expected_phrase))).toEqual(new Set(['Signed in as {m0o}{m0c} today']));
+    });
+
+    it.each(doc.phrase_cases.map((row) => [row.id, row] as const))('%s', (_id, row) => {
+        const { phrase, values, earlier } = encoded(row.html);
+        expect(phrase).toBe(row.expected_phrase);
+        expect(values).toEqual(row.expected_values);
+        if (row.earlier_phrase !== undefined) expect(earlier?.phrase ?? phrase).toBe(row.earlier_phrase);
+    });
+
+    it('the earlier key is beside the current one where the key moved, and equal to it on the control', () => {
+        const moved = doc.phrase_cases.find((row) => row.id === 'tok1-rich-earlier-key')!;
+        const control = doc.phrase_cases.find((row) => row.id === 'tok1-rich-earlier-key-control')!;
+        expect(moved.earlier_phrase).not.toBe(moved.expected_phrase);
+        expect(encoded(moved.html).earlier?.phrase).toBe(moved.earlier_phrase);
+        expect(control.earlier_phrase).toBe(control.expected_phrase);
+        expect(encoded(control.html).earlier).toBeUndefined();
+    });
+
+    it('each row records this lane as measured and agreeing, and every other lane as awaited until it measures', () => {
+        let agreed = 0;
+        for (const row of doc.phrase_cases) {
+            expect(row.added_by).toBe('spec 8.5.9 TOK-1 exclusion');
+            for (const lane of row.awaiting ?? []) expect(row.measured[lane], `${row.id}: ${lane} is awaited but has a measurement`).toBeNull();
+            const js = row.measured['langsys-js-typescript'];
+            expect(js, `${row.id}: the JS lane, which authors the row, must have measured it`).not.toBeNull();
+            expect(js!.phrase).toBe(row.expected_phrase);
+            expect(js!.values).toEqual(row.expected_values);
+            expect(js!.registers).toBe(row.registers);
+            expect(js!.earlier_phrase).toBe(row.earlier_phrase);
+            if (row.agree) agreed++;
+        }
+        expect(agreed).toBe(doc.phrase_agreement.agree);
+        expect(doc.phrase_cases.length - agreed).toBe(doc.phrase_agreement.diverge);
     });
 });
 
