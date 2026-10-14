@@ -1216,7 +1216,9 @@ export class Translations {
                         __symbol__: lookupCat,
                     } as iTranslations;
                 }
-                latest[lookupCat][tokenObj.token] = tokenObj.token;
+                // Known now, as its own text, unless that catalog already holds it: a switch's
+                // catalog, published while the request was out, may carry its translation.
+                if (!Object.prototype.hasOwnProperty.call(latest[lookupCat], tokenObj.token)) latest[lookupCat][tokenObj.token] = tokenObj.token;
                 latest[lookupCat]['__category__'] = lookupCat;
             });
             sTranslations.set({ ...latest });

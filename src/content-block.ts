@@ -555,7 +555,12 @@ function _writeKnownContentBlockToCache(category: string, customId: string): voi
                 __symbol__: lookupCat,
             } as iTranslations;
         }
-        (current[lookupCat] as unknown as Record<string, unknown>)[customId] = {};
+        // The record says only that the server holds the block. A catalog published while the
+        // request was out, a locale switch's, may already hold it with its translations, and
+        // the record never replaces them.
+        const bucket = current[lookupCat] as unknown as Record<string, unknown>;
+        if (typeof bucket[customId] === 'object' && bucket[customId] !== null) return current;
+        bucket[customId] = {};
         return { ...current };
     });
 }

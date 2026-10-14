@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { registerBlock } from '../src/block-tree.js';
+import { registerBlock, renderBlock, serializeTree } from '../src/block-tree.js';
 import { generateCustomId, isContentBlockKnown, registerContentBlock } from '../src/content-block.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { createSignal } from '../src/signal.js';
@@ -233,6 +233,74 @@ describe('One registration request per block in flight', () => {
         expect(results).toEqual([{ status: true }, { status: true }]);
         expect(sends()).toBe(1);
         expect(await heldAs('b-shared')).toHaveLength(1);
+    });
+});
+
+describe('A registration answered after the catalog changed keeps that catalog’s translations', () => {
+    const tree = [
+        { tag: 'img', attrs: { alt: 'Picture of {name}', src: '/a.png' } },
+        { tag: 'p', children: [{ text: 'A caption' }] },
+    ];
+    const id = generateCustomId('VAR', ['Picture of {name}', 'A caption']);
+    // The content as a translator has left it by the time the visitor switches language.
+    const TRANSLATED = {
+        ...SEED,
+        projects: [
+            {
+                ...SEED.projects[0]!,
+                phrases: [...SEED.projects[0]!.phrases, { category: 'UI', phrase: 'Welcome back', translations: { 'es-es': 'Bienvenido de nuevo' } }],
+                blocks: [
+                    {
+                        category: 'VAR',
+                        custom_id: id,
+                        phrases: [
+                            { phrase: 'Picture of {name}', translations: { 'es-es': 'Imagen de {name}' } },
+                            { phrase: 'A caption', translations: { 'es-es': 'Un pie de foto' } },
+                        ],
+                    },
+                ],
+            },
+        ],
+    };
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    /**
+     * A write session on the base locale registers, and the visitor switches language while the
+     * registration is unanswered: a registration request answers only after 800ms, as on a slow
+     * network, and the switch's catalog is published in the meantime.
+     */
+    async function registerThenSwitch(register: () => void) {
+        resetSdk();
+        const locale = createSignal('en');
+        await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: locale, baseLocale: 'en', apiUrl: fx.baseUrl });
+        await until(() => currentlyLoadedLocale.get() === 'en');
+        const real = globalThis.fetch;
+        vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+            if (String(url).includes('/translatable-items')) await sleep(800);
+            return real(url, init);
+        });
+        register();
+        await sleep(500);
+        await fx.seed(TRANSLATED);
+        locale.set('es-es');
+        await until(() => currentlyLoadedLocale.get() === 'es-es');
+        await sleep(SETTLE_MS);
+    }
+
+    it('a block: the switched catalog’s translation renders, and the registration was answered', async () => {
+        await registerThenSwitch(() => void registerBlock(tree, { category: 'VAR', params: { name: 'Ana' } }));
+        expect((await fx.state()).projects.p1.blocks.some((b) => b.custom_id === id)).toBe(true);
+        expect(LangsysApp.Translations.lookupContent('VAR', id, 'A caption')).toBe('Un pie de foto');
+        expect(serializeTree(renderBlock(tree, { category: 'VAR', params: { name: 'Ana' } }).nodes)).toBe('<img alt="Imagen de Ana" src="/a.png"><p>Un pie de foto</p>');
+    });
+
+    it('a phrase: the switched catalog’s translation renders, and the registration was answered', async () => {
+        await registerThenSwitch(() => void t('Welcome back', 'UI'));
+        expect(await registered()).toContain('Welcome back');
+        expect(t('Welcome back', 'UI')).toBe('Bienvenido de nuevo');
     });
 });
 
