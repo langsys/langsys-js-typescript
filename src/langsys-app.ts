@@ -424,7 +424,7 @@ class LangsysAppClass {
             // both halves of the cache key are known here (CACHE-1). The cache holds the
             // catalog and never the write decision (GATE-4), registration still decides
             // only against the live catalog (REG-13), and a refused authorization leaves
-            // the restored catalog rendering, as a preloaded snapshot does. The loaded
+            // the restored catalog rendering, as a preloaded snapshot does (CACHE-2). The loaded
             // locale is not set: it names a catalog this session fetched or was handed,
             // and that is what lets `initialTranslations` below replace a stale copy.
             const startLocale = canonicalizeLocale(UserLocaleStore.get() || '');
