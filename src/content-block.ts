@@ -34,7 +34,7 @@ import { logger } from './logger.js';
 import { catalogUnavailable, config as configStore, configured, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations, writeEnabled } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
-import { groupRuns, isMarkerOnly, runToken, runValues, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
+import { groupRuns, isMarkerOnly, runNodes, runSource, runToken, runValues, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
 import {
     blockContentMatches,
     CONTENT_BLOCK_MARKER_ATTRS,
@@ -503,29 +503,44 @@ export function tokenizeElement(element: HTMLElement): { tokens: string[]; conte
     const vars: UnitVars = { values: {}, runs: [], markerOnly: [] };
     const clone = element.cloneNode(true) as HTMLElement;
     _walkForTokens(element, Array.from(clone.childNodes), tokens, [], false, true, undefined, vars);
-    scrubContent(clone.childNodes as unknown as ArrayLike<MarkerNode>, (host) => (host as unknown as Element).replaceChildren());
+    scrubContent(clone.childNodes as unknown as ArrayLike<MarkerNode>, {
+        empty: (host) => (host as unknown as Element).replaceChildren(),
+        replace: (_siblings, nodes, text) => {
+            const first = nodes[0] as unknown as ChildNode;
+            first.parentNode!.insertBefore(first.ownerDocument!.createTextNode(text), first);
+            for (const node of nodes) (node as unknown as ChildNode).remove();
+        },
+    });
     return { tokens, content: normalizeMarkupPlaceholders(clone.innerHTML), vars };
+}
+
+/** How `scrubContent` edits a copy of a unit's content, on the DOM or on a tree's view. */
+export interface ContentEdits<N> {
+    /** Remove an element's children. */
+    empty(host: N): void;
+    /** Put one text node holding `text` where `nodes`, consecutive among `siblings`, are. */
+    replace(siblings: ArrayLike<N>, nodes: N[], text: string): void;
 }
 
 /**
  * Rewrite a copy of a unit's content into the `content` it registers with. Each
- * marked value holds its `{NAME}` placeholder instead of the value (VAR-1). A
- * nested phrase or block host keeps its element and attributes and loses its
- * content (MARK-4): it is a unit of its own, and what it shows is rendered, with
- * its own values. `empty` removes an element's children.
+ * marked run becomes one text node, the run's text with `{NAME}` where each value
+ * was, the marker and the value gone, whichever form marked it and wherever it
+ * sits, inside a `translate="no"` element included (VAR-1, VAR-3). A nested
+ * phrase or block host keeps its element and attributes and loses its content
+ * (MARK-4): it is a unit of its own, and what it shows is rendered, with its own
+ * values.
  */
-export function scrubContent<N extends MarkerNode>(nodes: ArrayLike<N>, empty: (host: N) => void): void {
+export function scrubContent<N extends MarkerNode>(nodes: ArrayLike<N>, edit: ContentEdits<N>): void {
     for (const item of groupRuns(nodes)) {
         if ('run' in item) {
-            for (const part of item.run.parts) {
-                if ('marker' in part) part.marker.value.forEach((node, i) => (node.nodeValue = i === 0 ? `{${part.marker.name}}` : ''));
-            }
+            edit.replace(nodes, runNodes(item.run), runSource(item.run));
             continue;
         }
         if (item.node.nodeType !== ELEMENT_NODE) continue;
         const element = item.node as unknown as Element;
-        if (isPhraseMarked(element) || isContentBlockMarked(element)) empty(item.node);
-        else scrubContent(item.node.childNodes as ArrayLike<N>, empty);
+        if (isPhraseMarked(element) || isContentBlockMarked(element)) edit.empty(item.node);
+        else scrubContent(item.node.childNodes as ArrayLike<N>, edit);
     }
 }
 

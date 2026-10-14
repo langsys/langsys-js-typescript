@@ -122,6 +122,15 @@ export function runSource<N extends MarkerNode>(run: VarRun<N>, text: (node: N) 
     return run.parts.map((part) => ('text' in part ? text(part.text) : `{${part.marker.name}}`)).join('');
 }
 
+/** The siblings a run spans, in order: its text nodes, and each marker's own nodes with the value between. */
+export function runNodes<N extends MarkerNode>(run: VarRun<N>): N[] {
+    return run.parts.flatMap((part) => {
+        if ('text' in part) return [part.text];
+        const [open, close] = part.marker.frame;
+        return close ? [open!, ...part.marker.value, close] : [open!];
+    });
+}
+
 /** A run's token, normalised as a text node's token is. Empty when the run holds only whitespace and markers. */
 export function runToken<N extends MarkerNode>(run: VarRun<N>, text?: (node: N) => string): string {
     return normalizeMarkupPlaceholders(normalizeTokenText(runSource(run, text)));

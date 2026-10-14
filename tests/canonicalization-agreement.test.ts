@@ -28,6 +28,8 @@ import fixture from './fixtures/canonicalization-reference.json';
 interface LaneMeasurement {
     tokens: string[];
     custom_id: string;
+    /** The content the lane registers the block with, on a row that pins it. */
+    content?: string;
 }
 
 interface Row {
@@ -37,6 +39,8 @@ interface Row {
     category: string;
     expected_tokens: string[];
     expected_custom_id: string;
+    /** The content a block registers with for this html (VAR-3), where the row pins it. */
+    expected_content?: string;
     measured: Record<string, LaneMeasurement | null>;
     agree: boolean;
     divergence?: string;
@@ -52,11 +56,12 @@ const doc = fixture as unknown as {
     resolved_divergences: { note: string; rows: { row: string; was: string; now: string; note: string }[] };
 };
 
-function tokensOf(html: string): string[] {
+function tokenized(html: string): { tokens: string[]; content: string } {
     const host = document.createElement('div');
     host.innerHTML = html;
-    return tokenizeElement(host).tokens;
+    return tokenizeElement(host);
 }
+const tokensOf = (html: string) => tokenized(html).tokens;
 
 describe('this SDK matches every published expectation', () => {
     it('the fixture is whole', () => {
@@ -71,6 +76,18 @@ describe('this SDK matches every published expectation', () => {
         // re-registration first.
         expect(tokensOf(row.html)).toEqual(row.expected_tokens);
         expect(generateCustomId(row.category, tokensOf(row.html))).toBe(row.expected_custom_id);
+        if (row.expected_content !== undefined) expect(tokenized(row.html).content).toBe(row.expected_content);
+    });
+
+    it('the stored-content rows cover a run, an element slot, a translate="no" element and the attribute form', () => {
+        // VAR-3's Test names these shapes; asserted by id so a dropped row fails here.
+        const pinned = doc.cases.filter((c) => c.expected_content !== undefined).map((c) => c.id);
+        expect(pinned).toEqual(['var-content-run', 'var-content-slot', 'var-content-translate-no', 'var-content-attr']);
+        // The content holds the placeholder and neither the value nor a marker.
+        for (const row of doc.cases.filter((c) => c.expected_content !== undefined)) {
+            expect(row.expected_content).toMatch(/\{(email|name)\}/);
+            expect(row.expected_content).not.toMatch(/a@b\.c|Ana|ls:|data-ls-param/);
+        }
     });
 });
 
@@ -109,6 +126,9 @@ describe('the file is internally consistent about who agrees', () => {
                 expect(m.tokens, `${row.id}: ${lane} is recorded as agreeing but its tokens differ`).toEqual(
                     row.expected_tokens
                 );
+                if (row.expected_content !== undefined) {
+                    expect(m.content, `${row.id}: ${lane} is recorded as agreeing but its content differs`).toBe(row.expected_content);
+                }
                 checked++;
             }
         }
@@ -122,9 +142,10 @@ describe('the file is internally consistent about who agrees', () => {
         // without a divergence being written down.
         expect(doc.cases.length).toBeGreaterThanOrEqual(20);
         expect(checked).toBe(expected);
-        // Only the rows the VAR-3 markers added may await a lane; every other row stays measured twice.
+        // Only a row a named batch added may await a lane; every other row stays measured twice.
+        const batches = ['spec 8.3.0 VAR-3 value markers', 'spec 8.5.9 VAR-3 stored content'];
         for (const row of doc.cases.filter((c) => c.awaiting?.length)) {
-            expect(row.added_by, `${row.id} awaits a lane without saying which batch added it`).toBe('spec 8.3.0 VAR-3 value markers');
+            expect(batches, `${row.id} awaits a lane without saying which batch added it`).toContain(row.added_by);
             expect(row.measured['langsys-js-typescript'], `${row.id}: the JS lane, which authors the row, must have measured it`).not.toBeNull();
         }
     });

@@ -57,8 +57,8 @@ const ROWS: Array<{ id: string; html: string; category: string }> = [
 ];
 
 describe('parity: a tree tokenizes, shapes and derives its id exactly as the DOM it mirrors', () => {
-    it('carries every markup row of the shared vector files, the VAR-3 marker rows included', () => {
-        expect(ROWS).toHaveLength(58);
+    it('carries every markup row of the shared vector files, the VAR-3 marker and stored-content rows included', () => {
+        expect(ROWS).toHaveLength(62);
     });
 
     it.each(ROWS.map((r) => [r.id, r] as const))('%s', (_id, row) => {

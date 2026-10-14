@@ -795,19 +795,30 @@ function registerView(root: ViewNode[], options: BlockOptions, input: readonly B
 /** A unit's `content`: its nodes as HTML, with no value and no nested unit's content (`scrubContent`). */
 function contentOf(input: readonly BlockNode[]): string {
     const shown = view(input);
-    scrubContent(shown, (host) => void ((host as ViewElement).childNodes = []));
-    // The input serialised node for node with its scrubbed view, so tag and attribute
-    // names keep their case (an SVG's `viewBox`). An emptied host's view has no children.
-    const serialize = (nodes: readonly BlockNode[], views: readonly ViewNode[]): string =>
+    scrubContent<ViewNode>(shown, {
+        empty: (host) => void ((host as ViewElement).childNodes = []),
+        replace: (siblings, nodes, text) => {
+            const list = siblings as ViewNode[];
+            list.splice(list.indexOf(nodes[0]!), nodes.length, new ViewText(text));
+        },
+    });
+    // The scrubbed view, each element written as the input element it views (its
+    // `source`), so tag and attribute names keep their case (an SVG's `viewBox`).
+    const elements = elementsOf(input);
+    const serialize = (views: readonly ViewNode[]): string =>
         views
-            .map((seen, i) => {
-                const node = nodes[i]!;
-                if ('text' in node) return escapeText(seen.nodeValue ?? '');
-                if ('comment' in node) return serializeNode(node);
-                return serializeNode(node, serialize(node.children ?? [], seen.childNodes));
+            .map((seen) => {
+                if (seen instanceof ViewText) return escapeText(seen.nodeValue);
+                if (seen instanceof ViewComment) return `<!--${seen.nodeValue}-->`;
+                return serializeNode(elements[seen.source]!, serialize(seen.childNodes));
             })
             .join('');
-    return serialize(input, shown);
+    return serialize(shown);
+}
+
+/** A tree's elements in pre-order, the order `view` numbers each one's `source` in. */
+function elementsOf(nodes: readonly BlockNode[]): Extract<BlockNode, { tag: string }>[] {
+    return nodes.flatMap((node) => ('tag' in node ? [node, ...elementsOf(node.children ?? [])] : []));
 }
 
 /** A seeded block: a phrase records its miss as `t()` does; an unknown block registers under its id. */

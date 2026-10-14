@@ -7,6 +7,7 @@ import { LangsysApp } from '../src/langsys-app.js';
 import { createSignal } from '../src/signal.js';
 import { currentlyLoadedLocale } from '../src/stores.js';
 import { Translate } from '../src/translate.js';
+import canonicalization from './fixtures/canonicalization-reference.json';
 import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
 import { resetSdk, until } from './helpers/sdk-session.js';
 
@@ -14,7 +15,8 @@ import { resetSdk, until } from './helpers/sdk-session.js';
  * The `content` a block registers with, graded against the contract double (spec CONF-2):
  * every assertion reads what the double stored.
  *
- * VAR-1: a marked value is its `{NAME}` placeholder in the content as in the tokens.
+ * VAR-1, VAR-3: a marked value is its `{NAME}` placeholder in the content as in the tokens, the
+ * marker gone.
  * MARK-4: a nested phrase or block host is a unit of its own, so the enclosing block's
  * content keeps its element and none of what it shows, which is rendered with its own values.
  * On the DOM path (`Translate`) and the tree path (`registerBlock`) alike, which store one
@@ -94,8 +96,8 @@ describe('DOM path: a Translate block over nested hosts a binding renders throug
 
         await until(async () => (await heldAs(OUTER)).length === 1);
         const [outer] = await heldAs(OUTER);
-        expect(outer!.content).toContain('Hello <!--ls:name-->{name}<!--/ls-->, welcome back');
-        expect(outer!.content).toContain('<span data-ls-param="order">{order}</span>');
+        expect(outer!.content).toContain('<p>Hello {name}, welcome back</p>');
+        expect(outer!.content).toContain('<p>Order {order} has shipped</p>');
         expect(outer!.content).toContain('<p data-ls-phrase=""></p>');
         expect(outer!.content).toContain('<section data-ls-contentblock=""></section>');
         await until(async () => (await stored()).includes('Photo of {name}'));
@@ -139,14 +141,14 @@ describe('tree path: registerBlock over its own values and nested hosts', () => 
         await until(async () => (await heldAs(OUTER)).length === 1 && (await heldAs(inner)).length === 1);
         const [outer] = await heldAs(OUTER);
         expect(outer!.content).toBe(
-            '<p>Hello <!--ls:name-->{name}<!--/ls-->, welcome back</p>' +
-                '<p>Order <span data-ls-param="order">{order}</span> has shipped</p>' +
+            '<p>Hello {name}, welcome back</p>' +
+                '<p>Order {order} has shipped</p>' +
                 '<p data-ls-phrase></p>' +
                 '<section data-ls-contentblock></section>' +
                 '<svg viewBox="0 0 10 10"></svg>'
         );
         const [nested] = await heldAs(inner);
-        expect(nested!.content).toBe('<h3>Seat for <!--ls:who-->{who}<!--/ls--></h3><p>Window side</p>');
+        expect(nested!.content).toBe('<h3>Seat for {who}</h3><p>Window side</p>');
         await until(async () => (await stored()).includes('Taken by {who}'));
         expect(await stored()).not.toMatch(VALUES);
     });
@@ -170,28 +172,14 @@ const onlyBlock = async () => {
 };
 
 describe('one block registers one content string through the DOM class and the tree path', () => {
-    const CASES: [string, string, string][] = [
-        [
-            'a marked run',
-            '<p>Signed in as <!--ls:email-->a@b.c<!--/ls--> today</p><p>Welcome back</p>',
-            '<p>Signed in as <!--ls:email-->{email}<!--/ls--> today</p><p>Welcome back</p>',
-        ],
-        [
-            'a marker alone in an element',
-            '<p>Signed in as <b><!--ls:name-->Ana<!--/ls--></b> on day 2</p>',
-            '<p>Signed in as <b><!--ls:name-->{name}<!--/ls--></b> on day 2</p>',
-        ],
-        [
-            'a marker inside translate="no"',
-            '<p>Signed in as <span translate="no"><!--ls:email-->a@b.c<!--/ls--></span> today</p>',
-            '<p>Signed in as <span translate="no"><!--ls:email-->{email}<!--/ls--></span> today</p>',
-        ],
-        [
-            'the attribute form',
-            '<p>Signed in as <span data-ls-param="email">a@b.c</span> today</p><p>Welcome back</p>',
-            '<p>Signed in as <span data-ls-param="email">{email}</span> today</p><p>Welcome back</p>',
-        ],
-    ];
+    // The shared fixture's stored-content rows (VAR-3), which every core pins.
+    const CASES = (canonicalization as unknown as { cases: { id: string; html: string; expected_content?: string }[] }).cases
+        .filter((row) => row.expected_content !== undefined)
+        .map((row) => [row.id, row.html, row.expected_content!] as const);
+
+    it('reads the four rows', () => {
+        expect(CASES).toHaveLength(4);
+    });
 
     it.each(CASES)('%s', async (_name, html, expected) => {
         await client();
