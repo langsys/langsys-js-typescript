@@ -17,7 +17,8 @@ import { resetSdk, until } from './helpers/sdk-session.js';
  * VAR-1: a marked value is its `{NAME}` placeholder in the content as in the tokens.
  * MARK-4: a nested phrase or block host is a unit of its own, so the enclosing block's
  * content keeps its element and none of what it shows, which is rendered with its own values.
- * On the DOM path (`Translate`) and the tree path (`registerBlock`) alike.
+ * On the DOM path (`Translate`) and the tree path (`registerBlock`) alike, which store one
+ * string for one block: the host's children, with no style but those an element shows.
  */
 
 let fx: ContractFixture;
@@ -148,5 +149,109 @@ describe('tree path: registerBlock over its own values and nested hosts', () => 
         expect(nested!.content).toBe('<h3>Seat for <!--ls:who-->{who}<!--/ls--></h3><p>Window side</p>');
         await until(async () => (await stored()).includes('Taken by {who}'));
         expect(await stored()).not.toMatch(VALUES);
+    });
+});
+
+/** The DOM's children as the tree a binding hands the tree path. */
+function toTree(nodes: ArrayLike<ChildNode>): BlockNode[] {
+    return Array.from(nodes).flatMap((node): BlockNode[] => {
+        if (node.nodeType === 3) return [{ text: node.nodeValue ?? '' }];
+        if (node.nodeType === 8) return [{ comment: node.nodeValue ?? '' }];
+        if (node.nodeType !== 1) return [];
+        const element = node as Element;
+        const attrs = Object.fromEntries(Array.from(element.attributes, (a) => [a.name, a.value]));
+        return [{ tag: element.tagName.toLowerCase(), attrs, children: toTree(element.childNodes) }];
+    });
+}
+
+const onlyBlock = async () => {
+    await until(async () => (await fx.state()).projects.p1.blocks.length === 1);
+    return (await fx.state()).projects.p1.blocks[0]!;
+};
+
+describe('one block registers one content string through the DOM class and the tree path', () => {
+    const CASES: [string, string, string][] = [
+        [
+            'a marked run',
+            '<p>Signed in as <!--ls:email-->a@b.c<!--/ls--> today</p><p>Welcome back</p>',
+            '<p>Signed in as <!--ls:email-->{email}<!--/ls--> today</p><p>Welcome back</p>',
+        ],
+        [
+            'a marker alone in an element',
+            '<p>Signed in as <b><!--ls:name-->Ana<!--/ls--></b> on day 2</p>',
+            '<p>Signed in as <b><!--ls:name-->{name}<!--/ls--></b> on day 2</p>',
+        ],
+        [
+            'a marker inside translate="no"',
+            '<p>Signed in as <span translate="no"><!--ls:email-->a@b.c<!--/ls--></span> today</p>',
+            '<p>Signed in as <span translate="no"><!--ls:email-->{email}<!--/ls--></span> today</p>',
+        ],
+        [
+            'the attribute form',
+            '<p>Signed in as <span data-ls-param="email">a@b.c</span> today</p><p>Welcome back</p>',
+            '<p>Signed in as <span data-ls-param="email">{email}</span> today</p><p>Welcome back</p>',
+        ],
+    ];
+
+    it.each(CASES)('%s', async (_name, html, expected) => {
+        await client();
+        const host = mount(`<translate>${html}</translate>`);
+        live.push(new Translate(host, { category: 'UI' }));
+        const fromDom = await onlyBlock();
+
+        await fx.seed(SEED);
+        await client();
+        const parsed = document.createElement('div');
+        parsed.innerHTML = html;
+        void registerBlock(toTree(parsed.childNodes), { category: 'UI' });
+        const fromTree = await onlyBlock();
+
+        expect(fromTree.custom_id).toBe(fromDom.custom_id);
+        expect(fromDom.content).toBe(expected);
+        expect(fromTree.content).toBe(expected);
+    });
+});
+
+describe('the DOM class inlines the styles an element shows, measured against its tag’s own defaults', () => {
+    /**
+     * happy-dom computes no inherited or positioned style, so the browser's cascade is
+     * stood in for on the properties at stake: `visibility` inherits from the nearest
+     * ancestor that sets it, absolute positioning turns `display` to `block`, and `color`
+     * inherits. That is enough to tell a reference element that carries a style of its
+     * own from one that does not.
+     */
+    const INLINE = ['b', 'span', 'a', 'em', 'strong'];
+    const nearest = (el: Element | null, prop: string): string => {
+        for (let at = el as HTMLElement | null; at; at = at.parentElement) {
+            const value = at.style?.getPropertyValue(prop);
+            if (value) return value;
+        }
+        return '';
+    };
+    const browserLike = (el: Element) => ({
+        getPropertyValue(prop: string): string {
+            const own = el as HTMLElement;
+            if (prop === 'visibility') return nearest(el, 'visibility') || 'visible';
+            if (prop === 'color') return nearest(el, 'color') || 'rgb(0, 0, 0)';
+            if (prop === 'display') {
+                if (own.style.display) return own.style.display;
+                if (own.style.position === 'absolute') return 'block';
+                return INLINE.includes(el.tagName.toLowerCase()) ? 'inline' : 'block';
+            }
+            return '';
+        },
+    });
+
+    it('an inherited colour is inlined, and no element gains a visibility or display it does not differ on', async () => {
+        await client();
+        vi.spyOn(window, 'getComputedStyle').mockImplementation((el) => browserLike(el) as unknown as CSSStyleDeclaration);
+        const host = mount('<translate style="color: rgb(200, 0, 0)"><p>Signed in as <b>admin</b> today</p><p>Welcome back</p></translate>');
+        live.push(new Translate(host, { category: 'UI' }));
+
+        const { content } = await onlyBlock();
+        expect(content).toBe(
+            '<p style="color: rgb(200, 0, 0);">Signed in as <b style="color: rgb(200, 0, 0);">admin</b> today</p>' +
+                '<p style="color: rgb(200, 0, 0);">Welcome back</p>'
+        );
     });
 });

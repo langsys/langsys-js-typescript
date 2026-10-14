@@ -478,7 +478,7 @@ async function sendContentBlock(contentBlock: iContentBlock): Promise<Registrati
 
 /**
  * Walk an `HTMLElement`, collecting tokens for translation and producing a
- * cloned-and-stylized snapshot of its outerHTML for the Translation Manager.
+ * cloned-and-stylized snapshot of its content for the Translation Manager.
  *
  * Tokens harvested:
  *  - text-node content (whitespace-normalized, trimmed)
@@ -487,10 +487,12 @@ async function sendContentBlock(contentBlock: iContentBlock): Promise<Registrati
  *
  * Skips subtrees marked with `translate="no"`.
  *
- * The returned `content` is a string snapshot — the live element is not
- * mutated. Computed semantic styles (color, font, spacing, etc.) are inlined
- * onto the clone so translators see content styled the way end-users do. It
- * holds no value and no nested unit's content (`scrubContent`).
+ * The returned `content` is a string snapshot of the element's children, as the
+ * tree path registers a block's nodes: the host is the unit, not part of its
+ * content. The live element is not mutated. Computed semantic styles (color,
+ * font, spacing, etc.) are inlined onto the clone so translators see content
+ * styled the way end-users do. It holds no value and no nested unit's content
+ * (`scrubContent`).
  *
  * Requires that `element` is mounted in the document so `getComputedStyle`
  * can read its style. For SSR / pre-mount callers, the style capture step
@@ -502,7 +504,7 @@ export function tokenizeElement(element: HTMLElement): { tokens: string[]; conte
     const clone = element.cloneNode(true) as HTMLElement;
     _walkForTokens(element, Array.from(clone.childNodes), tokens, [], false, true, undefined, vars);
     scrubContent(clone.childNodes as unknown as ArrayLike<MarkerNode>, (host) => (host as unknown as Element).replaceChildren());
-    return { tokens, content: normalizeMarkupPlaceholders(clone.outerHTML), vars };
+    return { tokens, content: normalizeMarkupPlaceholders(clone.innerHTML), vars };
 }
 
 /**
@@ -848,11 +850,17 @@ function _applyStylesToClone(liveRoot: HTMLElement, cloneNode: HTMLElement, indi
     const domNode = _findNode(Array.from(liveRoot.childNodes), indices);
     if (!domNode) return;
 
+    // The defaults are a bare element of the same tag, carrying no style of its own:
+    // a hidden or positioned reference would differ from every element on the
+    // properties it sets (`visibility`, and `display`, which absolute positioning
+    // turns to `block`), so each would be inlined everywhere. Its container is
+    // `display: none`, which keeps it out of the layout and leaves its own computed
+    // `display` and `visibility` the tag's defaults.
     const tagName = (domNode as HTMLElement).tagName.toLowerCase();
-    const reference = document.createElement(tagName);
-    reference.style.visibility = 'hidden';
-    reference.style.position = 'absolute';
-    document.body.appendChild(reference);
+    const container = document.createElement('div');
+    container.style.display = 'none';
+    const reference = container.appendChild(document.createElement(tagName));
+    document.body.appendChild(container);
 
     const computed = window.getComputedStyle(domNode as HTMLElement);
     const defaults = window.getComputedStyle(reference);
@@ -865,7 +873,7 @@ function _applyStylesToClone(liveRoot: HTMLElement, cloneNode: HTMLElement, indi
         }
     }
 
-    document.body.removeChild(reference);
+    document.body.removeChild(container);
     cloneNode.removeAttribute('class');
 }
 
