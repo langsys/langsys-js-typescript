@@ -531,3 +531,55 @@ describe('SRV-1: a block served as source is reported as a debug notice, once pe
         }
     });
 });
+
+describe('a nested host renders with the params its own node carries (VAR-2)', () => {
+    withSdk();
+
+    // Found by the Svelte lane. With one params map for the whole tree, a binding had to name
+    // a nested phrase's values in the block's space, so the phrase keyed differently inside a
+    // block than standing alone, and two values named alike rendered each other's value.
+    const phrase = (name: string, params?: Record<string, string>): BlockNode => ({
+        tag: 'span',
+        attrs: { 'data-ls-phrase': true },
+        ...(params ? { params } : {}),
+        children: [{ text: 'By ' }, { comment: 'ls:name' }, { text: name }, { comment: '/ls' }],
+    });
+    const tree = (nested: BlockNode): BlockNode[] => [{ tag: 'p', children: [{ text: 'Hi ' }, { comment: 'ls:name' }, { text: 'Ana' }, { comment: '/ls' }] }, nested];
+    const translated = { 'Hi {name}': 'Hola {name}', 'By {name}': 'Por {name}', 'Bye {name}': 'Adiós {name}' };
+    const OUTER = '<p>Hola <!--ls:name-->Ana<!--/ls--></p>';
+
+    it('a nested phrase with its own params shows its own value beside the block’s, under the same name', () => {
+        catalog(translated);
+        const out = renderBlock(tree(phrase('Bo', { name: 'Bo' })), { category: 'UI', params: { name: 'Ana' } });
+        expect(html(out.nodes)).toBe(`${OUTER}<span data-ls-phrase data-ls-resolved="es-es">Por Bo</span>`);
+    });
+
+    it('control: without its own, a nested host takes the block’s params, so the block’s value shows in it', () => {
+        catalog(translated);
+        const out = renderBlock(tree(phrase('Bo')), { category: 'UI', params: { name: 'Ana' } });
+        expect(html(out.nodes)).toBe(`${OUTER}<span data-ls-phrase data-ls-resolved="es-es">Por Ana</span>`);
+    });
+
+    it('a nested content block renders with its own params too', () => {
+        catalog(translated);
+        const nested = (params?: Record<string, string>): BlockNode => ({
+            tag: 'section',
+            attrs: { 'data-ls-contentblock': true },
+            ...(params ? { params } : {}),
+            children: [{ tag: 'p', children: [{ text: 'Bye {name}' }] }],
+        });
+        const render = (node: BlockNode) => html(renderBlock(tree(node), { category: 'UI', params: { name: 'Ana' } }).nodes);
+        expect(render(nested({ name: 'Bo' }))).toContain('<p>Adiós Bo</p></section>');
+        expect(render(nested())).toContain('<p>Adiós Ana</p></section>');
+    });
+
+    it('the nested phrase registers the key it registers standing alone', async () => {
+        catalog({});
+        registerBlock(tree(phrase('Bo', { name: 'Bo' })), { category: 'Nested', params: { name: 'Ana' } });
+        registerBlock([phrase('Bo')], { category: 'Alone', params: { name: 'Bo' } });
+        await settle();
+        const keys = (category: string) => sent.filter((i) => (i as { category?: string }).category === category).map((i) => i.phrase).sort();
+        expect(keys('Nested')).toEqual(['By {name}', 'Hi {name}']);
+        expect(keys('Alone')).toEqual(['By {name}']);
+    });
+});

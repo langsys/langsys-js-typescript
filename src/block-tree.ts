@@ -52,11 +52,23 @@ import type { iCategories } from './types/translations.js';
  * binding registers with `registerBlock`, which touches no DOM.
  */
 
-/** A node of a block's content. Attribute values are strings; `true` is an attribute with no value. */
+/**
+ * A node of a block's content. Attribute values are strings; `true` is an attribute with no value.
+ *
+ * `params` on a nested host's element (a phrase host or a content-block declaration) are
+ * that unit's own: it renders with them in place of the block's, so a binding names each
+ * unit's values on their own (VAR-2) and a nested phrase keys as it does standing alone.
+ * A nested host without them renders with the block's.
+ */
 export type BlockNode =
     | { text: string }
     | { comment: string }
-    | { tag: string; attrs?: Readonly<Record<string, string | true>>; children?: readonly BlockNode[] };
+    | {
+          tag: string;
+          attrs?: Readonly<Record<string, string | true>>;
+          children?: readonly BlockNode[];
+          params?: Readonly<Record<string, ParamPrimitive>>;
+      };
 
 /**
  * A node of a rendered block. Every element names, as `source`, the pre-order
@@ -447,7 +459,9 @@ class ViewElement implements WalkNode {
         tag: string,
         attrs: Readonly<Record<string, string | true>> | undefined,
         children: ViewNode[],
-        readonly source: number
+        readonly source: number,
+        /** A nested host's own params, from its `BlockNode`. */
+        readonly params?: Readonly<Record<string, ParamPrimitive>>
     ) {
         this.tagName = tag.toUpperCase();
         this.attrs = new Map(Object.entries(attrs ?? {}).map(([name, value]) => [name.toLowerCase(), value]));
@@ -494,7 +508,7 @@ function view(nodes: readonly BlockNode[]): ViewNode[] {
             if ('text' in node) return new ViewText(node.text);
             if ('comment' in node) return new ViewComment(node.comment);
             const source = next++;
-            return new ViewElement(node.tag, node.attrs, build(node.children ?? []), source);
+            return new ViewElement(node.tag, node.attrs, build(node.children ?? []), source, node.params);
         });
     return build(nodes);
 }
@@ -672,7 +686,7 @@ function translateAttributes(element: ViewElement, lookup: (token: string) => st
  */
 function nestedOptions(node: ViewElement, outer: BlockOptions, resolved: boolean): BlockOptions {
     const element = node as unknown as Element;
-    const options: BlockOptions = { category: hostCategory(element) ?? outer.category, params: outer.params, label: outer.label };
+    const options: BlockOptions = { category: hostCategory(element) ?? outer.category, params: node.params ?? outer.params, label: outer.label };
     const marker = readContentBlockMarker(element);
     if (marker?.kind === 'identity') {
         if (resolvedHere(element, resolved)) options.customId = marker.id;
