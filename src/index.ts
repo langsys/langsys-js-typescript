@@ -21,6 +21,7 @@ export {
     type EncodedRichText,
 } from './richtext.js';
 export { LangsysAppAPI, LangsysConfigurationError } from './api.js';
+export type { ApiCredentials, SendOptions } from './api.js';
 
 // Content-block helpers (framework-agnostic — for React/Vue/Angular/other
 // wrappers that own their own DOM rendering and only need the registration

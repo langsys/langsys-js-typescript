@@ -1,3 +1,4 @@
+import type { ApiCredentials } from './api.js';
 import { _followRequestScope, pageCatalog } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iCategories } from './types/translations.js';
@@ -14,6 +15,8 @@ import type { iCategories } from './types/translations.js';
 export interface ActiveScope {
     readonly locale: string;
     readonly catalog: iCategories;
+    /** What the scope's requests send under (SRV-2); undefined for a scope given none, which sends under the module-wide ones. */
+    readonly credentials: ApiCredentials | undefined;
     /** `t()` inside the scope: reads the scope's catalog and records the scope's misses. */
     t(phrase: string, ...rest: unknown[]): string;
     /** Hold a content block for the scope's flush after the response. */

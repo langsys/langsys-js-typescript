@@ -451,7 +451,8 @@ async function flushHint(url: string): Promise<void> {
     markHinted(url);
 
     try {
-        const response = await LangsysAppAPI.postDiscoveryHint(url);
+        // The page's report, under the page's key, though its timer may run in a scope's async context (SRV-2).
+        const response = await LangsysAppAPI.postDiscoveryHint(url, { credentials: LangsysAppAPI.moduleCredentials() });
         if (response.http?.status === 429) {
             hintsDisabledForSession = true;
             for (const stale of pending.values()) clearTimeout(stale.timer);

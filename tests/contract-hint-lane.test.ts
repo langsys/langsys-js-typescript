@@ -1,6 +1,9 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerContentBlock } from '../src/content-block.js';
 import { LangsysApp } from '../src/langsys-app.js';
+import { createRequestScope } from '../src/request-scope.js';
+import { setRequestScopeStorage } from '../src/scope-context.js';
 import { autoDiscovery, discoveryBaseLocaleOnly, writeEnabled } from '../src/stores.js';
 import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
 import { installBrowser, resetSdk, session as startSession, setHref, sleep, t, until } from './helpers/sdk-session.js';
@@ -232,4 +235,27 @@ describe('WIRE-2: an empty 204 is a success', () => {
             .filter((s) => !s.includes('/locales/'));
         expect(failures).toEqual([]);
     });
+});
+
+describe('SRV-2: a page’s report goes out under the page’s key', () => {
+    it('a miss recorded inside a request scope with a key of its own reports under the page’s key', async () => {
+        // Real timers: a timer the page sets inside a scope's async context runs in that context.
+        vi.useRealTimers();
+        await fx.seed({
+            ...SEED,
+            projects: [...SEED.projects, { id: 'other', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local' }],
+            keys: [...SEED.keys, { key: 'k-other', project: 'other', type: 'ip_write', report_discovered_content: true }],
+        });
+        await session('k-public');
+        vi.spyOn(Math, 'random').mockReturnValue(0);
+        setRequestScopeStorage(new AsyncLocalStorage());
+        try {
+            const scope = await createRequestScope({ locale: 'en', credentials: { projectid: 'other', key: 'k-other' } });
+            scope.run(() => LangsysApp.Translations.recordPageMiss('', 'Recorded inside a scope'));
+            await until(async () => (await fx.state()).hints.length > 0, 12_000);
+        } finally {
+            setRequestScopeStorage(null);
+        }
+        expect((await fx.state()).hints).toEqual([{ project_id: 'p1', url: PAGE }]);
+    }, 20_000);
 });

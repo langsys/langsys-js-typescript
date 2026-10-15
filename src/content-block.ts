@@ -342,11 +342,12 @@ const registrationsInFlight = new Map<string, Promise<RegistrationResult>>();
 export async function registerContentBlock(contentBlock: iContentBlock): Promise<RegistrationResult> {
     // WIRE-4: a client without credentials reports the skipped write rather than throwing,
     // because a component reaches this and a component path never throws.
-    if (configured.get() === false) return { status: false, skipped: true, reason: 'not-configured' };
+    // A scope with credentials of its own is configured whatever the module is (SRV-2).
+    const scope = activeScope();
+    if (configured.get() === false && !scope?.credentials) return { status: false, skipped: true, reason: 'not-configured' };
 
     // Inside a request scope (SRV-7) nothing is sent on the request path: the scope holds
     // the block and its close() decides, after the response, whether to send it (SRV-3).
-    const scope = activeScope();
     if (scope) {
         scope.recordBlock(contentBlock);
         return { status: false, skipped: true, reason: 'deferred' };
@@ -429,16 +430,20 @@ export async function registerContentBlock(contentBlock: iContentBlock): Promise
 /** The registration request itself: success only once the server stored the block. */
 async function sendContentBlock(contentBlock: iContentBlock): Promise<RegistrationResult> {
     try {
-        const response = await LangsysAppAPI.createTranslatableItems([
-            {
-                type: 'content_block',
-                custom_id: contentBlock.custom_id,
-                category: contentBlock.category,
-                content: contentBlock.content,
-                label: contentBlock.label,
-                phrases: contentBlock.tokens.map((phrase) => ({ phrase })),
-            },
-        ]);
+        // The page's lane, under the page's key (SRV-2): a scope holds its blocks for close().
+        const response = await LangsysAppAPI.createTranslatableItems(
+            [
+                {
+                    type: 'content_block',
+                    custom_id: contentBlock.custom_id,
+                    category: contentBlock.category,
+                    content: contentBlock.content,
+                    label: contentBlock.label,
+                    phrases: contentBlock.tokens.map((phrase) => ({ phrase })),
+                },
+            ],
+            { credentials: LangsysAppAPI.moduleCredentials() }
+        );
         if (!response.status) {
             logger.error('Could not save content block', response.errors);
             return { status: false, reason: 'refused', errors: response.errors as unknown[] | undefined };

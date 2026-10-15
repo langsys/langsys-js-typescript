@@ -1,8 +1,9 @@
 import { canonicalizeLocale } from './locale.js';
 import { createSignal } from './signal.js';
 import type { HttpResponse, ResponseObject } from './types/api.js';
-import type { iLangsysConfig } from './types/config.js';
+import type { iLangsysConfig, WriteGrant } from './types/config.js';
 import { logger } from './logger.js';
+import { activeScope } from './scope-context.js';
 
 type Method = 'GET' | 'POST' | 'DELETE' | 'PATCH' | 'PUT';
 
@@ -20,6 +21,17 @@ export class LangsysConfigurationError extends Error {
     }
 }
 
+/**
+ * What a request sends under (SRV-2): a project id and API key, with the write grant that
+ * goes with them. The module-wide ones are what `init()` set; a request scope may carry
+ * its own.
+ */
+export interface ApiCredentials {
+    readonly projectid: string;
+    readonly key: string;
+    readonly writeGrant?: WriteGrant;
+}
+
 export interface SendOptions {
     /**
      * Let the request outlive the page that started it (`fetch` keepalive).
@@ -33,6 +45,13 @@ export interface SendOptions {
      * requests, which is why the teardown path chunks conservatively.
      */
     keepalive?: boolean;
+    /**
+     * Send under these credentials. Without them a request sends under those of the
+     * request scope the calling code runs in, and outside every scope under the
+     * module-wide ones (SRV-2). The page's own lanes pass the module-wide ones, so a page
+     * request that starts inside a scope's async context still goes out under the page's key.
+     */
+    credentials?: ApiCredentials;
 }
 
 class LangsysAppAPIClass {
@@ -59,14 +78,24 @@ class LangsysAppAPIClass {
         this.config = { ...this.config, projectid: '', key: '', writeGrant: undefined };
     }
 
-    /** True when a write grant is configured (in either form). */
+    /** True when the module-wide credentials carry a write grant (in either form). */
     public hasWriteGrant(): boolean {
         return !!this.config.writeGrant;
     }
 
+    /** The module-wide credentials `init()` set: the page's, and a scope's that was given none. */
+    public moduleCredentials(): ApiCredentials {
+        return this.config;
+    }
+
+    /** What a request made now sends under, unless it names its own (SRV-2): the active scope's, else the module-wide ones. */
+    public currentCredentials(): ApiCredentials {
+        return activeScope()?.credentials ?? this.config;
+    }
+
     /**
-     * Resolve the current write grant, calling the consumer's provider if that
-     * is the configured form.
+     * Resolve the write grant a request sends with, calling the consumer's provider
+     * if that is the configured form.
      *
      * The result is deliberately NOT cached — not here, not on the config
      * singleton. Grants are ~5 minute JWTs and per-user, while this client is
@@ -74,8 +103,8 @@ class LangsysAppAPIClass {
      * would be attached to every later user's requests. Resolving per request
      * is also what lets the host app refresh by simply returning a new token.
      */
-    private async resolveWriteGrant(): Promise<string | null> {
-        const grant = this.config.writeGrant;
+    private async resolveWriteGrant(credentials: ApiCredentials): Promise<string | null> {
+        const grant = credentials.writeGrant;
         if (!grant) return null;
         try {
             const token = typeof grant === 'function' ? await grant() : grant;
@@ -89,10 +118,10 @@ class LangsysAppAPIClass {
     }
 
     /** Build request headers fresh per call. Never memoized — see `resolveWriteGrant`. */
-    private async buildHeaders(): Promise<Record<string, string>> {
+    private async buildHeaders(credentials: ApiCredentials): Promise<Record<string, string>> {
         const headers: Record<string, string> = {
             'Content-Type': 'application/json; charset=utf-8',
-            'x-Authorization': this.config.key,
+            'x-Authorization': credentials.key,
             // Declare ICU MessageFormat rendering so the server sends raw ICU
             // (plural/select) instead of flat-template downgrades. Pre-ICU
             // builds omit this header and keep receiving flat strings.
@@ -102,7 +131,7 @@ class LangsysAppAPIClass {
         // Sent on every request, not just writes: the grant is what the server
         // uses to compute `write_enabled`, which comes back on
         // `authorize-project` and on every catalog fetch.
-        const grant = await this.resolveWriteGrant();
+        const grant = await this.resolveWriteGrant(credentials);
         if (grant) headers['X-Write-Grant'] = grant;
 
         return headers;
@@ -115,12 +144,13 @@ class LangsysAppAPIClass {
 
     public async validate(config: iLangsysConfig) {
         this.setup(config);
-        return await this.get('authorize-project/[projectid]');
+        return await this.get('authorize-project/[projectid]', {}, { credentials: this.config });
     }
 
-    public async getTranslations(locale: string) {
+    public async getTranslations(locale: string, opts: SendOptions = {}) {
+        const credentials = opts.credentials ?? this.currentCredentials();
         // The CLDR-compliant backend keys catalogs by canonical BCP 47 tags.
-        return await this.get('translations', { project_id: this.config.projectid, locale: canonicalizeLocale(locale) });
+        return await this.get('translations', { project_id: credentials.projectid, locale: canonicalizeLocale(locale) }, { ...opts, credentials });
     }
 
     /**
@@ -129,13 +159,14 @@ class LangsysAppAPIClass {
      * deprecated `projects/{id}/tokens` and `projects/{id}/content-blocks` routes.
      */
     public async createTranslatableItems(items: Array<Record<string, unknown>>, opts: SendOptions = {}) {
+        const credentials = opts.credentials ?? this.currentCredentials();
         return await this.post(
             'translatable-items',
             {
-                project_id: this.config.projectid,
+                project_id: credentials.projectid,
                 translatable_items: items,
             },
-            opts,
+            { ...opts, credentials },
         );
     }
 
@@ -150,24 +181,24 @@ class LangsysAppAPIClass {
      * for key validity or registration state. No `project_id`: the key already
      * resolves to exactly one project server-side.
      */
-    public async postDiscoveryHint(pageUrl: string) {
-        return await this.post('discovery/hint', { page_url: pageUrl });
+    public async postDiscoveryHint(pageUrl: string, opts: SendOptions = {}) {
+        return await this.post('discovery/hint', { page_url: pageUrl }, opts);
     }
 
     public async post(path: string, data: Record<string, unknown> = {}, opts: SendOptions = {}) {
         return await this.send('POST', path, data, opts);
     }
-    public async get(path: string, data: Record<string, unknown> = {}) {
-        return await this.send('GET', path, data);
+    public async get(path: string, data: Record<string, unknown> = {}, opts: SendOptions = {}) {
+        return await this.send('GET', path, data, opts);
     }
-    public async delete(path: string, data: Record<string, unknown> = {}) {
-        return await this.send('DELETE', path, data);
+    public async delete(path: string, data: Record<string, unknown> = {}, opts: SendOptions = {}) {
+        return await this.send('DELETE', path, data, opts);
     }
-    public async patch(path: string, data: Record<string, unknown> = {}) {
-        return await this.send('PATCH', path, data);
+    public async patch(path: string, data: Record<string, unknown> = {}, opts: SendOptions = {}) {
+        return await this.send('PATCH', path, data, opts);
     }
-    public async put(path: string, data: Record<string, unknown> = {}) {
-        return await this.send('PUT', path, data);
+    public async put(path: string, data: Record<string, unknown> = {}, opts: SendOptions = {}) {
+        return await this.send('PUT', path, data, opts);
     }
 
     private async send(
@@ -176,7 +207,10 @@ class LangsysAppAPIClass {
         data: Record<string, unknown> = {},
         opts: SendOptions = {},
     ): Promise<ResponseObject> {
-        if (!this.config.projectid || !this.config.key) {
+        // Resolved before anything is awaited, so the request goes out under the scope that
+        // made it however the renders around it interleave (SRV-2).
+        const credentials = opts.credentials ?? this.currentCredentials();
+        if (!credentials.projectid || !credentials.key) {
             // WIRE-4: an explicit write without credentials is a programming error and says
             // so. A read answers with the error envelope below and never throws.
             if (method !== 'GET') {
@@ -199,9 +233,9 @@ class LangsysAppAPIClass {
         // API calls should not include a leading slash.
         if (path.startsWith('/')) path = path.substring(1);
 
-        // Replace [projectid] token with the actual configured projectid.
+        // Replace [projectid] token with the project id the request sends under.
         if (path.includes('/[projectid]')) {
-            path = path.replaceAll('/[projectid]', `/${this.config.projectid}`);
+            path = path.replaceAll('/[projectid]', `/${credentials.projectid}`);
         }
 
         try {
@@ -211,7 +245,7 @@ class LangsysAppAPIClass {
                     : '';
 
             const query = await fetch(`${this.apiurl}/${path}${querystring === '?' ? '' : querystring}`, {
-                headers: await this.buildHeaders(),
+                headers: await this.buildHeaders(credentials),
                 method,
                 body: method === 'GET' ? undefined : JSON.stringify(data),
                 keepalive: opts.keepalive || undefined,

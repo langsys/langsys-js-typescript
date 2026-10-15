@@ -367,6 +367,12 @@ class LangsysAppClass {
         // Debug notices raised before this point were held until debug was known.
         settleNotices();
 
+        // What a request scope with credentials of its own needs from init() holds whether or
+        // not init() has credentials (SRV-2): the API host, set before validate() since
+        // authorizing against the default host and then switching is silent, and the strategy.
+        if (initConfig.apiUrl) LangsysAppAPI.setBaseUrl(initConfig.apiUrl);
+        configStore.ssrTokenStrategy = ssrTokenStrategy;
+
         if (debug && initialTranslations) {
             this.debug.log('SSR initial translations config:', {
                 hasInitialTranslations: !!initialTranslations,
@@ -404,11 +410,6 @@ class LangsysAppClass {
         // The legacy-key mode is on only when configured, and a file this core
         // cannot read throws here, before anything resolves through it (MIG-1, MIG-7).
         this.Translations.setLegacyKeys(initConfig.legacyKeys);
-
-        // Before `validate()`, deliberately: authorizing against the default
-        // host and then switching is the exact failure `setBaseUrl`-after-init
-        // produces, and it is silent.
-        if (initConfig.apiUrl) LangsysAppAPI.setBaseUrl(initConfig.apiUrl);
 
         if (!emulateFailureToLoad) {
             this.config = {

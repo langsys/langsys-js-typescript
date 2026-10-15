@@ -384,10 +384,11 @@ export class Translations {
         //   t(phrase, 'Category')                      → category='Category', params=undefined
         //   t(phrase, 'Category', {params...})         → category='Category', params={params}
         const fn = ((phrase: string, ...rest: unknown[]): string => {
-            this.assertConfigured();
             // Inside a request scope (SRV-7), the scope's catalog and miss collection,
             // never the page's: the page's state is shared by every render in the process.
             const scope = activeScope();
+            // A scope with credentials of its own is configured whatever the module is (SRV-2).
+            if (!scope?.credentials) this.assertConfigured();
             if (scope) return scope.t(phrase, ...rest);
             return this.renderWith(this.pageView, phrase, rest);
         }) as TFunction;
@@ -1188,9 +1189,10 @@ export class Translations {
             // until now was only claimed in a comment.
             const BATCH_SIZE = isTeardown ? Math.min(50, batchLimit.get()) : batchLimit.get();
             for (let offset = 0; offset < phraseItems.length; offset += BATCH_SIZE) {
+                // The page's queue, under the page's key, wherever the flush was scheduled (SRV-2).
                 const response: ResponseObject = await LangsysAppAPI.createTranslatableItems(
                     phraseItems.slice(offset, offset + BATCH_SIZE),
-                    { keepalive },
+                    { keepalive, credentials: LangsysAppAPI.moduleCredentials() },
                 );
                 if (!response.status) {
                     if (response.errors) {
@@ -1285,7 +1287,8 @@ export class Translations {
 
         let response: ResponseObject;
         try {
-            response = await LangsysAppAPI.getTranslations(locale);
+            // The page's catalog, under the page's key, even when the change starts inside a scope (SRV-2).
+            response = await LangsysAppAPI.getTranslations(locale, { credentials: LangsysAppAPI.moduleCredentials() });
         } catch (err) {
             // `send()` already turns a network failure into an error envelope, so this
             // is the client itself throwing. Still an expected condition (WIRE-4), and
