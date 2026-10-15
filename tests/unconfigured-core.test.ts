@@ -155,6 +155,25 @@ describe('WIRE-4: init() without credentials leaves the client unconfigured, wit
     });
 });
 
+describe('WIRE-4: a refused re-init stays refused', () => {
+    it('neither setWriteGrant nor the earlier init’s locale store brings the old key back', async () => {
+        const { LangsysApp, LangsysAppAPI, createSignal } = await page(() => respond(200, { status: true, data: {}, write_enabled: false }));
+        const store = createSignal('en-us');
+        await LangsysApp.init({ projectid: 'p', key: 'k', UserLocaleStore: store });
+        await vi.advanceTimersByTimeAsync(100);
+        await LangsysApp.init({ projectid: 'p', key: '', UserLocaleStore: createSignal('en-us') });
+        const before = requests.length;
+
+        await LangsysApp.setWriteGrant('a-grant');
+        store.set('de-de');
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(LangsysAppAPI.config.key).toBe('');
+        expect(LangsysApp.isConfigured()).toBe(false);
+        expect(requests.slice(before)).toEqual([]);
+    });
+});
+
 describe('WIRE-4: requireCredentials', () => {
     it('makes t() throw the configuration error, naming what is missing', async () => {
         const { LangsysApp, LangsysConfigurationError, createSignal, t } = await page();

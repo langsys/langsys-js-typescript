@@ -329,6 +329,11 @@ class LangsysAppClass {
     private refuseUnconfigured(missing: string, errorText: string, requireCredentials: boolean): ResponseObject {
         configured.set(false);
         LangsysAppAPI.clearCredentials();
+        // Forgotten on every copy, so nothing an earlier init() set up (a grant change, its
+        // locale store's next emission) can hand the old key back to the client.
+        const forgotten = { projectid: '', key: '', writeGrant: undefined };
+        Object.assign(configStore, forgotten);
+        Object.assign(this.config, forgotten);
         this.Translations.markUnconfigured(
             new LangsysConfigurationError(`Langsys is not configured: LangsysApp.init() was called without ${missing}.`),
             requireCredentials
