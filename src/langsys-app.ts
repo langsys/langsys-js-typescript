@@ -571,20 +571,29 @@ class LangsysAppClass {
         inLocale?: string
     ): Promise<iLocaleDefault | iLocaleFlat[] | iLocaleData[]> {
         const locale = this.resolveLocale(inLocale);
-        const route = `locales/${locale}` + (format ? `/${format}` : '');
-        const response = await LangsysAppAPI.get(route);
+        const route = 'locales' + (format ? `/${format}` : '');
+        const empty = () => (format === 'flat' ? [] : format === 'data' ? [] : {});
+        // The display locale goes as `locales[]`, with target locales not appended, so the
+        // API answers a map holding that locale alone. Its key and codes are in the
+        // organization's locale-code format (`es-es`, `es-ES`, `es_ES`), so the key is
+        // matched canonically and the codes come back in the core's lowercase form (1a).
+        const response = await LangsysAppAPI.get(route, { 'locales[]': locale, append_target_locales: '0' });
         if (response.errors || !response.status) {
             this.debug.error(response.errors, response.status, response);
             this.debug.error('LangsysApp.getLocales failed: ' + route);
-            return format === 'flat' ? [] : format === 'data' ? [] : {};
+            return empty();
         }
+        const byLocale = (typeof response.data === 'object' && response.data !== null ? response.data : {}) as Record<string, unknown>;
+        const found = Object.entries(byLocale).find(([key]) => canonicalizeLocale(key) === locale)?.[1];
+        if (found === undefined) return empty();
+        const listed = withCanonicalCodes(found);
         switch (format) {
             case 'flat':
-                return response.data as iLocaleFlat[];
+                return listed as iLocaleFlat[];
             case 'data':
-                return response.data as iLocaleData[];
+                return listed as iLocaleData[];
             default:
-                return response.data as iLocaleDefault;
+                return listed as iLocaleDefault;
         }
     }
 
@@ -763,3 +772,18 @@ class LangsysAppClass {
 
 export const LangsysApp = new LangsysAppClass();
 export type { LangsysAppClass };
+
+/** A locale list with every entry's `code` canonical, in the flat or data shape or grouped by language. */
+function withCanonicalCodes(listed: unknown): unknown {
+    const recode = (entries: unknown): unknown =>
+        Array.isArray(entries)
+            ? entries.map((entry) =>
+                  typeof entry === 'object' && entry !== null && typeof (entry as { code?: unknown }).code === 'string'
+                      ? { ...entry, code: canonicalizeLocale((entry as { code: string }).code) }
+                      : entry
+              )
+            : entries;
+    if (Array.isArray(listed)) return recode(listed);
+    if (typeof listed !== 'object' || listed === null) return listed;
+    return Object.fromEntries(Object.entries(listed).map(([language, entries]) => [language, recode(entries)]));
+}
