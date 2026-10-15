@@ -752,8 +752,9 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
         for (const [name, value] of Object.entries(earlier.values)) if (!(name in values)) values[name] = value;
     }
     // Served as source, a phrase with marked values keeps its markers (VAR-3), so a
-    // reader on the client reads the same phrase.
-    if (translated === null && Object.keys(values).length) return host.childNodes;
+    // reader on the client reads the same phrase. The caller's params still fill an
+    // author's exclusion, as they do when the phrase renders (TOK-1).
+    if (translated === null && Object.keys(values).length) return withExclusionsFilled(host.childNodes, params);
     const locale = currentlyLoadedLocale.get();
     // A translation from the catalog is marked resolved, as a block's host is, so a
     // client never reads it as the source phrase (GATE-10).
@@ -781,6 +782,15 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
         } else stack.pop();
     }
     return top;
+}
+
+/** Source content as given, with the caller's params filled into each author's exclusion inside it. */
+function withExclusionsFilled(nodes: readonly ViewNode[], params: Readonly<Record<string, unknown>>): ViewNode[] {
+    return nodes.map((node) => {
+        if (!(node instanceof ViewElement) || NON_TRANSLATABLE_ELEMENTS.includes(node.tagName.toLowerCase())) return node;
+        const children = takesParams(node as unknown as Element) ? withParams(node.childNodes, params) : withExclusionsFilled(node.childNodes, params);
+        return new ViewElement(node.tagName, Object.fromEntries(node.attrs), children, node.source);
+    });
 }
 
 /** Opaque content copied with the caller's params filled into its text (`fillOpaqueText`); code is copied as it is. */

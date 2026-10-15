@@ -299,6 +299,22 @@ describe('a caller’s param inside an author’s exclusion is filled as plain t
         expect(host.innerHTML).toBe('Run <script>var a = "{email}";</script> or <b translate="no">help@site.test <style>.x{email}</style></b> now');
     });
 
+    it('a phrase holding a marked value, served as source on a miss, fills the exclusion as its render does', async () => {
+        // Found by the Svelte lane: the tree path served the source as given and left the placeholder.
+        await client();
+        const MARKED = 'Hi <!--ls:user_name-->Ana<!--/ls-->, <i>write to <b translate="no">%name% {name}</b></i> <math><mi translate="no">{name}</mi></math><script>var a = "%name%";</script>';
+        const fill = { user_name: 'Ana', name: 'NICK' };
+        expect(serializeTree(renderBlock(phraseHost(MARKED), { category: 'UI', params: fill }).nodes)).toBe(
+            '<span data-ls-phrase>Hi <!--ls:user_name-->Ana<!--/ls-->, <i>write to <b translate="no">NICK NICK</b></i> <math><mi translate="no">{name}</mi></math><script>var a = "%name%";</script></span>'
+        );
+
+        // The DOM path is the control.
+        const host = mount(MARKED);
+        live.push(new Phrase(host, { category: 'UI', params: fill }));
+        await until(() => host.innerHTML.includes('NICK'));
+        expect(host.innerHTML).toContain('<i>write to <b translate="no">NICK NICK</b></i> <math><mi translate="no">{name}</mi></math><script>var a = "%name%";</script>');
+    });
+
     describe('control: a block keeps an excluded element’s text exactly as written, params or not', () => {
         const BLOCK = '<p>Use <code translate="no">{name}</code> in templates</p><p>Write it as shown</p>';
         const TOKENS = ['Use', 'in templates', 'Write it as shown'];
