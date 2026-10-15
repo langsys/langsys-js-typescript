@@ -47,6 +47,8 @@ export {
     normalizeMarkupPlaceholders,
     TRANSLATABLE_ATTRIBUTES,
     NON_TRANSLATABLE_ELEMENTS,
+    // An author's exclusion, `translate="no"` or `data-notrans`, read off any element shape
+    isTranslationExcluded,
     // Markers, both spellings, read by either SDK
     PHRASE_MARKER_ATTR,
     PHRASE_MARKER_ATTR_LEGACY,
@@ -109,6 +111,6 @@ export { derivePlaceholderNames, snakeCase } from './var-names.js';
 export type { ExpressionShape, NamedExpression } from './var-names.js';
 export { VAR_PARAM_ATTR } from './var-markers.js';
 
-export type { EncodedRichPhrase, RichTextNode } from './identity.js';
+export type { AttributeReader, EncodedRichPhrase, RichTextNode } from './identity.js';
 export type { ParamPrimitive, TranslationParams } from './types/translation-fn.js';
 export type { iContentBlock } from './types/content-block.js';

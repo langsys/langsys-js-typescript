@@ -64,3 +64,31 @@ describe('marker constants are exported from both entries, with the same value',
         ]);
     });
 });
+
+/**
+ * The exclusion test a binding applies before it hands an element to the core (TOK-1),
+ * on `/pure` as on the main entry, so a binding that must not load the DOM module reads
+ * the one definition rather than restating `translate="no"` and `data-notrans`.
+ */
+describe('isTranslationExcluded is exported from both entries', () => {
+    const reader = (attributes: Record<string, string>) => ({
+        tagName: 'SPAN',
+        getAttribute: (name: string) => attributes[name] ?? null,
+        hasAttribute: (name: string) => name in attributes,
+    });
+    const verdicts = (fn: unknown) =>
+        [{ translate: 'no' }, { 'data-notrans': '' }, { 'data-notrans': 'false' }, {}].map((attrs) => (fn as (el: unknown) => boolean)(reader(attrs)));
+
+    it('/pure’s is the main entry’s function', () => {
+        expect((pure as Entry).isTranslationExcluded).toBe(main.isTranslationExcluded);
+        expect(verdicts((pure as Entry).isTranslationExcluded)).toEqual([true, true, false, false]);
+    });
+
+    it('the built /pure exports it, deciding as the built main entry does', async () => {
+        const dist = join(process.cwd(), 'dist');
+        const builtMain = (await import(pathToFileURL(join(dist, 'index.mjs')).href)) as Entry;
+        const builtPure = (await import(pathToFileURL(join(dist, 'pure.mjs')).href)) as Entry;
+        expect(typeof builtPure.isTranslationExcluded).toBe('function');
+        expect(verdicts(builtPure.isTranslationExcluded)).toEqual(verdicts(builtMain.isTranslationExcluded));
+    });
+});

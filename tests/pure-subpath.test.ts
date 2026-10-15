@@ -322,6 +322,7 @@ describe('the export list is a contract', () => {
         'interpolate',
         'isEmpty',
         'isICU',
+        'isTranslationExcluded',
         'maximizedLangScript',
         'md5',
         'md5Legacy',
