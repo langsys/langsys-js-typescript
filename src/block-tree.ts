@@ -584,7 +584,10 @@ function renderView(root: ViewNode[], options: BlockOptions): RenderedBlock {
         if (run) writeRun(run, inBlock ? fromBlock : (fromPhrases ?? token));
         else {
             const node = findSingleTextNode({ childNodes: root }) as ViewText;
-            node.nodeValue = inBlock ? apply(fromBlock) : LangsysApp.Translations.renderWith(readOnlyView(), token, [category, params]);
+            // The node's own whitespace stays at each end, as on the block path: beside an
+            // excluded element (TOK-1) it is the space between two words.
+            const [lead, trail] = [/^\s*/.exec(node.nodeValue)![0], /\s*$/.exec(node.nodeValue)![0]];
+            node.nodeValue = lead + (inBlock ? apply(fromBlock) : LangsysApp.Translations.renderWith(readOnlyView(), token, [category, params])) + trail;
         }
         const fromCatalog = inBlock || fromPhrases !== null;
         return { shape, customId: id, nodes: toRendered(root), hostAttrs: hostAttrs(id, fromCatalog) };

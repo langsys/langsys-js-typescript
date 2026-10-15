@@ -158,6 +158,43 @@ async function bothPaths(markup: string, entries: Record<string, unknown>, param
     return { dom: div.innerHTML, domId: div.getAttribute('data-ls-contentblock'), tree: html(rendered.nodes), rendered };
 }
 
+describe('a unit whose one token sits beside an excluded element keeps the space between them (TOK-1, TOK-6)', () => {
+    withSdk();
+    // Drain the miss a source render records, failing or not, so no flush is left scheduled
+    // for the next test (this runs before `withSdk` restores real timers).
+    afterEach(() => vi.advanceTimersByTimeAsync(1000));
+    const LAST = '<p>Built with <span translate="no">Kangen</span></p>';
+    const FIRST = '<p><span translate="no">Kangen</span> is ours</p>';
+
+    it.each([
+        ['excluded last, as source', LAST, {}, LAST],
+        ['excluded first, as source', FIRST, {}, FIRST],
+        ['excluded last, translated', LAST, { 'Built with': 'Hecho con' }, '<p>Hecho con <span translate="no">Kangen</span></p>'],
+        ['excluded first, translated', FIRST, { 'is ours': 'es nuestro' }, '<p><span translate="no">Kangen</span> es nuestro</p>'],
+        ['at the top level', 'Built with <span translate="no">Kangen</span>', {}, 'Built with <span translate="no">Kangen</span>'],
+        ['control: an ordinary element in the same place', '<p>Built with <b>Kangen</b></p>', {}, '<p>Built with <b>Kangen</b></p>'],
+    ])('%s', async (_name, markup, entries, expected) => {
+        const out = await bothPaths(markup, entries);
+        expect(out.dom).toBe(expected);
+        expect(out.tree).toBe(expected);
+    });
+
+    it('a re-render writes the same space, never one more, though a translation ends in one of its own', async () => {
+        catalog({ 'Built with': 'Hecho con ' });
+        const div = host(LAST);
+        document.body.appendChild(div);
+        live.push(new Translate(div, { category: 'UI' }));
+        await settle();
+        const first = div.innerHTML;
+        catalog({ 'Built with': 'Fait avec' }, 'fr-fr');
+        await settle();
+        expect(div.innerHTML).toBe('<p>Fait avec <span translate="no">Kangen</span></p>');
+        catalog({ 'Built with': 'Hecho con ' });
+        await settle();
+        expect(div.innerHTML).toBe(first);
+    });
+});
+
 describe('renderBlock renders what the DOM class renders, byte for byte', () => {
     withSdk();
 

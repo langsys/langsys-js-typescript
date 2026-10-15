@@ -94,7 +94,8 @@ describe('TOK-6: text left out of the unit does not change its shape', () => {
         const host = unit('<p>Hello <script>track()</script><span translate="no">ACME</span></p>', { Hello: 'Hola' });
         await settle();
         const p = host.querySelector('p')!;
-        expect(p.firstChild!.nodeValue).toBe('Hola');
+        // The space before what was left out is the text node's own, and stays (TOK-1).
+        expect(p.firstChild!.nodeValue).toBe('Hola ');
         expect(p.querySelector('script')!.textContent).toBe('track()');
         expect(p.querySelector('span')!.textContent).toBe('ACME');
     });

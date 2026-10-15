@@ -147,6 +147,8 @@ export class Translate {
     private registeredId: string | null = null;
     /** The text this class last wrote into each text node (see `isUnitChange`). */
     private written = new WeakMap<Node, string>();
+    /** The whitespace at each end of a single-token unit's text as the page gave it (`writeKeepingEdges`). */
+    private edges = new WeakMap<Node, [string, string]>();
 
     /**
      * @param byWalk Internal: set when an enclosing walk creates this instance for
@@ -317,6 +319,22 @@ export class Translate {
         if (node.nodeValue === text) return;
         this.written.set(node, text);
         node.nodeValue = text;
+    }
+
+    /**
+     * Write a unit's one token with the text node's own whitespace kept at each end, as
+     * the block path keeps it: beside an excluded element (TOK-1) it is the space between
+     * two words. The ends are the page's, so a re-render never adds to them, and a text
+     * the framework has rewritten since gives its own.
+     */
+    private writeKeepingEdges(node: Node, text: string): void {
+        const value = node.nodeValue ?? '';
+        let edges = this.written.get(node) === value ? this.edges.get(node) : undefined;
+        if (!edges) {
+            edges = [/^\s*/.exec(value)![0], /\s*$/.exec(value)![0]];
+            this.edges.set(node, edges);
+        }
+        this.writeText(node, edges[0] + text + edges[1]);
     }
 
     /**
@@ -567,7 +585,7 @@ export class Translate {
             );
             return;
         }
-        this.writeText(textNode, resolved);
+        this.writeKeepingEdges(textNode, resolved);
     }
 
     /**
