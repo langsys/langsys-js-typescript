@@ -3,7 +3,7 @@ import { registerContentBlock, type RegistrationResult } from './content-block.j
 import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
 import { LangsysApp } from './langsys-app.js';
 import { canonicalizeLocale } from './locale.js';
-import { activeScope, enterScope, runInScope, type ActiveScope } from './scope-context.js';
+import { activeScope, enterScope, runInScope, runOutsideScopes, type ActiveScope } from './scope-context.js';
 import { batchLimit, config as configStore } from './stores.js';
 import { AUTO_SSR_FLUSH_THRESHOLD, type CatalogView } from './translations.js';
 import type { RequestSeed, SeededBlock } from './block-tree.js';
@@ -216,8 +216,10 @@ class Scope implements RequestScope, ActiveScope {
     recordBlock(block: iContentBlock): void {
         if (!this.available || this.closing) return;
         if (this.fromSeed) {
-            // On the page's lane, once the render that holds this scope has returned.
-            queueMicrotask(() => void registerContentBlock(block));
+            // On the page's lane, once the render that holds this scope has returned, and
+            // outside it: under an AsyncLocalStorage the task would otherwise run inside this
+            // scope again and hand the block straight back.
+            queueMicrotask(() => void runOutsideScopes(() => registerContentBlock(block)));
             return;
         }
         this.blockMisses.set(`${block.category}\0${block.custom_id}`, block);

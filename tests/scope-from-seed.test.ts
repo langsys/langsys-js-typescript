@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangsysAppAPI } from '../src/api.js';
 import { registerBlock, renderBlock, type BlockNode } from '../src/block-tree.js';
@@ -7,6 +8,7 @@ import { _resetDiscoveryState } from '../src/discovery.js';
 import { t, tSignal } from '../src/index.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { createRequestScope, scopeFromSeed } from '../src/request-scope.js';
+import { setRequestScopeStorage } from '../src/scope-context.js';
 import { _resetSeededBlocks } from '../src/served-source.js';
 import { config as configStore, currentlyLoadedLocale, sTranslations, writeEnabled } from '../src/stores.js';
 
@@ -108,6 +110,24 @@ describe('scopeFromSeed: the server’s scope, on the client, at once', () => {
         const scope = scopeFromSeed(await serverSeed());
         scope.run(() => registerBlock(tree, { category: 'UI' }));
         await settle();
+        expect(sent.map((i) => i.custom_id)).toEqual([generateCustomId('UI', ['Seeded A', 'Seeded B'])]);
+    });
+
+    it('under an AsyncLocalStorage, a block registered in its render reaches the page’s lane once', async () => {
+        const tree: BlockNode[] = [{ tag: 'p', children: [{ text: 'Seeded A' }] }, { tag: 'p', children: [{ text: 'Seeded B' }] }];
+        const scope = scopeFromSeed(await serverSeed());
+        let queued = 0;
+        const queue = globalThis.queueMicrotask;
+        // Stops a loop rather than hanging the run: past a thousand, nothing more is queued.
+        vi.spyOn(globalThis, 'queueMicrotask').mockImplementation((task) => (++queued < 1000 ? queue(task) : undefined));
+        setRequestScopeStorage(new AsyncLocalStorage());
+        try {
+            scope.run(() => registerBlock(tree, { category: 'UI' }));
+            await settle();
+        } finally {
+            setRequestScopeStorage(null);
+        }
+        expect(queued).toBeLessThan(1000);
         expect(sent.map((i) => i.custom_id)).toEqual([generateCustomId('UI', ['Seeded A', 'Seeded B'])]);
     });
 

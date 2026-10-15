@@ -82,6 +82,11 @@ export function runInScope<R>(scope: ActiveScope, fn: () => R): R {
     }
 }
 
+/** Run `fn` outside every scope, as the page does: for work a scope hands to the page's lanes. */
+export function runOutsideScopes<R>(fn: () => R): R {
+    return storage ? storage.run(undefined, fn) : fn();
+}
+
 /** The catalog the current code reads: its scope's, or the page's. */
 export function activeCatalog(): iCategories {
     return activeScope()?.catalog ?? pageCatalog();
