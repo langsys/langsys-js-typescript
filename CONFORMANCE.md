@@ -5,9 +5,9 @@
 | **SDK** | `langsys-js-typescript` (browser reference implementation) |
 | **Profiles** | all, browser |
 | **specVersion** | 8.5.9 |
-| **Spec revision read** | langsys2 7b595683…, docs/sdk-spec.mdx blob eda08792400586e3cb03094f2fa8cdd4ab8dcc66 (specVersion 8.5.9). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree 7b595683 docs/sdk-spec.mdx` at this write and checked by `npm run verify:spec`, which also fails if the vector file cites a different blob. Every rule id is counted by `npm run tally:conformance`. |
+| **Spec revision read** | langsys2 a9df4ef9…, docs/sdk-spec.mdx blob aff89a985ea8845266ec5073839a370de46a7c8f (specVersion 8.5.9). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree a9df4ef9 docs/sdk-spec.mdx` at this write and checked by `npm run verify:spec`, which also fails if the vector file cites a different blob. Every rule id is counted by `npm run tally:conformance`. |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 1739 tests in 78 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 1779 tests in 80 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
