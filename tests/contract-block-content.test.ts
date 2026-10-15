@@ -198,6 +198,27 @@ describe('one block registers one content string through the DOM class and the t
         expect(fromDom.content).toBe(expected);
         expect(fromTree.content).toBe(expected);
     });
+
+    it('a %name% placeholder is stored as {name} through either path, in text and in an attribute', async () => {
+        // Found by the Vue lane: the tree path stored the `%name%` a binding's transform writes.
+        const html = '<p title="For %first_name%">Hi %first_name%</p><p>Welcome back</p>';
+        const expected = '<p title="For {first_name}">Hi {first_name}</p><p>Welcome back</p>';
+        await client();
+        const host = mount(`<translate>${html}</translate>`);
+        live.push(new Translate(host, { category: 'UI' }));
+        const fromDom = await onlyBlock();
+
+        await fx.seed(SEED);
+        await client();
+        const parsed = document.createElement('div');
+        parsed.innerHTML = html;
+        void registerBlock(toTree(parsed.childNodes), { category: 'UI' });
+        const fromTree = await onlyBlock();
+
+        expect(fromTree.custom_id).toBe(fromDom.custom_id);
+        expect(fromDom.content).toBe(expected);
+        expect(fromTree.content).toBe(expected);
+    });
 });
 
 describe('the DOM class inlines the styles an element shows, measured against its tag’s own defaults', () => {

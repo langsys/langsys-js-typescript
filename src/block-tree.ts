@@ -864,7 +864,8 @@ function contentOf(input: readonly BlockNode[]): string {
                 return serializeNode(elements[seen.source]!, serialize(seen.childNodes));
             })
             .join('');
-    return serialize(shown);
+    // `%name%` is stored as `{name}`, as the DOM path stores it, so one block has one content string.
+    return normalizeMarkupPlaceholders(serialize(shown));
 }
 
 /** A tree's elements in pre-order, the order `view` numbers each one's `source` in. */
