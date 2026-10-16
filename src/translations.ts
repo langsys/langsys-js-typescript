@@ -54,6 +54,14 @@ const BACKSTOP_INTERVAL_MS = 3000;
 const RETRY_BACKOFF_BASE_MS = 3_000;
 const RETRY_BACKOFF_MAX_MS = 300_000;
 
+/**
+ * CACHE-2's window after the `failures`th failed read in a row of one catalog pair, or of one
+ * reference list and display locale (REF-1): 3s, 6s, 12s … capped at 5 minutes.
+ */
+export function failureWindowMs(failures: number): number {
+    return Math.min(RETRY_BACKOFF_BASE_MS * 2 ** (failures - 1), RETRY_BACKOFF_MAX_MS);
+}
+
 function isObject(test: unknown): test is Record<string, unknown> {
     return typeof test === 'object' && !Array.isArray(test) && test !== null;
 }
@@ -1040,8 +1048,7 @@ export class Translations {
             return true;
         }
         const failures = (this.catalogFailures.get(scope)?.failures ?? 0) + 1;
-        const windowMs = Math.min(RETRY_BACKOFF_BASE_MS * 2 ** (failures - 1), RETRY_BACKOFF_MAX_MS);
-        this.catalogFailures.set(scope, { failures, retryAt: Date.now() + windowMs });
+        this.catalogFailures.set(scope, { failures, retryAt: Date.now() + failureWindowMs(failures) });
         return false;
     }
 

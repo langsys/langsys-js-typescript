@@ -690,17 +690,19 @@ const locale = LangsysApp.detectPreferredLocale(
 );
 ```
 
-The matcher tries an exact match first (`en-US`), then falls back to same-language-and-script matching using CLDR likely-subtags data (`es-MX` matches `es-ES`; `zh-TW` matches `zh-Hant` but never `zh-Hans` — cross-script fallbacks are deliberately refused). All results come back in BCP 47 canonical form (`en-US`, `zh-Hant-TW`). When you pass `supported` and none match, it falls back to the user's top preference (canonicalized); it returns `false` only when no preference can be determined at all.
+The matcher tries an exact match first (`en-US`), then falls back to same-language-and-script matching using CLDR likely-subtags data (`es-MX` matches `es-ES`; `zh-TW` matches `zh-Hant` but never `zh-Hans` — cross-script fallbacks are deliberately refused). Results come back in the core's lowercase form (`en-us`, `zh-hant-tw`). When you pass `supported` and none match, it returns `false`, so `detectPreferredLocale(header, supported) || 'en-us'` reaches your default; without `supported` it returns the user's top preference, and `false` only when no preference can be determined at all.
 
 ## Localized country / currency / locale lists
 
 ```ts
-const countries    = await LangsysApp.getCountries();    // [{ code, label }, ...]
-const dialCodes    = await LangsysApp.getDialCodes();    // [{ country_code, dial_code, name }, ...]
+const countries    = await LangsysApp.getCountries();    // [{ code, label, eu }, ...]
+const dialCodes    = await LangsysApp.getDialCodes();    // [{ country_code, dial_code, name }, ...] — '34', 'Spain (+34)'
 const currencies   = await LangsysApp.getCurrencies();   // [{ code, name, symbol, ... }, ...]
 const locales      = await LangsysApp.getLocales();      // { LanguageName: [{ code, name }] }
-const localeName   = await LangsysApp.getLocaleNameWithLookup('es-ES', true, 'fr-FR'); // 'espagnol'
+const localeName   = await LangsysApp.getLocaleNameWithLookup('es-ES', true, 'fr-FR'); // 'Espagnol'
 ```
+
+Each call takes an optional display locale, else the current one (inside a request scope, the scope's), and answers the list named in it, with locale codes in the core's lowercase form whatever format the organization writes them in. A list is read once per display locale and held for the core's lifetime, so a country field on every page of a server costs one request per locale for the process, and concurrent calls share one request. No call throws: a failed read answers an empty list (`{}` for `getLocales`) and logs why, and that list and locale are not asked again until the catalog's failure window has passed (3 seconds, doubling to 5 minutes). A display locale that is not shaped as a locale is refused with nothing sent, and an unconfigured client answers empty lists without a request, or rejects under `requireCredentials`. `getLocalesData(locale, true)` and `refresh()` read the locale data again.
 
 ## The `Signal<T>` primitive
 

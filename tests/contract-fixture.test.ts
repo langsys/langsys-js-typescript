@@ -515,6 +515,15 @@ describe('faults are deterministic and consumed in order', () => {
         expect((await fx.state()).projects.p1.phrases.map((p) => p.phrase)).toContain('Retry me');
     });
 
+    it('a body fault answers that raw body once, as something in front of the API would, then the route answers', async () => {
+        await fx.seed({ ...BASE_SEED, faults: [{ method: 'GET', path: '/translations', body: '<html>gateway</html>', content_type: 'text/html', status: 502 }] });
+        const proxied = await fetch(fx.baseUrl + '/translations?project_id=p1&locale=es-es', { headers: { 'x-authorization': 'k-read' } });
+        expect(proxied.status).toBe(502);
+        expect(proxied.headers.get('content-type')).toBe('text/html');
+        expect(await proxied.text()).toBe('<html>gateway</html>');
+        expect((await catalog('k-read')).body.data.UI).toEqual({ Hello: 'Hola' });
+    });
+
     it('a drop fault closes the connection without a response', async () => {
         await fx.seed({ ...BASE_SEED, faults: [{ method: 'GET', path: '/translations', drop: true }] });
         await expect(catalog('k-read')).rejects.toThrow();
@@ -531,6 +540,150 @@ describe('the duplicate-request guard applies only to keys configured for it', (
         const unguarded: number[] = [];
         for (let i = 0; i < 4; i++) unguarded.push((await catalog('k-read')).status);
         expect(unguarded).toEqual([200, 200, 200, 200]);
+    });
+});
+
+describe('the reference lists, as LocaleController, CountryController and CurrencyController answer them', () => {
+    // The organisation's code format is per project; p1 targets es-es and p2 fr-fr.
+    const REFERENCE = {
+        locales: ['fr-fr', 'es-es', 'es-cr', 'en-us'],
+        countries: [{ code: 'ES' }, { code: 'CR' }, { code: 'US' }],
+        dial_codes: [{ country_code: 'ES', dial_code: '34' }, { country_code: 'CR', dial_code: '506' }],
+        currencies: [{ code: 'EUR', name: 'Euro (stored)', symbol: '€' }, { code: 'CRC', name: 'Colón (stored)', symbol: '₡' }],
+    };
+    const seedWith = (format = 'lowercase-hyphen', reference: unknown = REFERENCE) =>
+        fx.seed({ ...BASE_SEED, projects: BASE_SEED.projects.map((p) => (p.id === 'p2' ? { ...p, locale_code_format: format } : p)), reference });
+    const code = (res: { body: { error: { code: string } } }) => res.body.error.code;
+    const keysOf = (res: { body: { data: unknown } }) => (Array.isArray(res.body.data) ? res.body.data : Object.keys(res.body.data as object));
+    const flat = (query: string, key = 'k-other') => api(`/locales/flat?${query}`, { key });
+    const q = (locale: string, extra = '') => `locales%5B%5D=${locale}${extra}`;
+
+    it('no key is 401, an unknown key 403, on every reference route; a real key reads', async () => {
+        await seedWith();
+        for (const path of ['/locales', '/locales/flat', '/locales/data', '/countries/es-es', '/countries/dial-codes/es-es', '/currencies/es-es']) {
+            expect(code(await api(path)), path).toBe('unauthenticated');
+            expect(code(await api(path, { key: 'k-unknown' })), path).toBe('api_key_invalid');
+            expect((await api(path, { key: 'k-read' })).status, path).toBe(200);
+        }
+    });
+
+    it('a display locale appends the key’s target locales unless append_target_locales is false', async () => {
+        await seedWith();
+        expect(keysOf(await flat(q('es-es')))).toEqual(['es-es', 'fr-fr']);
+        expect(keysOf(await flat(q('es-es', '&append_target_locales=1')))).toEqual(['es-es', 'fr-fr']);
+        expect(keysOf(await flat(q('es-es', '&append_target_locales=true')))).toEqual(['es-es', 'fr-fr']);
+        expect(keysOf(await flat(q('es-es', '&append_target_locales=0')))).toEqual(['es-es']);
+        expect(keysOf(await flat(q('es-es', '&append_target_locales=false')))).toEqual(['es-es']);
+    });
+
+    it('locales/data names the requested locales in the table’s order, so an appended one can come first', async () => {
+        await seedWith();
+        expect(keysOf(await api(`/locales/data?${q('es-es')}`, { key: 'k-other' }))).toEqual(['fr-fr', 'es-es']);
+        expect(keysOf(await api(`/locales/data?${q('es-es', '&append_target_locales=0')}`, { key: 'k-other' }))).toEqual(['es-es']);
+    });
+
+    it('a project_id appends its target locales whatever the flag, and one the key does not belong to is 403', async () => {
+        await seedWith();
+        expect(keysOf(await flat(q('es-es', '&append_target_locales=0&project_id=p2')))).toEqual(['es-es', 'fr-fr']);
+        expect(code(await flat(q('es-es', '&append_target_locales=0&project_id=p1')))).toBe('forbidden');
+    });
+
+    it('append_target_locales other than true, false, 1 or 0, and locales that is not a list, are 422', async () => {
+        await seedWith();
+        const res = await flat('locales=es-es&append_target_locales=yes');
+        expect(res.status).toBe(422);
+        expect(res.body.error.errors.map((e: { field: string; code: string }) => `${e.field} ${e.code}`)).toEqual([
+            'locales invalid_type',
+            'append_target_locales invalid_type',
+        ]);
+    });
+
+    it('a locale the table does not hold names nothing, and an empty answer is data: []', async () => {
+        await seedWith();
+        expect((await flat(q('xx-yy', '&append_target_locales=0'))).body).toEqual({ status: true, data: [] });
+        expect((await flat(q('ES-ES', '&append_target_locales=0'))).body).toEqual({ status: true, data: [] });
+        expect(keysOf(await flat(q('es-es', '&append_target_locales=0')))).toEqual(['es-es']);
+    });
+
+    it('each display locale names the lists in its own language, with the organisation’s code format on keys and codes', async () => {
+        await seedWith('posix');
+        const es = (await flat(q('es-es', '&append_target_locales=0'))).body.data;
+        expect(Object.keys(es)).toEqual(['es_ES']);
+        expect(es.es_ES).toContainEqual({ code: 'es_CR', name: 'Español (Costa Rica)' });
+        const fr = (await flat(q('fr-fr', '&append_target_locales=0'))).body.data;
+        expect(fr.fr_FR).toContainEqual({ code: 'es_CR', name: 'Espagnol (Costa Rica)' });
+        await seedWith('bcp47');
+        expect(Object.keys((await flat(q('es-es', '&append_target_locales=0'))).body.data)).toEqual(['es-ES']);
+        await seedWith('lowercase-hyphen');
+        expect(Object.keys((await flat(q('es-es', '&append_target_locales=0'))).body.data)).toEqual(['es-es']);
+    });
+
+    it('the grouped form groups by language name, and the data form carries both names', async () => {
+        await seedWith();
+        const grouped = (await api(`/locales?${q('en-us', '&append_target_locales=0')}`, { key: 'k-read' })).body.data['en-us'];
+        expect(Object.keys(grouped)).toEqual(['English', 'French', 'Spanish']);
+        expect(grouped.Spanish).toEqual([
+            { code: 'es-cr', name: 'Spanish (Costa Rica)' },
+            { code: 'es-es', name: 'Spanish (Spain)' },
+        ]);
+        const data = (await api(`/locales/data?${q('en-us', '&append_target_locales=0')}`, { key: 'k-read' })).body.data['en-us'];
+        expect(data).toContainEqual({ code: 'es-es', locale_name: 'Spanish (Spain)', lang_name: 'Spanish' });
+    });
+
+    it('countries, dial codes and currencies are the list itself, named in the display locale; codes stay as stored', async () => {
+        await seedWith('posix');
+        const countries = (await api('/countries/es-es', { key: 'k-other' })).body;
+        expect(countries).toEqual({
+            status: true,
+            data: [
+                { label: 'Costa Rica', code: 'CR', eu: false },
+                { label: 'España', code: 'ES', eu: true },
+                { label: 'Estados Unidos', code: 'US', eu: false },
+            ],
+        });
+        expect((await api('/countries/en-us', { key: 'k-other' })).body.data.map((c: { label: string }) => c.label)).toEqual(['Costa Rica', 'Spain', 'United States']);
+        expect((await api('/countries/dial-codes/fr-fr', { key: 'k-other' })).body.data).toEqual([
+            { country_code: 'CR', dial_code: '506', name: 'Costa Rica (+506)' },
+            { country_code: 'ES', dial_code: '34', name: 'Espagne (+34)' },
+        ]);
+        expect((await api('/currencies/es-es', { key: 'k-other' })).body.data.map((c: { name: string }) => c.name)).toEqual(['euro', 'colón costarricense']);
+    });
+
+    it('a currency keeps its stored name for a display locale ICU has no data for; a country is named anyway', async () => {
+        await seedWith();
+        expect((await api('/currencies/xx-yy', { key: 'k-read' })).body.data.map((c: { name: string }) => c.name)).toEqual(['Euro (stored)', 'Colón (stored)']);
+        expect((await api('/countries/xx-yy', { key: 'k-read' })).body.data.map((c: { code: string }) => c.code)).toEqual(['CR', 'ES', 'US']);
+    });
+
+    it('the lists are state: a reseeded table answers the new rows', async () => {
+        await seedWith();
+        expect((await api('/countries/en-us', { key: 'k-read' })).body.data).toHaveLength(3);
+        await seedWith('lowercase-hyphen', { ...REFERENCE, countries: [{ code: 'FR' }] });
+        expect((await api('/countries/en-us', { key: 'k-read' })).body.data).toEqual([{ label: 'France', code: 'FR', eu: true }]);
+    });
+
+    it('the deprecated locales/{locale}/{format} is not served, and a reference route takes GET only', async () => {
+        await seedWith();
+        expect(code(await api('/locales/es-es/data', { key: 'k-read' }))).toBe('not_found');
+        expect(code(await api('/countries/es-es', { key: 'k-write', method: 'POST' }))).toBe('method_not_allowed');
+        expect(code(await api('/locales', { key: 'k-write', method: 'POST' }))).toBe('method_not_allowed');
+    });
+
+    it('an exhausted balance is 402 on a reference route, and a suspended project refuses it', async () => {
+        await fx.seed({ ...BASE_SEED, reference: REFERENCE, keys: [...BASE_SEED.keys, { key: 'k-spent', project: 'p1', type: 'read', usage_exhausted: true }] });
+        expect(code(await api('/countries/es-es', { key: 'k-spent' }))).toBe('api_units_limit_exceeded');
+        expect((await api('/countries/es-es', { key: 'k-read' })).status).toBe(200);
+        await fx.seed({ ...BASE_SEED, reference: REFERENCE, projects: BASE_SEED.projects.map((p) => (p.id === 'p1' ? { ...p, subscription_suspended: true } : p)) });
+        expect(code(await api('/locales/flat?locales%5B%5D=es-es', { key: 'k-read' }))).toBe('project_unavailable');
+    });
+
+    it('a seed with a locale code format it does not know is refused', async () => {
+        const res = await fetch(fx.fixtureUrl + '/seed', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ projects: [{ id: 'p9', locale_code_format: 'upper' }] }),
+        });
+        expect(res.status).toBe(400);
     });
 });
 

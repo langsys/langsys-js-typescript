@@ -8,7 +8,7 @@ import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
 import { settleNotices } from './notices.js';
 import { activeScope } from './scope-context.js';
 import type { SeededBlock, SeededPhrase } from './block-tree.js';
-import { noticeUnusableWriteCapability, Translations } from './translations.js';
+import { failureWindowMs, noticeUnusableWriteCapability, Translations } from './translations.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig, iLangsysInitConfig, WriteGrant } from './types/config.js';
 import type { iCountryDialCode, iCountryList } from './types/countries.js';
@@ -17,22 +17,28 @@ import type { iLocaleData, iLocaleDefault, iLocaleFlat } from './types/locales.j
 import type { TFunction } from './types/translation-fn.js';
 import type { iCategories, iTranslations } from './types/translations.js';
 
+/** One reference list in one display locale: the list held, the read in flight, or the last failures. */
+interface ReferenceListEntry {
+    list?: unknown;
+    reading?: Promise<unknown>;
+    failures?: number;
+    retryAt?: number;
+}
+
 class LangsysAppClass {
     private config: iLangsysConfig;
 
     public Translations: Translations;
     public translationsLoadingPromise: Promise<unknown> = Promise.resolve();
 
-    private locales: Record<string, iLocaleData[]> = {};
-
-    private countries: iCountryList = [];
-    private countriesLocale = '';
-
-    private dialCodes: iCountryDialCode[] = [];
-    private dialCodesLocale = '';
-
-    private currencies: iCurrencyList = [];
-    private currenciesLocale = '';
+    /**
+     * The reference lists read so far (REF-1), keyed by list and display locale: a list the API
+     * answered is held for the core's lifetime, a read in flight is shared, and a failed read is
+     * remembered for CACHE-2's window. Memory only: on a server the core is the long-lived
+     * module, so the hold already outlives the request, and nothing goes to a cache another
+     * host reads (CACHE-1).
+     */
+    private referenceLists = new Map<string, ReferenceListEntry>();
 
     public debug: Logger;
 
@@ -300,9 +306,10 @@ class LangsysAppClass {
         return Object.keys(current).some((cat) => cat !== '__uncategorized__' || Object.keys(current[cat]!).length > 2);
     }
 
+    /** Read the current locale's catalog again, and the locale data `getLocaleName` reads, on its next load. */
     public async refresh() {
         const locale = this.config.sUserLocale.get();
-        this.locales = {};
+        for (const key of [...this.referenceLists.keys()]) if (key.startsWith('locales/data\0')) this.referenceLists.delete(key);
         return this.Translations.change(locale, true);
     }
 
@@ -507,115 +514,140 @@ class LangsysAppClass {
         return validateResponse;
     }
 
+    /** The countries' dial codes, named in the display locale (REF-1). */
     public async getDialCodes(inLocale?: string): Promise<iCountryDialCode[]> {
-        const locale = this.resolveLocale(inLocale);
-        if (this.dialCodes.length && this.dialCodesLocale === locale) return this.dialCodes;
-
-        const route = `countries/dial-codes/${locale}`;
-        const response = await LangsysAppAPI.get(route);
-        if (response.errors || !response.status) {
-            this.debug.error('LangsysApp.getDialCodes failed: ' + route);
-            return [];
-        }
-        this.dialCodes = response.data as iCountryDialCode[];
-        this.dialCodesLocale = locale;
-        return this.dialCodes;
+        return this.readReferenceList('getDialCodes', 'countries/dial-codes', inLocale, () => []);
     }
 
+    /** The currencies, named in the display locale (REF-1). */
     public async getCurrencies(inLocale?: string): Promise<iCurrencyList> {
-        const locale = this.resolveLocale(inLocale);
-        if (this.currencies.length && this.currenciesLocale === locale) return this.currencies;
-
-        const route = `currencies/${locale}`;
-        const response = await LangsysAppAPI.get(route);
-        if (response.errors || !response.status) {
-            this.debug.error('LangsysApp.getCurrencies failed: ' + route);
-            return [];
-        }
-        this.currencies = response.data as iCurrencyList;
-        this.currenciesLocale = locale;
-        return this.currencies;
+        return this.readReferenceList('getCurrencies', 'currencies', inLocale, () => []);
     }
 
+    /** The countries, named in the display locale (REF-1). */
     public async getCountries(inLocale?: string): Promise<iCountryList> {
-        const locale = this.resolveLocale(inLocale);
-        if (this.countries.length && this.countriesLocale === locale) return this.countries;
-
-        const route = `countries/${locale}`;
-        const response = await LangsysAppAPI.get(route);
-        if (response.errors || !response.status) {
-            this.debug.error('LangsysApp.getCountries failed: ' + route);
-            return [];
-        }
-        this.countries = response.data as iCountryList;
-        this.countriesLocale = locale;
-        return this.countries;
+        return this.readReferenceList('getCountries', 'countries', inLocale, () => []);
     }
 
     public async getCountryName(forCountryCode: string, inLocale?: string): Promise<string> {
         if (!forCountryCode) return '';
-        const locale = this.resolveLocale(inLocale);
-        if (!this.countries.length || this.countriesLocale !== locale) await this.getCountries(inLocale);
-
-        const country = this.countries.find((c) => c.code.toLowerCase() === forCountryCode.toLowerCase())?.label;
+        const countries = await this.getCountries(inLocale);
+        const country = countries.find((c) => c.code?.toLowerCase() === forCountryCode.toLowerCase())?.label;
         if (!country) this.debug.warn('getCountryName failed to match', forCountryCode);
         return country || forCountryCode;
     }
 
     public async getCurrencyName(forCurrencyCode: string, inLocale?: string): Promise<string> {
         if (!forCurrencyCode) return '';
-        const locale = this.resolveLocale(inLocale);
-        if (!this.currencies.length || this.currenciesLocale !== locale) await this.getCurrencies(inLocale);
-
-        const currency = this.currencies.find((c) => c.code?.toLowerCase() === forCurrencyCode.toLowerCase())?.name;
+        const currencies = await this.getCurrencies(inLocale);
+        const currency = currencies.find((c) => c.code?.toLowerCase() === forCurrencyCode.toLowerCase())?.name;
         if (!currency) this.debug.warn('getCurrencyName failed to match', forCurrencyCode);
         return currency || forCurrencyCode;
     }
 
+    /** The locales in one of the API's three forms, named in the display locale (REF-1). */
     public async getLocalesFormat(
         format: '' | 'flat' | 'data' = '',
         inLocale?: string
     ): Promise<iLocaleDefault | iLocaleFlat[] | iLocaleData[]> {
-        const locale = this.resolveLocale(inLocale);
-        const route = 'locales' + (format ? `/${format}` : '');
-        const empty = () => (format === 'flat' ? [] : format === 'data' ? [] : {});
-        // The display locale goes as `locales[]`, with target locales not appended, so the
-        // API answers a map holding that locale alone. Its key and codes are in the
-        // organization's locale-code format (`es-es`, `es-ES`, `es_ES`), so the key is
-        // matched canonically and the codes come back in the core's lowercase form (1a).
-        const response = await LangsysAppAPI.get(route, { 'locales[]': locale, append_target_locales: '0' });
-        if (response.errors || !response.status) {
-            this.debug.error(response.errors, response.status, response);
-            this.debug.error('LangsysApp.getLocales failed: ' + route);
-            return empty();
-        }
-        const byLocale = (typeof response.data === 'object' && response.data !== null ? response.data : {}) as Record<string, unknown>;
-        const found = Object.entries(byLocale).find(([key]) => canonicalizeLocale(key) === locale)?.[1];
-        if (found === undefined) return empty();
-        const listed = withCanonicalCodes(found);
-        switch (format) {
-            case 'flat':
-                return listed as iLocaleFlat[];
-            case 'data':
-                return listed as iLocaleData[];
-            default:
-                return listed as iLocaleDefault;
-        }
+        const method = format === 'flat' ? 'getLocalesFlat' : format === 'data' ? 'getLocalesData' : 'getLocales';
+        return this.readReferenceList<iLocaleDefault | iLocaleFlat[] | iLocaleData[]>(
+            method,
+            'locales' + (format ? `/${format}` : ''),
+            inLocale,
+            () => (format ? [] : {}),
+            { grouped: !format }
+        );
     }
 
     public async getLocalesFlat(inLocale?: string): Promise<iLocaleFlat[]> {
         return (await this.getLocalesFormat('flat', inLocale)) as iLocaleFlat[];
     }
 
+    /** `forceRefresh` is an explicit refresh: it reads the list again, held or inside a failure window, and holds what that read answers. */
     public async getLocalesData(inLocale?: string, forceRefresh = false): Promise<iLocaleData[]> {
-        const locale = this.resolveLocale(inLocale);
-        if (this.locales?.[locale]?.length && !forceRefresh) return this.locales[locale];
-        this.locales[locale] = (await this.getLocalesFormat('data', inLocale)) as iLocaleData[];
-        return this.locales[locale];
+        if (forceRefresh) this.referenceLists.delete(`locales/data\0${this.resolveLocale(inLocale)}`);
+        return (await this.getLocalesFormat('data', inLocale)) as iLocaleData[];
     }
 
     public async getLocales(inLocale?: string): Promise<iLocaleDefault> {
         return (await this.getLocalesFormat('', inLocale)) as iLocaleDefault;
+    }
+
+    /**
+     * Read one reference list in a display locale (REF-1), or answer the one held for it.
+     *
+     * The display locale is the one given, else the current one, in the core's form; one not
+     * shaped as a locale is refused before anything is sent, since it is written into the
+     * request. A locale form is asked for that locale alone and answers that locale's entry,
+     * whose key and codes are in the organisation's code format, so it is matched and recoded
+     * in the core's form; a locale the API does not hold answers `empty()`, held like any
+     * answer. Nothing here throws but `requireCredentials` (WIRE-4): a refused locale, a failed
+     * read and an answer not of the list's shape answer `empty()` with the cause logged, and
+     * a failed read is remembered for CACHE-2's window, inside which the call sends nothing.
+     * An unconfigured core sends nothing and logs nothing, `init()`'s refusal being its one
+     * warning.
+     */
+    private async readReferenceList<T>(
+        method: string,
+        route: string,
+        inLocale: string | undefined,
+        empty: () => T,
+        opts: { grouped?: boolean } = {}
+    ): Promise<T> {
+        const locale = this.resolveLocale(inLocale);
+        if (!isLocaleShaped(locale)) {
+            this.debug.warn(`LangsysApp.${method}: "${locale}" is not a locale, so no list is read for it.`);
+            return empty();
+        }
+        // An unconfigured core answers empty and sends nothing (WIRE-4), whatever a configured
+        // scope may have held; a scope's own credentials configure it (SRV-2).
+        const credentials = LangsysAppAPI.currentCredentials();
+        if (!credentials.projectid || !credentials.key) {
+            this.Translations.assertConfigured();
+            return empty();
+        }
+        const key = `${route}\0${locale}`;
+        const held = this.referenceLists.get(key);
+        if (held && 'list' in held) return held.list as T;
+        if (held?.reading) return ((await held.reading) ?? empty()) as T;
+        if (held?.retryAt !== undefined && Date.now() < held.retryAt) {
+            this.debug.log(`LangsysApp.${method}: the last read of ${route} (${locale}) failed, so none is sent until`, new Date(held.retryAt));
+            return empty();
+        }
+
+        const byLocale = route.startsWith('locales');
+        const reading = (async (): Promise<unknown> => {
+            try {
+                const response = byLocale
+                    ? await LangsysAppAPI.get(route, { 'locales[]': locale, append_target_locales: '0' }, { credentials })
+                    : await LangsysAppAPI.get(`${route}/${locale}`, {}, { credentials });
+                if (response.errors || !response.status) {
+                    this.debug.error(`LangsysApp.${method} failed: ${route} (${locale}):`, response.errors ?? response.http?.status);
+                    return undefined;
+                }
+                const list = byLocale ? localeEntry(response.data, locale, opts.grouped === true, empty) : Array.isArray(response.data) ? response.data : undefined;
+                if (list === undefined) {
+                    this.debug.error(`LangsysApp.${method}: the answer for ${route} (${locale}) is not of the list's shape.`, response.data);
+                    return undefined;
+                }
+                return byLocale ? withCanonicalCodes(list) : list;
+            } catch (err) {
+                this.debug.error(`LangsysApp.${method} failed: ${route} (${locale}):`, err);
+                return undefined;
+            }
+        })();
+        this.referenceLists.set(key, { ...held, reading });
+        const list = await reading;
+        // An explicit refresh may have started another read meanwhile; only this read's own entry changes.
+        if (this.referenceLists.get(key)?.reading === reading) {
+            if (list !== undefined) this.referenceLists.set(key, { list });
+            else {
+                const failures = (held?.failures ?? 0) + 1;
+                this.referenceLists.set(key, { failures, retryAt: Date.now() + failureWindowMs(failures) });
+            }
+        }
+        return (list ?? empty()) as T;
     }
 
     public async getLocaleNameWithLookup(forLocale: string, shortName = false, inLocale?: string): Promise<string> {
@@ -642,7 +674,8 @@ class LangsysAppClass {
         // the old warning reported both as a failed match — sending developers
         // to check a locale code that was fine, when the real problem was that
         // nothing had been loaded to check it against.
-        if (!this.locales[locale]?.length) {
+        const data = this.referenceLists.get(`locales/data\0${locale}`)?.list as iLocaleData[] | undefined;
+        if (!data) {
             this.debug.warn(
                 `getLocaleName('${forLocale}') called before locale data for '${locale}' was loaded — ` +
                     `run \`await getLocalesData('${locale}')\` first, or use \`await getLocaleNameWithLookup(...)\` instead.`
@@ -651,14 +684,8 @@ class LangsysAppClass {
         }
 
         const target = canonicalizeLocale(forLocale);
-        let name = '';
-        this.locales[locale].every((loc) => {
-            if (loc.code.toLowerCase() === target) {
-                name = shortName ? loc.lang_name : loc.locale_name;
-                return false;
-            }
-            return true;
-        });
+        const entry = data.find((loc) => loc.code?.toLowerCase() === target);
+        const name = entry ? (shortName ? entry.lang_name : entry.locale_name) : '';
         if (!name) this.debug.warn('getLocaleName found no entry matching', forLocale);
         return name;
     }
@@ -768,16 +795,45 @@ class LangsysAppClass {
 
     /**
      * Resolve the effective locale for a data-fetching helper: explicit
-     * argument, else the user's current locale, else the base locale — always
-     * in the SDK's lowercase `xx-yy` form so cache keys and API routes agree.
+     * argument, else the current locale (inside a request scope the scope's,
+     * else the user's), else the base locale — always in the SDK's lowercase
+     * `xx-yy` form so cache keys and API routes agree.
      */
     private resolveLocale(inLocale?: string): string {
-        return canonicalizeLocale(inLocale || this.config.sUserLocale.get() || this.config.baseLocale);
+        return canonicalizeLocale(inLocale || activeScope()?.locale || this.config?.sUserLocale?.get?.() || this.config?.baseLocale || 'en');
     }
 }
 
 export const LangsysApp = new LangsysAppClass();
 export type { LangsysAppClass };
+
+/**
+ * Shaped as a locale, in the core's form: REF-1's pattern, letters and digits in hyphenated
+ * subtags. A display locale is written into a request path, so anything else (`../projects`,
+ * `es/es`, `es?x=1`) is refused unsent.
+ */
+function isLocaleShaped(locale: string): boolean {
+    return typeof locale === 'string' && /^[a-z]{2,8}(?:-[a-z0-9]{1,8})*$/.test(locale);
+}
+
+/**
+ * A locale form's list for `locale`, or undefined when the answer is not of its shape. Its
+ * `data` is a map keyed by locale, in the organisation's code format, so the key is matched in
+ * the core's form; the API writes an empty map as `[]`. A locale the map does not hold is an
+ * empty list, and an entry is a list, or for the grouped form a map of lists.
+ */
+function localeEntry(data: unknown, locale: string, grouped: boolean, empty: () => unknown): unknown {
+    if (Array.isArray(data)) return data.length === 0 ? empty() : undefined;
+    if (typeof data !== 'object' || data === null) return undefined;
+    const found = Object.entries(data).find(([key]) => canonicalizeLocale(key) === locale);
+    if (!found) return empty();
+    const [, entry] = found;
+    if (!grouped) return Array.isArray(entry) ? entry : undefined;
+    // The grouped form's empty map is also written as `[]`.
+    if (Array.isArray(entry)) return entry.length === 0 ? {} : undefined;
+    if (typeof entry !== 'object' || entry === null) return undefined;
+    return Object.values(entry).every((entries) => Array.isArray(entries)) ? entry : undefined;
+}
 
 /** A locale list with every entry's `code` canonical, in the flat or data shape or grouped by language. */
 function withCanonicalCodes(listed: unknown): unknown {

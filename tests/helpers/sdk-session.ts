@@ -75,6 +75,8 @@ export function resetSdk(): void {
         // WIRE-4: a session starts before any init(), configured or not.
         credentialsError: null,
     });
+    // REF-1's held reference lists: a session starts with none.
+    (LangsysApp as unknown as { referenceLists: Map<string, unknown> }).referenceLists.clear();
     configured.set(undefined);
     writeEnabled.set(undefined);
     autoDiscovery.set(undefined);

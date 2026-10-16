@@ -2,15 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangsysApp } from '../src/langsys-app.js';
 
 /**
- * `locales` is private and populated by `getLocalesData`. Seeding it directly
- * keeps these tests on the function under test instead of on the HTTP client.
+ * The held reference lists are private and filled by `getLocalesData`. Seeding the
+ * locale data directly keeps these tests on the function under test instead of on
+ * the HTTP client.
  */
+const held = () => (LangsysApp as unknown as { referenceLists: Map<string, { list?: unknown }> }).referenceLists;
+
 function seedLocaleCache(locale: string, entries: { code: string; locale_name: string; lang_name: string }[]) {
-    (LangsysApp as unknown as { locales: Record<string, unknown[]> }).locales[locale] = entries;
+    held().set(`locales/data\0${locale}`, { list: entries });
 }
 
 function clearLocaleCache() {
-    (LangsysApp as unknown as { locales: Record<string, unknown[]> }).locales = {};
+    held().clear();
 }
 
 describe('detectPreferredLocale returns false when nothing is supported', () => {
