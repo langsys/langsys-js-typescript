@@ -4,7 +4,7 @@ import { LangsysApp } from '../src/langsys-app.js';
 import { createRequestScope } from '../src/request-scope.js';
 import { createSignal } from '../src/signal.js';
 import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
-import { resetSdk, session as startSession } from './helpers/sdk-session.js';
+import { resetSdk, session as startSession, sleep } from './helpers/sdk-session.js';
 
 /**
  * REF-1, graded against the contract double (spec CONF-2, tier `contract`): the core serves
@@ -22,10 +22,11 @@ import { resetSdk, session as startSession } from './helpers/sdk-session.js';
 let fx: ContractFixture;
 
 const REFERENCE = {
-    locales: ['fr-fr', 'es-es', 'es-cr', 'en-us', 'de-de'],
+    // en-us-posix is in the API's Locale table: WIRE-3's form keeps it as the API stores it.
+    locales: ['fr-fr', 'es-es', 'es-cr', 'en-us', 'de-de', 'en-us-posix'],
     countries: [{ code: 'ES' }, { code: 'CR' }, { code: 'US' }],
     dial_codes: [{ country_code: 'ES', dial_code: '34' }, { country_code: 'CR', dial_code: '506' }],
-    currencies: [{ code: 'EUR', name: 'Euro (stored)', symbol: '€' }, { code: 'CRC', name: 'Colón (stored)', symbol: '₡' }],
+    currencies: [{ code: 'EUR', name: 'Euro', symbol: '€' }, { code: 'CRC', name: 'Costa Rican Colón', symbol: '₡' }],
 };
 /** A second set of tables, so that a read made after a reseed answers a different list. */
 const RESEEDED = {
@@ -190,6 +191,45 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         expect(sent).toEqual([]);
     });
 
+    it('what a caller does to an answered list does not change what the next caller gets', async () => {
+        await configured();
+        const first = (await call('es-es')) as unknown[] | Record<string, unknown[]>;
+        if (Array.isArray(first)) {
+            first.unshift({ code: 'zz', label: 'Placeholder', name: 'Placeholder' });
+            (first[1] as Record<string, unknown>).code = 'changed';
+        } else {
+            first.Placeholder = [];
+            Object.values(first)[0]!.length = 0;
+        }
+        expect(await call('es-es')).toEqual(await doubleList(route, 'es-es'));
+    });
+
+    it('unconfigured, a list a configured session held is not answered: the empty value, or the configuration error under requireCredentials', async () => {
+        await configured();
+        expect(await call('es-es')).toEqual(await doubleList(route, 'es-es'));
+        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        expect(await call('es-es')).toEqual(empty);
+        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
+        await expect(call('es-es')).rejects.toBeInstanceOf(LangsysConfigurationError);
+    });
+
+    it('unconfigured, a display locale not shaped as one is still the configuration question: silent without requireCredentials, the error with it', async () => {
+        resetSdk();
+        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        const said = vi.mocked(console.warn).mock.calls.length + errors.mock.calls.length;
+        expect(await call('../projects')).toEqual(empty);
+        expect(vi.mocked(console.warn).mock.calls.length + errors.mock.calls.length).toBe(said);
+        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
+        await expect(call('../projects')).rejects.toBeInstanceOf(LangsysConfigurationError);
+    });
+
+    it('under requireCredentials with the module unconfigured, a request scope with credentials of its own answers the list', async () => {
+        resetSdk();
+        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
+        const scope = await createRequestScope({ locale: 'de-de', credentials: { projectid: 'p1', key: 'k1' } });
+        expect(await scope.run(() => call())).toEqual(await doubleList(route, 'de-de'));
+    });
+
     it('two reads of one list and locale while the first is unanswered share one request', async () => {
         // A key whose second identical request inside the minute is refused 429.
         await fx.seed(seed(REFERENCE, { keys: [{ key: 'k-once', project: 'p1', type: 'read', duplicate_guard: { max_attempts: 1, window_seconds: 60 } }] }));
@@ -241,6 +281,15 @@ describe.each(LOCALE_FORMS)('REF-1 against the contract double: $name answers th
         expect(JSON.stringify(list)).not.toMatch(/"code":"[a-z]+[_-][A-Z]/);
     });
 
+    it('a code is answered in WIRE-3’s form, as the API stores it: en-us-posix is listed and can be asked for', async () => {
+        await fx.seed(seed(REFERENCE, { format: 'bcp47' }));
+        await configured();
+        expect(JSON.stringify(await call('en-us'))).toContain('"code":"en-us-posix"');
+        const posix = await call('en-US-POSIX');
+        expect(posix).toEqual(await doubleList(route, 'en-us-posix'));
+        expect(posix).not.toEqual(empty);
+    });
+
     it('a display locale the API does not hold answers the empty value, held like any answer', async () => {
         await configured();
         vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
@@ -256,11 +305,58 @@ describe.each(LOCALE_FORMS)('REF-1 against the contract double: $name answers th
 describe('REF-1 against the contract double: what reads the held lists', () => {
     it('getCountryName, getCurrencyName and getLocaleNameWithLookup name a code in the display locale', async () => {
         await configured();
-        expect(await LangsysApp.getCountryName('es')).toBe('España');
-        expect(await LangsysApp.getCountryName('ES', 'en-us')).toBe('Spain');
-        expect(await LangsysApp.getCurrencyName('eur', 'fr-fr')).toBe('euro');
-        expect(await LangsysApp.getLocaleNameWithLookup('es-CR')).toBe('Español (Costa Rica)');
-        expect(LangsysApp.getLocaleName('es-cr', true)).toBe('Español');
+        type Row = { code: string; label?: string; name?: string; locale_name?: string; lang_name?: string };
+        const row = async (route: string, locale: string, code: string) =>
+            ((await doubleList(route, locale)) as Row[]).find((r) => r.code.toLowerCase() === code)!;
+        expect(await LangsysApp.getCountryName('es')).toBe((await row('countries', 'es-es', 'es')).label);
+        expect(await LangsysApp.getCountryName('ES', 'en-us')).toBe((await row('countries', 'en-us', 'es')).label);
+        expect(await LangsysApp.getCountryName('ES', 'en-us')).not.toBe(await LangsysApp.getCountryName('ES', 'es-es'));
+        expect(await LangsysApp.getCurrencyName('eur', 'fr-fr')).toBe((await row('currencies', 'fr-fr', 'eur')).name);
+        const esCr = await row('locales/data', 'es-es', 'es-cr');
+        expect(await LangsysApp.getLocaleNameWithLookup('es-CR')).toBe(esCr.locale_name);
+        expect(LangsysApp.getLocaleName('es-cr', true)).toBe(esCr.lang_name);
+        expect(await LangsysApp.getLocaleNameWithLookup('en-US-POSIX', false, 'en-us')).toBe((await row('locales/data', 'en-us', 'en-us-posix')).locale_name);
+    });
+
+    it('a read an explicit refresh superseded does not overwrite what the refresh held, even when it fails', async () => {
+        await configured();
+        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path: '/locales/data', delay_ms: 400, status: 503 }] }));
+        const superseded = LangsysApp.getLocalesData('fr-fr');
+        await sleep(100);
+        const refreshed = await LangsysApp.getLocalesData('fr-fr', true);
+        expect(refreshed).toEqual(await doubleList('locales/data', 'fr-fr'));
+        expect(await superseded).toEqual([]);
+        expect(await LangsysApp.getLocalesData('fr-fr')).toEqual(refreshed);
+    });
+
+    it('an explicit refresh that fails again widens the window, as CACHE-2 counts every failure in a row', async () => {
+        await configured();
+        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path: '/locales/data', status: 503, times: 2 }] }));
+        vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+        expect(await LangsysApp.getLocalesData('fr-fr')).toEqual([]);
+        expect(await LangsysApp.getLocalesData('fr-fr', true)).toEqual([]);
+        // The second failure in a row: 6 seconds, so a call 3 seconds on is still inside it.
+        vi.setSystemTime(Date.now() + 3_001);
+        expect(await LangsysApp.getLocalesData('fr-fr')).toEqual([]);
+        vi.setSystemTime(Date.now() + 3_000);
+        expect(await LangsysApp.getLocalesData('fr-fr')).toEqual(await doubleList('locales/data', 'fr-fr'));
+    });
+
+    it('the locale data init() reads for getLocaleName never rejects, when a later init() was refused under requireCredentials', async () => {
+        const unhandled: unknown[] = [];
+        const listener = (reason: unknown) => unhandled.push(reason);
+        process.on('unhandledRejection', listener);
+        try {
+            resetSdk();
+            const store = createSignal('es-es');
+            await LangsysApp.init({ projectid: 'p1', key: 'k1', UserLocaleStore: store, baseLocale: 'en', apiUrl: fx.baseUrl });
+            await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
+            store.set('fr-fr');
+            await sleep(50);
+            expect(unhandled).toEqual([]);
+        } finally {
+            process.off('unhandledRejection', listener);
+        }
     });
 
     it('an explicit refresh reads again: getLocalesData(locale, true), and refresh() for the locale data', async () => {

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
@@ -549,7 +550,12 @@ describe('the reference lists, as LocaleController, CountryController and Curren
         locales: ['fr-fr', 'es-es', 'es-cr', 'en-us'],
         countries: [{ code: 'ES' }, { code: 'CR' }, { code: 'US' }],
         dial_codes: [{ country_code: 'ES', dial_code: '34' }, { country_code: 'CR', dial_code: '506' }],
-        currencies: [{ code: 'EUR', name: 'Euro (stored)', symbol: '€' }, { code: 'CRC', name: 'Colón (stored)', symbol: '₡' }],
+        currencies: [
+            { code: 'EUR', name: 'Euro (stored)', symbol: '€' },
+            { code: 'CRC', name: 'Colón (stored)', symbol: '₡' },
+            // A code ICU has no entry for, so Symfony Intl throws and the stored name is kept.
+            { code: 'XYZ', name: 'Test currency (stored)', symbol: 'X' },
+        ],
     };
     const seedWith = (format = 'lowercase-hyphen', reference: unknown = REFERENCE) =>
         fx.seed({ ...BASE_SEED, projects: BASE_SEED.projects.map((p) => (p.id === 'p2' ? { ...p, locale_code_format: format } : p)), reference });
@@ -601,8 +607,21 @@ describe('the reference lists, as LocaleController, CountryController and Curren
     it('a locale the table does not hold names nothing, and an empty answer is data: []', async () => {
         await seedWith();
         expect((await flat(q('xx-yy', '&append_target_locales=0'))).body).toEqual({ status: true, data: [] });
-        expect((await flat(q('ES-ES', '&append_target_locales=0'))).body).toEqual({ status: true, data: [] });
         expect(keysOf(await flat(q('es-es', '&append_target_locales=0')))).toEqual(['es-es']);
+    });
+
+    it('request-dto-processor formats locales[] as UsesLocales::formatLocale does, `_` to `-` and lowercased', async () => {
+        await seedWith();
+        expect(keysOf(await flat(q('ES-ES', '&append_target_locales=0')))).toEqual(['es-es']);
+        expect(keysOf(await flat(q('es_ES', '&append_target_locales=0')))).toEqual(['es-es']);
+    });
+
+    it('request-dto-processor refuses a query key LocalesIndexRequest does not declare, and accepts every one it does', async () => {
+        await seedWith();
+        const refused = await flat(q('es-es', '&append_target_locales=0&format=flat'));
+        expect(refused.status).toBe(422);
+        expect(refused.body.error.errors).toEqual([{ field: 'format', code: 'not_allowed', message: 'This field is not allowed.', template: 'This field is not allowed.' }]);
+        expect((await flat(q('es-es', '&append_target_locales=0&user_locale=es-es&project_id=p2'))).status).toBe(200);
     });
 
     it('each display locale names the lists in its own language, with the organisation’s code format on keys and codes', async () => {
@@ -646,13 +665,14 @@ describe('the reference lists, as LocaleController, CountryController and Curren
             { country_code: 'CR', dial_code: '506', name: 'Costa Rica (+506)' },
             { country_code: 'ES', dial_code: '34', name: 'Espagne (+34)' },
         ]);
-        expect((await api('/currencies/es-es', { key: 'k-other' })).body.data.map((c: { name: string }) => c.name)).toEqual(['euro', 'colón costarricense']);
+        expect((await api('/currencies/es-es', { key: 'k-other' })).body.data.map((c: { name: string }) => c.name)).toEqual(['euro', 'colón costarricense', 'Test currency (stored)']);
     });
 
-    it('a currency keeps its stored name for a display locale ICU has no data for; a country is named anyway', async () => {
+    it('a display locale ICU has no data for is named in English, its fallback; a currency ICU cannot name keeps its stored name', async () => {
         await seedWith();
-        expect((await api('/currencies/xx-yy', { key: 'k-read' })).body.data.map((c: { name: string }) => c.name)).toEqual(['Euro (stored)', 'Colón (stored)']);
-        expect((await api('/countries/xx-yy', { key: 'k-read' })).body.data.map((c: { code: string }) => c.code)).toEqual(['CR', 'ES', 'US']);
+        expect((await api('/currencies/xx-yy', { key: 'k-read' })).body.data.map((c: { name: string }) => c.name)).toEqual(['Euro', 'Costa Rican Colón', 'Test currency (stored)']);
+        expect((await api('/countries/xx-yy', { key: 'k-read' })).body.data.map((c: { label: string }) => c.label)).toEqual(['Costa Rica', 'Spain', 'United States']);
+        expect((await flat(q('en-us', '&append_target_locales=0'))).body.data['en-us']).toContainEqual({ code: 'es-cr', name: 'Spanish (Costa Rica)' });
     });
 
     it('the lists are state: a reseeded table answers the new rows', async () => {
@@ -684,6 +704,38 @@ describe('the reference lists, as LocaleController, CountryController and Curren
             body: JSON.stringify({ projects: [{ id: 'p9', locale_code_format: 'upper' }] }),
         });
         expect(res.status).toBe(400);
+    });
+});
+
+describe('the reference lists name an unknown display locale in English whatever the host’s locale', () => {
+    // ICU's own fallback for a display locale it has no data for is the host's default locale.
+    const SPANISH_HOST = { LANG: 'es_ES.UTF-8', LC_ALL: 'es_ES.UTF-8' };
+    let spanish: ContractFixture;
+    beforeAll(async () => {
+        spanish = await startContractFixture(SPANISH_HOST);
+    });
+    afterAll(async () => {
+        await spanish.stop();
+    });
+
+    it('control: on that host, ICU’s own fallback is Spanish', () => {
+        const probe = spawnSync(process.execPath, ['-e', "process.stdout.write(new Intl.DisplayNames(['zz'], { type: 'currency' }).of('EUR'))"], {
+            env: { ...process.env, ...SPANISH_HOST },
+            encoding: 'utf8',
+        });
+        expect(probe.stdout).toBe('euro');
+    });
+
+    it('a double on a Spanish host answers xx-yy in English, as the backend does', async () => {
+        await spanish.seed({
+            projects: [{ id: 'p1' }],
+            keys: [{ key: 'k1', project: 'p1', type: 'read' }],
+            reference: { countries: [{ code: 'ES' }], currencies: [{ code: 'EUR', name: 'Euro (stored)' }] },
+        });
+        const read = async (path: string) => (await (await fetch(spanish.baseUrl + path, { headers: { 'x-authorization': 'k1' } })).json()).data;
+        expect((await read('/currencies/xx-yy')).map((c: { name: string }) => c.name)).toEqual(['Euro']);
+        expect((await read('/countries/xx-yy')).map((c: { label: string }) => c.label)).toEqual(['Spain']);
+        expect((await read('/currencies/es-es')).map((c: { name: string }) => c.name)).toEqual(['euro']);
     });
 });
 

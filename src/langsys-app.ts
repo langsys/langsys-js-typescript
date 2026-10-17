@@ -16,6 +16,7 @@ import type { iCurrencyList } from './types/currencies.js';
 import type { iLocaleData, iLocaleDefault, iLocaleFlat } from './types/locales.js';
 import type { TFunction } from './types/translation-fn.js';
 import type { iCategories, iTranslations } from './types/translations.js';
+import { structuredCloneShim } from './utils.js';
 
 /** One reference list in one display locale: the list held, the read in flight, or the last failures. */
 interface ReferenceListEntry {
@@ -309,7 +310,7 @@ class LangsysAppClass {
     /** Read the current locale's catalog again, and the locale data `getLocaleName` reads, on its next load. */
     public async refresh() {
         const locale = this.config.sUserLocale.get();
-        for (const key of [...this.referenceLists.keys()]) if (key.startsWith('locales/data\0')) this.referenceLists.delete(key);
+        for (const key of [...this.referenceLists.keys()]) if (key.startsWith('locales/data\0')) this.forgetReferenceList(key);
         return this.Translations.change(locale, true);
     }
 
@@ -506,7 +507,9 @@ class LangsysAppClass {
         this.config.sUserLocale.subscribe((rawLocale) => {
             if (!validateResponse.status) return;
             const locale = canonicalizeLocale(rawLocale);
-            this.getLocalesData(locale);
+            // A prefetch for getLocaleName, not the app's first use: a refused re-init under
+            // requireCredentials makes the read reject, and nothing here is waiting to hear it.
+            this.getLocalesData(rawLocale).catch(() => {});
             this.debug.log('SUBSCRIBING TO USER LOCALE STORE');
             this.translationsLoadingPromise = this.Translations.change(locale, false);
         });
@@ -566,7 +569,7 @@ class LangsysAppClass {
 
     /** `forceRefresh` is an explicit refresh: it reads the list again, held or inside a failure window, and holds what that read answers. */
     public async getLocalesData(inLocale?: string, forceRefresh = false): Promise<iLocaleData[]> {
-        if (forceRefresh) this.referenceLists.delete(`locales/data\0${this.resolveLocale(inLocale)}`);
+        if (forceRefresh) this.forgetReferenceList(`locales/data\0${this.displayLocale(inLocale)}`);
         return (await this.getLocalesFormat('data', inLocale)) as iLocaleData[];
     }
 
@@ -577,16 +580,17 @@ class LangsysAppClass {
     /**
      * Read one reference list in a display locale (REF-1), or answer the one held for it.
      *
-     * The display locale is the one given, else the current one, in the core's form; one not
+     * The display locale is the one given, else the current one, in WIRE-3's form; one not
      * shaped as a locale is refused before anything is sent, since it is written into the
      * request. A locale form is asked for that locale alone and answers that locale's entry,
      * whose key and codes are in the organisation's code format, so it is matched and recoded
-     * in the core's form; a locale the API does not hold answers `empty()`, held like any
+     * in WIRE-3's form; a locale the API does not hold answers `empty()`, held like any
      * answer. Nothing here throws but `requireCredentials` (WIRE-4): a refused locale, a failed
      * read and an answer not of the list's shape answer `empty()` with the cause logged, and
      * a failed read is remembered for CACHE-2's window, inside which the call sends nothing.
-     * An unconfigured core sends nothing and logs nothing, `init()`'s refusal being its one
-     * warning.
+     * An unconfigured core sends nothing and logs nothing, whatever the display locale,
+     * `init()`'s refusal being its one warning. Each caller gets its own copy of a held list,
+     * so what one caller does to it never reaches the next.
      */
     private async readReferenceList<T>(
         method: string,
@@ -595,11 +599,6 @@ class LangsysAppClass {
         empty: () => T,
         opts: { grouped?: boolean } = {}
     ): Promise<T> {
-        const locale = this.resolveLocale(inLocale);
-        if (!isLocaleShaped(locale)) {
-            this.debug.warn(`LangsysApp.${method}: "${locale}" is not a locale, so no list is read for it.`);
-            return empty();
-        }
         // An unconfigured core answers empty and sends nothing (WIRE-4), whatever a configured
         // scope may have held; a scope's own credentials configure it (SRV-2).
         const credentials = LangsysAppAPI.currentCredentials();
@@ -607,10 +606,18 @@ class LangsysAppClass {
             this.Translations.assertConfigured();
             return empty();
         }
+        const locale = this.displayLocale(inLocale);
+        if (!isLocaleShaped(locale)) {
+            this.debug.warn(`LangsysApp.${method}: "${locale}" is not a locale, so no list is read for it.`);
+            return empty();
+        }
         const key = `${route}\0${locale}`;
         const held = this.referenceLists.get(key);
-        if (held && 'list' in held) return held.list as T;
-        if (held?.reading) return ((await held.reading) ?? empty()) as T;
+        if (held && 'list' in held) return structuredCloneShim(held.list) as T;
+        if (held?.reading) {
+            const shared = await held.reading;
+            return (shared === undefined ? empty() : structuredCloneShim(shared)) as T;
+        }
         if (held?.retryAt !== undefined && Date.now() < held.retryAt) {
             this.debug.log(`LangsysApp.${method}: the last read of ${route} (${locale}) failed, so none is sent until`, new Date(held.retryAt));
             return empty();
@@ -631,7 +638,7 @@ class LangsysAppClass {
                     this.debug.error(`LangsysApp.${method}: the answer for ${route} (${locale}) is not of the list's shape.`, response.data);
                     return undefined;
                 }
-                return byLocale ? withCanonicalCodes(list) : list;
+                return byLocale ? withWire3Codes(list) : list;
             } catch (err) {
                 this.debug.error(`LangsysApp.${method} failed: ${route} (${locale}):`, err);
                 return undefined;
@@ -647,12 +654,33 @@ class LangsysAppClass {
                 this.referenceLists.set(key, { failures, retryAt: Date.now() + failureWindowMs(failures) });
             }
         }
-        return (list ?? empty()) as T;
+        return (list === undefined ? empty() : structuredCloneShim(list)) as T;
+    }
+
+    /**
+     * An explicit refresh of one list and display locale: the held list and any failure window
+     * go, so the next call reads. The count of failures in a row stays, so a refresh that fails
+     * again widens CACHE-2's window as any failure in a row does.
+     */
+    private forgetReferenceList(key: string): void {
+        const failures = this.referenceLists.get(key)?.failures;
+        if (failures) this.referenceLists.set(key, { failures });
+        else this.referenceLists.delete(key);
+    }
+
+    /**
+     * A reference list's display locale (REF-1): the one given, else the current one, inside a
+     * request scope the scope's, in WIRE-3's form. That form, `_` read as `-` and lowercased,
+     * is the API's own for its locale codes; canonicalising further would resolve aliases and
+     * rewrite a code the API holds (`en-us-posix` to `en-us-u-va-posix`).
+     */
+    private displayLocale(inLocale?: string): string {
+        return wire3Locale(inLocale || activeScope()?.locale || this.config?.sUserLocale?.get?.() || this.config?.baseLocale || 'en');
     }
 
     public async getLocaleNameWithLookup(forLocale: string, shortName = false, inLocale?: string): Promise<string> {
         if (!forLocale) return '';
-        const locale = this.resolveLocale(inLocale);
+        const locale = this.displayLocale(inLocale);
         await this.getLocalesData(locale);
         return this.getLocaleName(forLocale, shortName, locale);
     }
@@ -668,7 +696,7 @@ class LangsysAppClass {
      * await; it loads the data first.
      */
     public getLocaleName(forLocale: string, shortName = false, inLocale?: string): string {
-        const locale = this.resolveLocale(inLocale);
+        const locale = this.displayLocale(inLocale);
 
         // Distinguished from a lookup miss deliberately. Both return '', and
         // the old warning reported both as a failed match — sending developers
@@ -683,8 +711,9 @@ class LangsysAppClass {
             return '';
         }
 
-        const target = canonicalizeLocale(forLocale);
-        const entry = data.find((loc) => loc.code?.toLowerCase() === target);
+        // The codes are in WIRE-3's form; the core's canonical form also names a legacy alias (`iw`).
+        const targets = [wire3Locale(forLocale), canonicalizeLocale(forLocale)];
+        const entry = data.find((loc) => targets.includes(wire3Locale(loc.code)));
         const name = entry ? (shortName ? entry.lang_name : entry.locale_name) : '';
         if (!name) this.debug.warn('getLocaleName found no entry matching', forLocale);
         return name;
@@ -792,16 +821,6 @@ class LangsysAppClass {
 
         return null;
     }
-
-    /**
-     * Resolve the effective locale for a data-fetching helper: explicit
-     * argument, else the current locale (inside a request scope the scope's,
-     * else the user's), else the base locale — always in the SDK's lowercase
-     * `xx-yy` form so cache keys and API routes agree.
-     */
-    private resolveLocale(inLocale?: string): string {
-        return canonicalizeLocale(inLocale || activeScope()?.locale || this.config?.sUserLocale?.get?.() || this.config?.baseLocale || 'en');
-    }
 }
 
 export const LangsysApp = new LangsysAppClass();
@@ -825,7 +844,7 @@ function isLocaleShaped(locale: string): boolean {
 function localeEntry(data: unknown, locale: string, grouped: boolean, empty: () => unknown): unknown {
     if (Array.isArray(data)) return data.length === 0 ? empty() : undefined;
     if (typeof data !== 'object' || data === null) return undefined;
-    const found = Object.entries(data).find(([key]) => canonicalizeLocale(key) === locale);
+    const found = Object.entries(data).find(([key]) => wire3Locale(key) === locale);
     if (!found) return empty();
     const [, entry] = found;
     if (!grouped) return Array.isArray(entry) ? entry : undefined;
@@ -835,13 +854,18 @@ function localeEntry(data: unknown, locale: string, grouped: boolean, empty: () 
     return Object.values(entry).every((entries) => Array.isArray(entries)) ? entry : undefined;
 }
 
-/** A locale list with every entry's `code` canonical, in the flat or data shape or grouped by language. */
-function withCanonicalCodes(listed: unknown): unknown {
+/** WIRE-3's form of a locale identifier: trimmed, `_` read as `-`, lowercased, and nothing else. */
+function wire3Locale(value: unknown): string {
+    return typeof value === 'string' ? value.trim().replace(/_/g, '-').toLowerCase() : '';
+}
+
+/** A locale list with every entry's `code` in WIRE-3's form, in the flat or data shape or grouped by language. */
+function withWire3Codes(listed: unknown): unknown {
     const recode = (entries: unknown): unknown =>
         Array.isArray(entries)
             ? entries.map((entry) =>
                   typeof entry === 'object' && entry !== null && typeof (entry as { code?: unknown }).code === 'string'
-                      ? { ...entry, code: canonicalizeLocale((entry as { code: string }).code) }
+                      ? { ...entry, code: wire3Locale((entry as { code: string }).code) }
                       : entry
               )
             : entries;

@@ -35,9 +35,10 @@ export interface AcceptedState {
     hints: Array<{ project_id: string; url: string }>;
 }
 
-export async function startContractFixture(): Promise<ContractFixture> {
+/** `env` is added to the double's environment, for a case that needs a host setting such as its locale. */
+export async function startContractFixture(env: Record<string, string> = {}): Promise<ContractFixture> {
     const script = join(process.cwd(), 'contract-fixture', 'server.mjs');
-    const child: ChildProcess = spawn(process.execPath, [script], { stdio: ['ignore', 'pipe', 'inherit'] });
+    const child: ChildProcess = spawn(process.execPath, [script], { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, ...env } });
 
     const ready = await new Promise<{ base_url: string; fixture_url: string }>((resolve, reject) => {
         let buffered = '';

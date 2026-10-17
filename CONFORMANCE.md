@@ -7,7 +7,7 @@
 | **specVersion** | 8.6.0 |
 | **Spec revision read** | langsys2 d55f0ca9…, docs/sdk-spec.mdx blob 436c35d5880e8ae7e94f6372dab23b879d9c699c (specVersion 8.6.0). Re-derived with `git -C ~/Documents/dev/langsys2 ls-tree d55f0ca9 docs/sdk-spec.mdx` at this write and checked by `npm run verify:spec`, which also fails if the vector file cites a different blob. Every rule id is counted by `npm run tally:conformance`. |
 | **SDK revision** | `feature/838_write_key_gating_reland`, cut from `origin/main` `2d7b11f` (v0.6.5) |
-| **Suite** | 1913 tests in 80 files, `npm test`, counted at the tip of this branch |
+| **Suite** | 1947 tests in 80 files, `npm test`, counted at the tip of this branch |
 
 **About this re-land.** This branch is cut from `origin/main` `2d7b11f` (v0.6.5) rather
 than rebased, and the 838 surface is ported semantically. One thing was deliberately NOT
@@ -104,15 +104,10 @@ own to compare against, so closing it properly means threading
 `initialTranslationsLocale` into the cache layer, which is a wider change than the corner
 justifies. Filed rather than left to be discovered.
 
-**Spec moved; counts re-derived, not carried over.** *(History. The live counts are in
-Coverage arithmetic above — 79 rules, 68 binding. The figures in this paragraph were correct
-when written and are kept because the reasoning still is.)* An earlier filing cited blob
-`06ae105a`. At `45cdddf8` the rule total was then unchanged at 67, as was the set binding this
-SDK at 60 — but the distribution had shifted: `all` 44 → 40 and `browser` 16 → 20, which was
-**GRANT-1..4 re-profiled `all` → `browser`** and nothing else. Those four still bind here either way, since `browser` is one of this
-SDK's profiles, so no row was added, removed or re-graded by the move. The new server clause
-attached to that family — a server SDK MUST NOT send `X-Write-Grant` — is addressed to a
-profile this SDK is not.
+**Counts are re-derived on every re-cite, never carried over.** A spec move can change how
+many rules bind this SDK without changing the total, by re-profiling a rule, so the counts
+below come from `npm run tally:conformance` against the cited blob, which also fails on a rule
+id the spec defines and this file has no row for.
 
 **React Native adds no rows, and that is a finding rather than an omission.** It is listed in
 the *membership* column of the **browser** profile with a footnote, not as a `Profiles:` value
@@ -123,16 +118,17 @@ consumer is bound by the `browser` rules already carried here. Said explicitly b
 second would leave gaps.
 
 **Coverage arithmetic**, derived by `npm run tally:conformance` against the cited blob rather
-than typed. The spec carries **79 rules**, and **68 bind this SDK**: 47 profiled `all`, 20
-`browser`, plus SRV-4, whose Profiles line names the browser core for the synchronous seed it
-exposes. The other eleven are addressed to other profiles: HINT-2 (`server`), SRV-1, 2, 3 and 5
-(`server; and a binding …`), and BIND-1 to BIND-6 (`binding`).
+than typed. The spec carries **130 rules**, and **99 bind this SDK**: 63 profiled `all`, 22
+`browser`, 8 `browser, server`, and 6 whose Profiles line names the browser or every profile
+for one role (two `browser, binding`, and one each of `browser, binding (reading); server
+(producing)`, `all (reading); server, binding (emitting)`, `browser (the core's seam), binding
+(the wiring)`, and SRV-4's browser core for the synchronous seed it exposes). The other 31 are
+addressed to other profiles: 18 `server`, 7 `binding`, 5 `server; and a binding …` and 1
+`server, binding`; each has an `n/a (profile: …)` row naming them.
 
-**79 rows, one rule id each.** Earlier revisions of this file used 71 physical rows, with
-BIND-1..6 and four SRV rules sharing combined rows and descriptive suffixes on some rule cells.
-The canonical conformance format, which the Reviewer measures the same way across every SDK,
-allows exactly one id per row and no ranges, so the combined rows are expanded. The script
-fails on a missing, duplicated, ranged or compound id.
+**130 rows, one rule id each.** The canonical conformance format, which the Reviewer measures
+the same way across every SDK, allows exactly one id per row and no ranges. The script fails
+on a missing, duplicated, ranged or compound id.
 
 **Grade vocabulary.** `implemented`, `provisional`, `partial`, `not implemented`,
 `held (strip ruling)`, `n/a (profile: …)` and `n/a (architecture: …)`, plus `delegated`
@@ -155,29 +151,18 @@ bytes. The distinction is real and is kept, as evidence rather than status: thos
 `implemented`, tier `n/a (pure)`, "cross-implementation fixture". And `provisional (no test)` is
 gone, because behaviour without a test is `partial`, not provisional.
 
-**Twelve rows were misgraded, and the checker is why that will not recur.** GATE-8, REG-11,
-HINT-1, GRANT-1 to GRANT-4, OBS-1, WIRE-5, CACHE-1, HINT-12 and CID-3 were graded `implemented`
-while recording a `mock` tier, which CONF-2's status definition does not allow. Each was
-regraded on the rule above. Where the governed property depends on the API's answer the row is
-now `provisional` (GATE-8, OBS-1). Where it does not, the tier was wrong rather than the status
-(REG-11, HINT-1, GRANT-2, GRANT-3, GRANT-4, WIRE-5, CACHE-1, HINT-12). Two were not implemented as
-claimed: GRANT-1's documentation clause has no test, and CID-3's named test does not exist. The
-tally script checks status against tier, not status alone, which is the check that would have
-caught all twelve.
+**Status is checked against tier, not status alone.** An `implemented` row recording a `mock`
+tier fails the tally, since CONF-2 makes mock evidence `provisional`, and so does a named test
+that does not exist.
 
-Grade summary over the 79 rows, printed by `npm run tally:conformance` at this write:
+Grade summary over the 130 rows, printed by `npm run tally:conformance` at this write:
 
 ```
-  40  implemented
-  13  provisional
-  12  partial
-  11  n/a (profile)
-  2   not implemented
-  1   held (strip ruling)
+  99  implemented
+  31  n/a (profile)
   implemented, by tier:
-    40  n/a (pure)
-  provisional, by what it waits on:
-    13  conf-2 shared contract fixture
+    20  contract
+    79  n/a (pure)
 ```
 
 ---
@@ -274,7 +259,7 @@ Grade summary over the 79 rows, printed by `npm run tally:conformance` at this w
 | GRANT-4 | implemented | n/a (pure) | `grant-lane` X-Write-Grant header assertions. Mutation, in an isolated copy: the grant sent under another header name (2 red). |
 | CACHE-1 | implemented | n/a (pure) | `cache-scope` — the catalog is keyed `langsys:translations:<projectid>:<locale>` and hydrated only once `init()` knows both, so a mismatch is a cache MISS rather than foreign content. Was keyed by neither: a page load restored whatever was stored and `t()` served it before anything could check whose it was. Mutation-checked twice — never-clear-on-scope-change turns the cross-project and cross-locale tests red; module-load hydration turns the superseded-key test red. Superseded keys are removed on first scoping A scoping property, which a stateful fixture could neither prove nor disprove. |
 | CACHE-2 | implemented | contract | `contract-write-lane` "CACHE-2": after the double fails one catalog fetch, a lookup inside the window renders source text although the double would now answer, and after the window the translation renders. `catalog-failure-window` proves at the transport seam that concurrent fetches for a pair share one request, the window runs 3s, 6s, 12s to at most 5 minutes, the first success clears it, and an explicit refresh still fetches. Mutations, each red: no window, no request sharing, no doubling, no reset on success, a refresh held by the window. A failure is never stored as if it were a catalog: `catalog-supersede` "a pair's cache key holds only a published catalog" — a switch whose fetch fails or is superseded leaves no key for that pair, a successful fetch still persists, and a catalog stored earlier for the pair is untouched by a later failure and keeps serving; persisting the reset skeleton reds the first two. A catalog already held keeps serving when authorization is refused: `cache-scope` "a refused authorization keeps the cached catalog rendering", restored before authorization answers; and when the fetch is refused, by the `catalog-supersede` case above, where a catalog stored earlier for the pair is untouched by the failure. |
-| REF-1 | implemented | contract | `contract-reference-reads`, against the contract double. The double serves `locales`, `locales/flat`, `locales/data`, `countries/{locale}`, `countries/dial-codes/{locale}` and `currencies/{locale}` from LocaleController, CountryController and CurrencyController (langsys d55f0ca9). It names each list in the display locale through ICU, so each locale answers a distinct list and every case asserts which list came back. For each of the six calls: no locale answers the current locale's list, and a locale given as `en_US` answers that locale's. A second call for the same locale answers the held list after the double's tables are reseeded; another locale answers the new tables, and a third call for the first still answers the held one. A request scope's current locale is the scope's, and a second request scope answers the held list after a reseed. A scope reads under its own credentials: a refused scope key answers empty under a configured module, and a valid one answers under an unconfigured module. Two concurrent reads both answer the list through a key the double refuses a second identical request from (control: the double refuses it). An organisation writing codes as `es_ES` or `es-ES` is answered for `es-es` with codes `es-cr`. A locale the API does not hold answers empty, and stays held past any failure window after the double gains it. An error status, a dropped connection, a body not of the list's shape and a non-JSON body each answer the empty value with the cause logged. A call inside CACHE-2's window answers empty though the double would answer, and after the window answers the list; a second failure widens the window. `getLocalesData(locale, true)` and `refresh()` read again. Counted at `fetch`, which the double cannot see: `../projects`, `es/es`, `es?x=1` and three other path shapes send nothing and answer the empty value. Unconfigured, each call sends nothing, answers the empty value and logs nothing of its own; with `requireCredentials` it rejects with `LangsysConfigurationError`. The double reads `append_target_locales` as the API's BooleanQueryParamCast does (`true`, `false`, `1` or `0`; anything else is 422), and appends the target locales unless it is false, ahead of the display locale's entry in `locales/data`. Its own cases are in `contract-fixture`. Mutation: 47 mutants over the core and the double, 43 red. The 4 survivors are equivalent. Dropping `append_target_locales=0` and answering the first entry each survive alone, since each is covered by the other, and go red together (10 tests). A map without the display locale's key never comes back from the API once the flag is sent. The double's `auth:sanctum` on these routes answers the same 401 its key check would. |
+| REF-1 | implemented | contract | `contract-reference-reads`, against the contract double. The double serves `locales`, `locales/flat`, `locales/data`, `countries/{locale}`, `countries/dial-codes/{locale}` and `currencies/{locale}` from LocaleController, CountryController and CurrencyController (langsys d55f0ca9). It names each list in the display locale through ICU, so each locale answers a distinct list and every case asserts which list came back. For each of the six calls: no locale answers the current locale's list, and a locale given as `en_US` answers that locale's. A second call for the same locale answers the held list after the double's tables are reseeded; another locale answers the new tables, and a third call for the first still answers the held one. What one caller does to an answered list (an added row, an edited row) does not reach the next caller. A request scope's current locale is the scope's, and a second request scope answers the held list after a reseed. A scope reads under its own credentials: a refused scope key answers empty under a configured module, and a valid one answers under an unconfigured module, under `requireCredentials` too. Two concurrent reads both answer the list through a key the double refuses a second identical request from (control: the double refuses it). An organisation writing codes as `es_ES` or `es-ES` is answered for `es-es` with codes `es-cr`. Codes are answered in WIRE-3's form, so `en-us-posix`, which the API stores, is listed and can be asked for. A locale the API does not hold answers empty, and stays held past any failure window after the double gains it. An error status, a dropped connection, a body not of the list's shape and a non-JSON body each answer the empty value with the cause logged. A call inside CACHE-2's window answers empty though the double would answer, and after the window answers the list; a second failure widens the window, including one from an explicit refresh. `getLocalesData(locale, true)` and `refresh()` read again, and a read a refresh superseded does not overwrite the refreshed list when it fails. Counted at `fetch`, which the double cannot see: `../projects`, `es/es`, `es?x=1` and three other path shapes send nothing and answer the empty value. Unconfigured, each call sends nothing, answers the empty value and logs nothing of its own, whatever the display locale and whatever a configured session held; with `requireCredentials` it rejects with `LangsysConfigurationError`. The locale data `init()` reads for `getLocaleName` raises no unhandled rejection after a later `init()` is refused under `requireCredentials`. The double reads `append_target_locales` as the API's BooleanQueryParamCast does (`true`, `false`, `1` or `0`; anything else is 422), and appends the target locales unless it is false, ahead of the display locale's entry in `locales/data`. As request-dto-processor does, it formats `locales[]` and refuses an undeclared query key with `not_allowed`. It names a display locale ICU has no data for in English whatever the host's locale, and keeps a currency's stored name only for a code ICU cannot name. Its own cases are in `contract-fixture`. Mutation: 59 mutants over the core and the double, 55 red. The 4 survivors are equivalent. Dropping `append_target_locales=0` and answering the first entry each survive alone, since each is covered by the other, and go red together (14 tests). A map without the display locale's key never comes back from the API once the flag is sent. The double's `auth:sanctum` on these routes answers the same 401 its key check would. |
 | OBS-1 | implemented | contract | `contract-write-lane` "OBS-1": an `ip_write` key the double computes as unable to write produces exactly one notice across several misses; a read key produces none, including right after a refused `ip_write` session, because authorization passes the key type it received rather than the previous init's. Mutation: remove the notice latch; 1 test goes red. |
 | WIRE-1 | implemented | n/a (pure) | `api-reachability` WIRE-1 block: X-Authorization on every request, plus the ICU capability header. Mutation, in an isolated copy: the key sent as `Authorization` instead of `x-Authorization` (1 red). |
 | WIRE-2 | implemented | contract | `contract-hint-lane` "WIRE-2": the double's hint route answers 204 with no body and no content type; the SDK treats it as sent, the hint is stored, and nothing is logged as a failure on either log channel. Mutation: parse every body as JSON, 204 included; 1 test goes red. |

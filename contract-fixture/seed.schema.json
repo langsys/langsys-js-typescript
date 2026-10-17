@@ -366,7 +366,7 @@
                             },
                             "name": {
                                 "type": "string",
-                                "description": "The stored name, answered when ICU has no data for the display locale."
+                                "description": "The stored name, answered for a code ICU cannot name."
                             },
                             "symbol": {
                                 "type": "string"

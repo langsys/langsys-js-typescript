@@ -83,13 +83,17 @@ another project `403`. `POST /discovery/hint` runs only its rate limit and the v
 holds the Locale, Country, DialCode and Currency tables, in table order; names are never seeded.
 Each route names its rows in the display locale through ICU, as the backend does through PHP's
 `\Locale` and Symfony Intl, so each display locale answers its own list: `Español (Costa Rica)`
-in `es-es`, `Spanish (Costa Rica)` in `en-us`. The routes run `auth:sanctum` (`401`), duplicate
+in `es-es`, `Spanish (Costa Rica)` in `en-us`. A display locale ICU has no data for is named in
+English, the fallback both end in. The routes run `auth:sanctum` (`401`), duplicate
 requests, API-key authorization (`403`) and the usage balance (`402`), and nothing else checks
 the display locale: ICU names a region in whatever locale it is given, falling back to its
 default.
 
 - **The three locale forms** take their display locales as `locales[]` (`locales` alone is
-  `422 invalid_type`). Only the codes the Locale table holds are named, matched exactly. The
+  `422 invalid_type`). request-dto-processor runs before the usage balance: a query key
+  LocalesIndexRequest does not declare (`locales`, `project_id`, `append_target_locales`,
+  `user_locale`) is `422 not_allowed`, and each `locales[]` is formatted as the backend formats a
+  locale, `_` read as `-` and lowercased. Only the codes the Locale table holds are named. The
   key's project's target locales are appended after them unless `append_target_locales` is
   `false` or `0` (`true` and `1` also read; anything else is `422 invalid_type`), and a
   `project_id` appends them whatever the flag says, after a `403 forbidden` for a project the key
@@ -101,8 +105,8 @@ default.
   PHP writes an empty map.
 - **Countries** are `{label, code, eu}` by label, **dial codes** `{country_code, dial_code,
   name}` by name, the name carrying the code as `Spain (+34)`, and **currencies** `{code, name,
-  symbol, symbol_native, decimal_digits, rounding}` in table order, keeping the stored name for
-  a display locale ICU has no data for.
+  symbol, symbol_native, decimal_digits, rounding}` in table order, keeping the stored name only
+  for a code ICU cannot name, as Symfony Intl throws for one.
 
 **`write_enabled` is computed, never seeded.** A `write` key may write. An `ip_write` key may
 write when the source address is in its allow-list or in `renderer_egress_ips`. Any key may
@@ -161,7 +165,8 @@ fragment kept only when it is a route (`#/…` or `#!/…`).
   existing translation exempts a provided one from the quota.
 - **Parts of the backend's request handling that every seed and lane would trip over**:
   project ids that are not UUIDs (`422 invalid_format` in the backend; seeds use ids like
-  `p1`), request fields a route does not declare (`422 not_allowed`), the general
+  `p1`), request fields a route does not declare (`422 not_allowed`) on any route but the
+  locale routes, the general
   `throttle:api` limit of 120 requests a minute, a locale that is not one of the project's
   (`422`), the same routes served without the `/api` prefix, and the `Retry-After` and
   `X-RateLimit-*` headers on a `429`.
@@ -202,7 +207,7 @@ error's `template` is its message. Assert on the status, on `error.code`, on an 
 | `404` | `not_found` | An unknown project (before the key is checked), or an unknown route. |
 | `405` | `method_not_allowed` | A known route with the wrong method. |
 | `422` | `batch_size_exceeded` | More than `batch_limit` items, with `details:{limit, item_count}`. |
-| `422` | `validation_failed` | One entry per failed rule in `errors`: `locale` `invalid_option` (missing locale on the catalog), `project_id` `required`, `translatable_items` `invalid_type`, `translatable_items.<i>.translations` `invalid_option` (a locale that is not a target), `page_url` `required`, `invalid_type`, `invalid_format` or `too_long` (`params:{max:2048}`), and on the locale routes `locales` and `append_target_locales` `invalid_type`. |
+| `422` | `validation_failed` | One entry per failed rule in `errors`: `locale` `invalid_option` (missing locale on the catalog), `project_id` `required`, `translatable_items` `invalid_type`, `translatable_items.<i>.translations` `invalid_option` (a locale that is not a target), `page_url` `required`, `invalid_type`, `invalid_format` or `too_long` (`params:{max:2048}`), and on the locale routes `locales` and `append_target_locales` `invalid_type` and an undeclared query key `not_allowed`. |
 | `429` | `duplicate_request` | The duplicate-request guard. |
 | `429` | `too_many_requests` | The hint rate limit. |
 

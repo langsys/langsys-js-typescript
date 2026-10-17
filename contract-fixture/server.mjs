@@ -684,20 +684,21 @@ const EU_COUNTRY_CODES = ['AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 
 
 /**
  * ICU's display names, which the backend reads through PHP's \Locale and Symfony Intl. A
- * display locale ICU cannot parse falls back to ICU's default, English; a code it cannot name
- * is named by itself.
+ * display locale ICU has no data for, or cannot parse, is named in English, the fallback both
+ * end in. A code ICU cannot name is named by itself, or with `fallback: 'none'` is undefined.
  */
-function displayName(type, code, visitor) {
-    let names;
+function displayName(type, code, visitor, fallback = 'code') {
+    let known = [];
     try {
-        names = new Intl.DisplayNames([visitor], { type, languageDisplay: 'standard', fallback: 'code' });
+        known = Intl.DisplayNames.supportedLocalesOf([visitor]);
     } catch {
-        names = new Intl.DisplayNames(['en'], { type, languageDisplay: 'standard', fallback: 'code' });
+        // Not a tag ICU can parse.
     }
+    const names = new Intl.DisplayNames(known.length ? known : ['en'], { type, languageDisplay: 'standard', fallback });
     try {
-        return names.of(code) ?? code;
+        return names.of(code) ?? (fallback === 'code' ? code : undefined);
     } catch {
-        return code;
+        return fallback === 'code' ? code : undefined;
     }
 }
 
@@ -748,25 +749,35 @@ function formatCodes(value, format) {
     return Object.fromEntries(Object.entries(value).map(([group, rows]) => [group, formatCodes(rows, format)]));
 }
 
+/** LocalesIndexRequest's declared fields: request-dto-processor refuses any other query key. */
+const LOCALES_INDEX_FIELDS = ['locales', 'project_id', 'append_target_locales', 'user_locale'];
+
 /**
- * Two query parameters a route's DTO reads, as PHP parses a query string: `locales[]` (or
- * `locales[N]`) is a list, `locales` alone is not; each value trimmed, an empty one null.
+ * The query as LocalesIndexRequest receives it. PHP parses `locales[]` (or `locales[N]`) as a
+ * list and `locales` alone as not one; each value is trimmed, an empty one null; and
+ * request-dto-processor formats each listed locale as UsesLocales::formatLocale does, `_` to
+ * `-` and lowercased. `undeclared` is every key the DTO does not declare, in order.
  */
 function localesQuery(url) {
     const listed = [];
+    const undeclared = [];
     let scalar = false;
     for (const [name, raw] of url.searchParams.entries()) {
-        if (/^locales\[\d*\]$/.test(name)) {
+        const field = name.replace(/\[\d*\]$/, '');
+        if (!LOCALES_INDEX_FIELDS.includes(field)) {
+            if (!undeclared.includes(field)) undeclared.push(field);
+        } else if (/^locales\[\d*\]$/.test(name)) {
             const value = clean(raw);
-            if (value !== null) listed.push(value);
+            if (value !== null) listed.push(formatLocale(value));
         } else if (name === 'locales') scalar = true;
     }
-    return { listed, scalar };
+    return { listed, scalar, undeclared };
 }
 
 /**
  * GET /locales, /locales/flat, /locales/data: auth:sanctum → prevent-duplicate → auth.apikey →
- * deduct → BooleanQueryParamCast and LocalesIndexRequest's validation → the controller. The
+ * request-dto-processor (an undeclared query key is 422 `not_allowed`; `locales[]` formatted)
+ * → deduct → BooleanQueryParamCast and LocalesIndexRequest's validation → the controller. The
  * display locales are the `locales[]` the Locale table holds; the key's project's target
  * locales are appended unless `append_target_locales` is false, and always with a
  * `project_id`. Each display locale's entry is keyed, and every code written, in the
@@ -779,10 +790,11 @@ function localeLists(req, url, form, fullUrl) {
     if (dup) return dup;
     const auth = authApiKey(req);
     if (Array.isArray(auth)) return auth;
+    const { listed, scalar, undeclared } = localesQuery(url);
+    if (undeclared.length) return [422, validationFailed(undeclared.map((field) => entry(field, 'not_allowed', 'This field is not allowed.')))];
     const deduct = deductRequest(auth.key);
     if (deduct) return deduct;
 
-    const { listed, scalar } = localesQuery(url);
     const flag = clean(url.searchParams.get('append_target_locales'));
     // BooleanQueryParamCast reads 'true', 'false', '1' and '0'; anything else fails `boolean`.
     const append = flag === null ? true : ['true', '1'].includes(flag) ? true : ['false', '0'].includes(flag) ? false : undefined;
@@ -823,11 +835,10 @@ const REFERENCE_LISTS = {
             state.reference.dial_codes.map((d) => ({ country_code: d.country_code, dial_code: d.dial_code, name: `${displayName('region', d.country_code, visitor)} (+${d.dial_code})` })),
             'name'
         ),
-    // CurrencyController::index: Symfony Intl's name in the display locale, else the stored one; table order.
-    currencies: (visitor) => {
-        const named = Intl.DisplayNames.supportedLocalesOf([visitor.replace(/_/g, '-')]).length > 0;
-        return state.reference.currencies.map((c) => ({ ...c, name: named ? displayName('currency', c.code, visitor) : c.name }));
-    },
+    // CurrencyController::index: Symfony Intl's name in the display locale, which falls back to
+    // English; the stored name only for a code Symfony has no entry for (it throws). Table order.
+    currencies: (visitor) =>
+        state.reference.currencies.map((c) => ({ ...c, name: displayName('currency', c.code, visitor.replace(/_/g, '-'), 'none') ?? c.name })),
 };
 
 /**
