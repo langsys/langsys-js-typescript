@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { canonicalizeLocale, maximizedLangScript } from '../src/locale.js';
 import { LangsysApp } from '../src/langsys-app.js';
+import { logger } from '../src/logger.js';
 
 describe('canonicalizeLocale', () => {
     it('normalises casing to the internal lowercase form', () => {
@@ -20,6 +23,26 @@ describe('canonicalizeLocale', () => {
         expect(canonicalizeLocale('in')).toBe('id');
     });
 
+    it('keeps variants and extensions as written, lowercased', () => {
+        // The API's codes are ICU locale ids, which keep a variant as a variant. BCP 47
+        // canonicalisation turns POSIX into the extension -u-va-posix, a code the API
+        // does not hold.
+        expect(canonicalizeLocale('en-US-POSIX')).toBe('en-us-posix');
+        expect(canonicalizeLocale('en_US_POSIX')).toBe('en-us-posix');
+        expect(canonicalizeLocale('ca-ES-VALENCIA')).toBe('ca-es-valencia');
+        expect(canonicalizeLocale('en-US-u-ca-gregory')).toBe('en-us-u-ca-gregory');
+        expect(canonicalizeLocale('EN-us-X-foo')).toBe('en-us-x-foo');
+    });
+
+    it('resolves aliases in the language, script and region ahead of a variant', () => {
+        expect(canonicalizeLocale('iw-IL-POSIX')).toBe('he-il-posix');
+        expect(canonicalizeLocale('sh-BA')).toBe('sr-latn-ba');
+        // The script written is kept: sh's alias supplies Latn only when none is.
+        expect(canonicalizeLocale('sh-Cyrl-BA')).toBe('sr-cyrl-ba');
+        expect(canonicalizeLocale('de-DD-1996')).toBe('de-de-1996');
+        expect(canonicalizeLocale('cmn-Hans')).toBe('zh-hans');
+    });
+
     it('leaves bare language codes alone', () => {
         expect(canonicalizeLocale('en')).toBe('en');
         expect(canonicalizeLocale('ES')).toBe('es');
@@ -32,6 +55,22 @@ describe('canonicalizeLocale', () => {
     it('passes through empty/invalid input without throwing', () => {
         expect(canonicalizeLocale('')).toBe('');
         expect(() => canonicalizeLocale('!!not-a-tag!!')).not.toThrow();
+    });
+
+    it('warns under debug about an invalid tag, one with a valid language included', () => {
+        const wasDebug = logger.debugEnabled;
+        const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        logger.debugEnabled = true;
+        try {
+            expect(canonicalizeLocale('en-US-!!')).toBe('en-us-!!');
+            expect(spy.mock.calls.flat().join(' ')).toContain('"en-US-!!" is not a valid BCP 47 locale tag');
+            spy.mockClear();
+            expect(canonicalizeLocale('en-US-POSIX')).toBe('en-us-posix');
+            expect(spy).not.toHaveBeenCalled();
+        } finally {
+            logger.debugEnabled = wasDebug;
+            spy.mockRestore();
+        }
     });
 });
 
@@ -126,5 +165,25 @@ describe('WIRE-3: the internal form is lowercase, and it is the wire form', () =
     it('is idempotent, so a value can cross the boundary twice safely', () => {
         const once = canonicalizeLocale('ZH_hant_tw');
         expect(canonicalizeLocale(once)).toBe(once);
+        const posix = canonicalizeLocale('iw_IL_POSIX');
+        expect(canonicalizeLocale(posix)).toBe(posix);
+    });
+});
+
+describe('WIRE-3: every locale code the API holds is its own internal form', () => {
+    // The API's Locale table, vendored from its seeder at the commit the fixture cites. A code
+    // the core canonicalises into another names a locale the API does not hold, so a store
+    // holding that code would be served no catalog and no reference lists.
+    const { codes } = JSON.parse(readFileSync(join(process.cwd(), 'tests/fixtures/api-locale-codes.json'), 'utf8')) as {
+        codes: string[];
+    };
+
+    it('has the table to check', () => {
+        expect(codes.length).toBeGreaterThan(800);
+        expect(codes).toContain('en-us-posix');
+    });
+
+    it('canonicalises every code to itself', () => {
+        expect(codes.filter((code) => canonicalizeLocale(code) !== code)).toEqual([]);
     });
 });

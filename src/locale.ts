@@ -25,13 +25,22 @@ import { logger } from './logger.js';
  * warning below is retained unchanged.
  */
 
+/** A locale's language, script and region subtags, ahead of its variants and extensions. */
+const LANGUAGE_SCRIPT_REGION = /^(?:[a-z]{2,3}|[a-z]{5,8})(?:-[a-z]{4})?(?:-(?:[a-z]{2}|\d{3}))?(?=-|$)/i;
+
 /**
  * Normalise a locale identifier to the SDK's single internal form: lowercase
  * `xx-yy` — `en-US` → `en-us`, `zh-Hant-TW` → `zh-hant-tw`. Underscores are
- * accepted and converted (`en_US` → `en-us`). Legacy aliases are still resolved
- * through `Intl.getCanonicalLocales` (`iw` → `he`, `in` → `id`) BEFORE casing is
- * flattened — lowercasing first would lose them, since the alias table is keyed
- * on canonical tags.
+ * accepted and converted (`en_US` → `en-us`). Legacy aliases in the language,
+ * script and region are resolved through `Intl.getCanonicalLocales` (`iw` → `he`,
+ * `in-ID` → `id-id`, `sh-BA` → `sr-latn-ba`) BEFORE casing is flattened —
+ * lowercasing first would lose them, since the alias table is keyed on canonical
+ * tags.
+ *
+ * Variants and extensions are kept as written, lowercased: `en-US-POSIX` is
+ * `en-us-posix`. The API's locale codes are ICU locale ids (`en_US_POSIX`), and
+ * BCP 47 canonicalisation rewrites some of their variants into a code the API
+ * does not hold (`POSIX` becomes the extension `-u-va-posix`).
  *
  * Structurally invalid tags fall back to lowercasing rather than throwing, so a
  * bad config value degrades to a failed catalog lookup instead of a crash — and
@@ -42,8 +51,11 @@ export function canonicalizeLocale(locale: string): string {
     if (!locale || typeof locale !== 'string') return locale;
     const cleaned = locale.trim().replace(/_/g, '-');
     try {
-        const [canonical] = Intl.getCanonicalLocales(cleaned);
-        return (canonical ?? cleaned).toLowerCase();
+        // The whole tag is validated, then only its language, script and region are
+        // canonicalised. A valid tag always starts with a language subtag.
+        Intl.getCanonicalLocales(cleaned);
+        const [head] = LANGUAGE_SCRIPT_REGION.exec(cleaned)!;
+        return (Intl.getCanonicalLocales(head)[0] + cleaned.slice(head.length)).toLowerCase();
     } catch {
         // Not a valid BCP 47 tag. The return value cannot signal this — a
         // best-effort cased string is indistinguishable from a successfully

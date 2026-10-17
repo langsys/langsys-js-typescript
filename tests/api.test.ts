@@ -57,6 +57,16 @@ describe('LangsysAppAPI capability negotiation', () => {
         expect(url).toContain('locale=es-es');
     });
 
+    it('asks for a locale with a variant as the API holds it: en-US-POSIX is en-us-posix', async () => {
+        const fetchMock = mockFetchOnce();
+        configure();
+
+        await LangsysAppAPI.getTranslations('en-US-POSIX');
+
+        const [url] = fetchMock.mock.calls[0] as [string];
+        expect(new URL(url).searchParams.get('locale')).toBe('en-us-posix');
+    });
+
     it('registers via the modern /translatable-items endpoint with the unified body', async () => {
         const fetchMock = mockFetchOnce();
         configure();

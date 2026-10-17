@@ -129,6 +129,16 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         expect(await scope.run(() => call())).toEqual(await doubleList(route, 'he-il'));
     });
 
+    it('with no locale, a store or scope holding en-US-POSIX answers en-us-posix, the code the API holds', async () => {
+        resetSdk();
+        await LangsysApp.init({ projectid: 'p1', key: 'k1', UserLocaleStore: createSignal('en-US-POSIX'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        const posix = await doubleList(route, 'en-us-posix');
+        expect(posix).not.toEqual(empty);
+        expect(await call()).toEqual(posix);
+        const scope = await createRequestScope({ locale: 'en_US_POSIX' });
+        expect(await scope.run(() => call())).toEqual(posix);
+    });
+
     it('two callers sharing one read each get their own copy', async () => {
         await configured();
         const [a, b] = (await Promise.all([call('fr-fr'), call('fr-fr')])) as (unknown[] | Record<string, unknown[]>)[];

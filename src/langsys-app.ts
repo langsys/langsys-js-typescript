@@ -673,10 +673,10 @@ class LangsysAppClass {
     /**
      * A reference list's display locale (REF-1): the one given, in WIRE-3's form, else the
      * current one. WIRE-3's form, `_` read as `-` and lowercased, is the API's own for its
-     * locale codes; canonicalising a given locale further would resolve aliases and rewrite a
-     * code the API holds (`en-us-posix` to `en-us-u-va-posix`). The current locale is the one
-     * the core serves, as `t()` and the catalog do, on both profiles: the request scope's,
-     * else the store's, each canonical, so a store holding `iw-IL` names its lists in `he-il`.
+     * locale codes, and a given locale is asked for as written, with no alias resolved. The
+     * current locale is the one the core serves, as `t()` and the catalog do, on both
+     * profiles: the request scope's, else the store's, each canonical, so a store holding
+     * `iw-IL` names its lists in `he-il`.
      */
     private displayLocale(inLocale?: string): string {
         if (inLocale) return wire3Locale(inLocale);
