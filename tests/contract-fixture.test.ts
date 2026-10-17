@@ -622,6 +622,22 @@ describe('the reference lists, as LocaleController, CountryController and Curren
         expect(refused.status).toBe(422);
         expect(refused.body.error.errors).toEqual([{ field: 'format', code: 'not_allowed', message: 'This field is not allowed.', template: 'This field is not allowed.' }]);
         expect((await flat(q('es-es', '&append_target_locales=0&user_locale=es-es&project_id=p2'))).status).toBe(200);
+        const two = await flat(q('es-es', '&zeta=1&alpha=1'));
+        expect(two.body.error.errors.map((e: { field: string }) => e.field)).toEqual(['zeta', 'alpha']);
+    });
+
+    it('request-dto-processor runs after the API-key check and before the usage balance', async () => {
+        await fx.seed({ ...BASE_SEED, reference: REFERENCE, keys: [...BASE_SEED.keys, { key: 'k-spent', project: 'p1', type: 'read', usage_exhausted: true }] });
+        expect(code(await flat(q('es-es', '&format=x'), 'k-unknown'))).toBe('api_key_invalid');
+        expect(code(await flat(q('es-es', '&format=x'), 'k-spent'))).toBe('validation_failed');
+        expect(code(await flat(q('es-es'), 'k-spent'))).toBe('api_units_limit_exceeded');
+    });
+
+    it('query keys are read as PHP parses them: a bracketed key by its name, dots and spaces in a name as underscores', async () => {
+        await seedWith();
+        expect(keysOf(await flat('locales%5Ba%5D=es-es&append.target_locales=0'))).toEqual(['es-es']);
+        const refused = await flat(q('es-es', '&foo%5Bbar%5D=1'));
+        expect(refused.body.error.errors.map((e: { field: string }) => e.field)).toEqual(['foo']);
     });
 
     it('each display locale names the lists in its own language, with the organisation’s code format on keys and codes', async () => {
@@ -666,6 +682,20 @@ describe('the reference lists, as LocaleController, CountryController and Curren
             { country_code: 'ES', dial_code: '34', name: 'Espagne (+34)' },
         ]);
         expect((await api('/currencies/es-es', { key: 'k-other' })).body.data.map((c: { name: string }) => c.name)).toEqual(['euro', 'colón costarricense', 'Test currency (stored)']);
+    });
+
+    it('edge display locales are named as the backend names them: root and und by code, an underscore read as a hyphen, Symfony’s currency chain', async () => {
+        await seedWith();
+        const labels = async (locale: string) => (await api(`/countries/${locale}`, { key: 'k-read' })).body.data.map((c: { label: string }) => c.label);
+        const currencies = async (locale: string) => (await api(`/currencies/${locale}`, { key: 'k-read' })).body.data.map((c: { name: string }) => c.name);
+        expect(await labels('es_ES')).toEqual(['Costa Rica', 'España', 'Estados Unidos']);
+        expect(await labels('root')).toEqual(['CR', 'ES', 'US']);
+        expect(await labels('und')).toEqual(['CR', 'ES', 'US']);
+        expect(await currencies('root')).toEqual(['EUR', 'CRC', 'Test currency (stored)']);
+        // Symfony's fallback chain ends for a one-subtag locale of four or more letters, and for und.
+        expect(await currencies('abcd')).toEqual(['Euro (stored)', 'Colón (stored)', 'Test currency (stored)']);
+        expect(await currencies('und')).toEqual(['Euro (stored)', 'Colón (stored)', 'Test currency (stored)']);
+        expect(await currencies('es_ES')).toEqual(['euro', 'colón costarricense', 'Test currency (stored)']);
     });
 
     it('a display locale ICU has no data for is named in English, its fallback; a currency ICU cannot name keeps its stored name', async () => {
@@ -726,7 +756,7 @@ describe('the reference lists name an unknown display locale in English whatever
         expect(probe.stdout).toBe('euro');
     });
 
-    it('a double on a Spanish host answers xx-yy in English, as the backend does', async () => {
+    it('a double on a Spanish host answers xx-yy in English, as a backend host whose ICU default is English does', async () => {
         await spanish.seed({
             projects: [{ id: 'p1' }],
             keys: [{ key: 'k1', project: 'p1', type: 'read' }],

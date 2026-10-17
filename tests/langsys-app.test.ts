@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LangsysAppAPI } from '../src/api.js';
 import { LangsysApp } from '../src/langsys-app.js';
+import { createSignal } from '../src/signal.js';
 
 /**
  * The held reference lists are private and filled by `getLocalesData`. Seeding the
@@ -60,11 +62,14 @@ describe('getLocaleName says which of the two failures happened', () => {
 
     beforeEach(() => {
         clearLocaleCache();
+        // A configured client: an unconfigured one answers no name at all.
+        LangsysAppAPI.setup({ projectid: 'p1', key: 'k1', sUserLocale: createSignal('en-us'), baseLocale: 'en' });
         warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     });
 
     afterEach(() => {
         warn.mockRestore();
+        LangsysAppAPI.clearCredentials();
         clearLocaleCache();
     });
 

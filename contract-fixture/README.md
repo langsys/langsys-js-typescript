@@ -83,14 +83,21 @@ another project `403`. `POST /discovery/hint` runs only its rate limit and the v
 holds the Locale, Country, DialCode and Currency tables, in table order; names are never seeded.
 Each route names its rows in the display locale through ICU, as the backend does through PHP's
 `\Locale` and Symfony Intl, so each display locale answers its own list: `Español (Costa Rica)`
-in `es-es`, `Spanish (Costa Rica)` in `en-us`. A display locale ICU has no data for is named in
-English, the fallback both end in. The routes run `auth:sanctum` (`401`), duplicate
-requests, API-key authorization (`403`) and the usage balance (`402`), and nothing else checks
-the display locale: ICU names a region in whatever locale it is given, falling back to its
-default.
+in `es-es`, `Spanish (Costa Rica)` in `en-us`. ICU reads `_` as `-` (`es_ES` is `es-es`), and its
+root locale, `root` or `und`, names a region by its code and a locale by its subtags
+(`es (ES)`). A display locale ICU has no data for falls back to the host's default locale; the
+double models a backend host whose default is English, which is PHP's `en_US_POSIX` with nothing
+set, so it answers such a locale in English whatever its own host's locale. The routes run
+`auth:sanctum` (`401`), duplicate requests, API-key authorization (`403`) and the usage balance
+(`402`), and nothing checks the display locale itself.
+
+Query keys are read as PHP's `parse_str` reads them: a key with a bracketed part by the name
+before the bracket (`locales[a]` is `locales`, `foo[bar]` is `foo`), and in a name `.`, a space
+and an unclosed `[` as `_` (`append.target_locales` is `append_target_locales`).
 
 - **The three locale forms** take their display locales as `locales[]` (`locales` alone is
-  `422 invalid_type`). request-dto-processor runs before the usage balance: a query key
+  `422 invalid_type`). request-dto-processor runs after API-key authorization and before the
+  usage balance: a query key
   LocalesIndexRequest does not declare (`locales`, `project_id`, `append_target_locales`,
   `user_locale`) is `422 not_allowed`, and each `locales[]` is formatted as the backend formats a
   locale, `_` read as `-` and lowercased. Only the codes the Locale table holds are named. The
@@ -105,8 +112,11 @@ default.
   PHP writes an empty map.
 - **Countries** are `{label, code, eu}` by label, **dial codes** `{country_code, dial_code,
   name}` by name, the name carrying the code as `Spain (+34)`, and **currencies** `{code, name,
-  symbol, symbol_native, decimal_digits, rounding}` in table order, keeping the stored name only
-  for a code ICU cannot name, as Symfony Intl throws for one.
+  symbol, symbol_native, decimal_digits, rounding}` in table order. A currency is named as
+  Symfony Intl names it, in the first locale of the display locale's fallback chain that ICU has
+  data for (`es-es`, then `es`; a one-subtag locale of two or three letters, then `en`; `root`
+  by code). Where Symfony throws, the stored name is kept: for `und`, for a one-subtag locale of
+  four or more letters, and for a code it has no entry for.
 
 **`write_enabled` is computed, never seeded.** A `write` key may write. An `ip_write` key may
 write when the source address is in its allow-list or in `renderer_egress_ips`. Any key may

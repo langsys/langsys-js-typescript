@@ -509,7 +509,7 @@ class LangsysAppClass {
             const locale = canonicalizeLocale(rawLocale);
             // A prefetch for getLocaleName, not the app's first use: a refused re-init under
             // requireCredentials makes the read reject, and nothing here is waiting to hear it.
-            this.getLocalesData(rawLocale).catch(() => {});
+            this.getLocalesData(locale).catch(() => {});
             this.debug.log('SUBSCRIBING TO USER LOCALE STORE');
             this.translationsLoadingPromise = this.Translations.change(locale, false);
         });
@@ -534,7 +534,7 @@ class LangsysAppClass {
 
     public async getCountryName(forCountryCode: string, inLocale?: string): Promise<string> {
         if (!forCountryCode) return '';
-        const countries = await this.getCountries(inLocale);
+        const countries = await this.readReferenceList<iCountryList>('getCountries', 'countries', inLocale, () => [], { copy: false });
         const country = countries.find((c) => c.code?.toLowerCase() === forCountryCode.toLowerCase())?.label;
         if (!country) this.debug.warn('getCountryName failed to match', forCountryCode);
         return country || forCountryCode;
@@ -542,7 +542,7 @@ class LangsysAppClass {
 
     public async getCurrencyName(forCurrencyCode: string, inLocale?: string): Promise<string> {
         if (!forCurrencyCode) return '';
-        const currencies = await this.getCurrencies(inLocale);
+        const currencies = await this.readReferenceList<iCurrencyList>('getCurrencies', 'currencies', inLocale, () => [], { copy: false });
         const currency = currencies.find((c) => c.code?.toLowerCase() === forCurrencyCode.toLowerCase())?.name;
         if (!currency) this.debug.warn('getCurrencyName failed to match', forCurrencyCode);
         return currency || forCurrencyCode;
@@ -590,15 +590,17 @@ class LangsysAppClass {
      * a failed read is remembered for CACHE-2's window, inside which the call sends nothing.
      * An unconfigured core sends nothing and logs nothing, whatever the display locale,
      * `init()`'s refusal being its one warning. Each caller gets its own copy of a held list,
-     * so what one caller does to it never reaches the next.
+     * so what one caller does to it never reaches the next; `copy: false` is for the core's own
+     * lookups, which only read it.
      */
     private async readReferenceList<T>(
         method: string,
         route: string,
         inLocale: string | undefined,
         empty: () => T,
-        opts: { grouped?: boolean } = {}
+        opts: { grouped?: boolean; copy?: boolean } = {}
     ): Promise<T> {
+        const answer = (list: unknown): T => (opts.copy === false ? list : structuredCloneShim(list)) as T;
         // An unconfigured core answers empty and sends nothing (WIRE-4), whatever a configured
         // scope may have held; a scope's own credentials configure it (SRV-2).
         const credentials = LangsysAppAPI.currentCredentials();
@@ -613,10 +615,10 @@ class LangsysAppClass {
         }
         const key = `${route}\0${locale}`;
         const held = this.referenceLists.get(key);
-        if (held && 'list' in held) return structuredCloneShim(held.list) as T;
+        if (held && 'list' in held) return answer(held.list);
         if (held?.reading) {
             const shared = await held.reading;
-            return (shared === undefined ? empty() : structuredCloneShim(shared)) as T;
+            return shared === undefined ? empty() : answer(shared);
         }
         if (held?.retryAt !== undefined && Date.now() < held.retryAt) {
             this.debug.log(`LangsysApp.${method}: the last read of ${route} (${locale}) failed, so none is sent until`, new Date(held.retryAt));
@@ -654,7 +656,7 @@ class LangsysAppClass {
                 this.referenceLists.set(key, { failures, retryAt: Date.now() + failureWindowMs(failures) });
             }
         }
-        return (list === undefined ? empty() : structuredCloneShim(list)) as T;
+        return list === undefined ? empty() : answer(list);
     }
 
     /**
@@ -669,19 +671,23 @@ class LangsysAppClass {
     }
 
     /**
-     * A reference list's display locale (REF-1): the one given, else the current one, inside a
-     * request scope the scope's, in WIRE-3's form. That form, `_` read as `-` and lowercased,
-     * is the API's own for its locale codes; canonicalising further would resolve aliases and
-     * rewrite a code the API holds (`en-us-posix` to `en-us-u-va-posix`).
+     * A reference list's display locale (REF-1): the one given, in WIRE-3's form, else the
+     * current one. WIRE-3's form, `_` read as `-` and lowercased, is the API's own for its
+     * locale codes; canonicalising a given locale further would resolve aliases and rewrite a
+     * code the API holds (`en-us-posix` to `en-us-u-va-posix`). The current locale is the one
+     * the core serves, as `t()` and the catalog do, on both profiles: the request scope's,
+     * else the store's, each canonical, so a store holding `iw-IL` names its lists in `he-il`.
      */
     private displayLocale(inLocale?: string): string {
-        return wire3Locale(inLocale || activeScope()?.locale || this.config?.sUserLocale?.get?.() || this.config?.baseLocale || 'en');
+        if (inLocale) return wire3Locale(inLocale);
+        const current = activeScope()?.locale || canonicalizeLocale(this.config?.sUserLocale?.get?.() || '') || this.config?.baseLocale || 'en';
+        return wire3Locale(current);
     }
 
     public async getLocaleNameWithLookup(forLocale: string, shortName = false, inLocale?: string): Promise<string> {
         if (!forLocale) return '';
         const locale = this.displayLocale(inLocale);
-        await this.getLocalesData(locale);
+        await this.readReferenceList('getLocalesData', 'locales/data', locale, () => [], { copy: false });
         return this.getLocaleName(forLocale, shortName, locale);
     }
 
@@ -696,6 +702,12 @@ class LangsysAppClass {
      * await; it loads the data first.
      */
     public getLocaleName(forLocale: string, shortName = false, inLocale?: string): string {
+        // Unconfigured, nothing held is answered, as the list calls answer nothing (WIRE-4).
+        const credentials = LangsysAppAPI.currentCredentials();
+        if (!credentials.projectid || !credentials.key) {
+            this.Translations.assertConfigured();
+            return '';
+        }
         const locale = this.displayLocale(inLocale);
 
         // Distinguished from a lookup miss deliberately. Both return '', and

@@ -23,7 +23,8 @@ let fx: ContractFixture;
 
 const REFERENCE = {
     // en-us-posix is in the API's Locale table: WIRE-3's form keeps it as the API stores it.
-    locales: ['fr-fr', 'es-es', 'es-cr', 'en-us', 'de-de', 'en-us-posix'],
+    // he-il is what the core's current locale is for a store holding the legacy alias iw-IL.
+    locales: ['fr-fr', 'es-es', 'es-cr', 'en-us', 'de-de', 'en-us-posix', 'he-il'],
     countries: [{ code: 'ES' }, { code: 'CR' }, { code: 'US' }],
     dial_codes: [{ country_code: 'ES', dial_code: '34' }, { country_code: 'CR', dial_code: '506' }],
     currencies: [{ code: 'EUR', name: 'Euro', symbol: '€' }, { code: 'CRC', name: 'Costa Rican Colón', symbol: '₡' }],
@@ -118,6 +119,24 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         await configured();
         expect(await call()).toEqual(await doubleList(route, 'es-es'));
         expect(await call('en_US')).toEqual(await doubleList(route, 'en-us'));
+    });
+
+    it('with no locale it answers the locale the core serves, as t() does, on both profiles: a store or scope holding iw-IL answers he-il', async () => {
+        resetSdk();
+        await LangsysApp.init({ projectid: 'p1', key: 'k1', UserLocaleStore: createSignal('iw-IL'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        expect(await call()).toEqual(await doubleList(route, 'he-il'));
+        const scope = await createRequestScope({ locale: 'iw_IL' });
+        expect(await scope.run(() => call())).toEqual(await doubleList(route, 'he-il'));
+    });
+
+    it('two callers sharing one read each get their own copy', async () => {
+        await configured();
+        const [a, b] = (await Promise.all([call('fr-fr'), call('fr-fr')])) as (unknown[] | Record<string, unknown[]>)[];
+        for (const answered of [a, b]) {
+            if (Array.isArray(answered)) answered.length = 0;
+            else for (const group of Object.keys(answered)) delete answered[group];
+        }
+        expect(await call('fr-fr')).toEqual(await doubleList(route, 'fr-fr'));
     });
 
     it('a list is held per display locale: the same locale again sends nothing, another locale reads, and the first is still held', async () => {
@@ -316,6 +335,27 @@ describe('REF-1 against the contract double: what reads the held lists', () => {
         expect(await LangsysApp.getLocaleNameWithLookup('es-CR')).toBe(esCr.locale_name);
         expect(LangsysApp.getLocaleName('es-cr', true)).toBe(esCr.lang_name);
         expect(await LangsysApp.getLocaleNameWithLookup('en-US-POSIX', false, 'en-us')).toBe((await row('locales/data', 'en-us', 'en-us-posix')).locale_name);
+        // A legacy alias names the code the API lists for it.
+        expect(await LangsysApp.getLocaleNameWithLookup('iw-IL', false, 'en-us')).toBe((await row('locales/data', 'en-us', 'he-il')).locale_name);
+    });
+
+    it('getLocaleName answers nothing once the core is unconfigured, whatever it held, and throws under requireCredentials', async () => {
+        await configured();
+        await LangsysApp.getLocalesData('es-es');
+        expect(LangsysApp.getLocaleName('es-cr', false, 'es-es')).not.toBe('');
+        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        expect(LangsysApp.getLocaleName('es-cr', false, 'es-es')).toBe('');
+        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
+        expect(() => LangsysApp.getLocaleName('es-cr', false, 'es-es')).toThrow(LangsysConfigurationError);
+    });
+
+    it('the locale data init() reads is the current locale’s as the core serves it, so getLocaleName names a code with no lookup', async () => {
+        resetSdk();
+        const heIl = ((await doubleList('locales/data', 'he-il')) as { code: string; locale_name: string }[]).find((r) => r.code === 'he-il')!;
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        await LangsysApp.init({ projectid: 'p1', key: 'k1', UserLocaleStore: createSignal('iw-IL'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        // Nothing here reads the list: only init()'s own read can hold it.
+        await vi.waitFor(() => expect(LangsysApp.getLocaleName('he-il')).toBe(heIl.locale_name), { timeout: 3000 });
     });
 
     it('a read an explicit refresh superseded does not overwrite what the refresh held, even when it fails', async () => {

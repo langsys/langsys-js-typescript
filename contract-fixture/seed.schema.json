@@ -366,7 +366,7 @@
                             },
                             "name": {
                                 "type": "string",
-                                "description": "The stored name, answered for a code ICU cannot name."
+                                "description": "The stored name, answered where Symfony Intl throws: for a code it has no entry for, for und, and for a one-subtag display locale of four or more letters."
                             },
                             "symbol": {
                                 "type": "string"

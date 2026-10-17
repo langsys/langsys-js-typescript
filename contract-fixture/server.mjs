@@ -682,24 +682,64 @@ function discoveryHint(req, body) {
 /** EuCountries::EU_COUNTRY_CODES. */
 const EU_COUNTRY_CODES = ['AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK'];
 
+/** A display locale as ICU reads it: `_` as `-`, so `es_ES` is `es-es`. */
+const icuLocale = (visitor) => String(visitor).replace(/_/g, '-').toLowerCase();
+
+/** ICU's data for a display locale, or null for one it has none for or cannot parse. */
+function icuData(visitor) {
+    try {
+        return Intl.DisplayNames.supportedLocalesOf([icuLocale(visitor)])[0] ?? null;
+    } catch {
+        return null;
+    }
+}
+
 /**
- * ICU's display names, which the backend reads through PHP's \Locale and Symfony Intl. A
- * display locale ICU has no data for, or cannot parse, is named in English, the fallback both
- * end in. A code ICU cannot name is named by itself, or with `fallback: 'none'` is undefined.
+ * ICU's display names, which the backend reads through PHP's \Locale. ICU's root locale, `root`
+ * or `und`, names a region by its code and a locale by its subtags (`es (ES)`). A display
+ * locale ICU has no data for, or cannot parse, falls back to the host's default locale; the
+ * double models a backend host whose default is English, which is PHP's `en_US_POSIX` with
+ * nothing set. A code ICU cannot name is named by itself, or with `fallback: 'none'` is
+ * undefined.
  */
 function displayName(type, code, visitor, fallback = 'code') {
-    let known = [];
+    const unnamed = fallback === 'code' ? code : undefined;
+    if (['root', 'und'].includes(icuLocale(visitor))) return rootName(type, code);
+    const names = new Intl.DisplayNames([icuData(visitor) ?? 'en'], { type, languageDisplay: 'standard', fallback });
     try {
-        known = Intl.DisplayNames.supportedLocalesOf([visitor]);
+        return names.of(code) ?? unnamed;
     } catch {
-        // Not a tag ICU can parse.
+        return unnamed;
     }
-    const names = new Intl.DisplayNames(known.length ? known : ['en'], { type, languageDisplay: 'standard', fallback });
-    try {
-        return names.of(code) ?? (fallback === 'code' ? code : undefined);
-    } catch {
-        return fallback === 'code' ? code : undefined;
+}
+
+/** ICU's root locale's names: a region and a currency by code, a locale by its subtags, `es (ES)`. */
+function rootName(type, code) {
+    if (type !== 'language') return code.toUpperCase();
+    const [language, ...rest] = code.split('-');
+    const subtags = rest.map((t) => (t.length === 4 ? t[0].toUpperCase() + t.slice(1) : t.toUpperCase()));
+    return subtags.length ? `${language} (${subtags.join(', ')})` : language;
+}
+
+/**
+ * Symfony Intl's Currencies::getName, as CurrencyController calls it: the name in the first
+ * locale of the display locale's fallback chain that ICU has data for (`es-ES`, then `es`; a
+ * one-subtag locale of two or three letters falls back to `en`, `en` to `root`). The chain
+ * ends, and Symfony throws, for `und` and for a one-subtag locale of four or more letters, and
+ * for a code it has no entry for; the controller then keeps the stored name.
+ */
+function symfonyCurrencyName(code, visitor) {
+    let locale = icuLocale(visitor);
+    while (locale) {
+        if (locale === 'und') return undefined;
+        // Root names a currency by its code, one Symfony has an entry for.
+        if (locale === 'root') return displayName('currency', code, 'en', 'none') === undefined ? undefined : code.toUpperCase();
+        if (icuData(locale)) return displayName('currency', code, locale, 'none');
+        if (locale.includes('-')) locale = locale.slice(0, locale.lastIndexOf('-'));
+        else if (locale === 'en') locale = 'root';
+        else locale = locale.length < 4 ? 'en' : null;
     }
+    return undefined;
 }
 
 /** UsesLocales::_labelCase: the first character upper-cased. */
@@ -753,25 +793,41 @@ function formatCodes(value, format) {
 const LOCALES_INDEX_FIELDS = ['locales', 'project_id', 'append_target_locales', 'user_locale'];
 
 /**
- * The query as LocalesIndexRequest receives it. PHP parses `locales[]` (or `locales[N]`) as a
- * list and `locales` alone as not one; each value is trimmed, an empty one null; and
+ * A query key as PHP's parse_str names it: a key with a bracketed part (`locales[]`,
+ * `locales[a]`, `foo[bar]`) by the name before the bracket, and in that name `.`, a space and
+ * an unclosed `[` as `_`, so `append.target_locales` is `append_target_locales`.
+ */
+function phpQueryKey(name) {
+    const open = name.indexOf('[');
+    const bracketed = open > 0 && name.indexOf(']', open) > open;
+    return { field: (bracketed ? name.slice(0, open) : name).replace(/[. []/g, '_'), bracketed };
+}
+
+/**
+ * The query as LocalesIndexRequest receives it, keyed as PHP parses it. `locales` with a
+ * bracket is a list and without one is not; each value is trimmed, an empty one null; and
  * request-dto-processor formats each listed locale as UsesLocales::formatLocale does, `_` to
- * `-` and lowercased. `undeclared` is every key the DTO does not declare, in order.
+ * `-` and lowercased. `undeclared` is every key the DTO does not declare, in order. A scalar
+ * field takes its last value, as parse_str does.
  */
 function localesQuery(url) {
     const listed = [];
     const undeclared = [];
+    const scalars = {};
     let scalar = false;
     for (const [name, raw] of url.searchParams.entries()) {
-        const field = name.replace(/\[\d*\]$/, '');
+        const { field, bracketed } = phpQueryKey(name);
         if (!LOCALES_INDEX_FIELDS.includes(field)) {
             if (!undeclared.includes(field)) undeclared.push(field);
-        } else if (/^locales\[\d*\]$/.test(name)) {
-            const value = clean(raw);
-            if (value !== null) listed.push(formatLocale(value));
-        } else if (name === 'locales') scalar = true;
+        } else if (field === 'locales') {
+            if (!bracketed) scalar = true;
+            else {
+                const value = clean(raw);
+                if (value !== null) listed.push(formatLocale(value));
+            }
+        } else scalars[field] = clean(raw);
     }
-    return { listed, scalar, undeclared };
+    return { listed, scalar, undeclared, scalars };
 }
 
 /**
@@ -790,12 +846,12 @@ function localeLists(req, url, form, fullUrl) {
     if (dup) return dup;
     const auth = authApiKey(req);
     if (Array.isArray(auth)) return auth;
-    const { listed, scalar, undeclared } = localesQuery(url);
+    const { listed, scalar, undeclared, scalars } = localesQuery(url);
     if (undeclared.length) return [422, validationFailed(undeclared.map((field) => entry(field, 'not_allowed', 'This field is not allowed.')))];
     const deduct = deductRequest(auth.key);
     if (deduct) return deduct;
 
-    const flag = clean(url.searchParams.get('append_target_locales'));
+    const flag = scalars.append_target_locales ?? null;
     // BooleanQueryParamCast reads 'true', 'false', '1' and '0'; anything else fails `boolean`.
     const append = flag === null ? true : ['true', '1'].includes(flag) ? true : ['false', '0'].includes(flag) ? false : undefined;
     const invalid = [];
@@ -807,7 +863,7 @@ function localeLists(req, url, form, fullUrl) {
     const table = state.reference.locales;
     let requested = table.filter((code) => listed.includes(code));
     let project = auth.project;
-    const projectId = clean(url.searchParams.get('project_id'));
+    const projectId = scalars.project_id ?? null;
     if (projectId !== null) {
         // gateByKey('belongsToProject'): a project the key does not belong to is forbidden.
         project = state.projects.get(projectId) ?? null;
@@ -835,16 +891,15 @@ const REFERENCE_LISTS = {
             state.reference.dial_codes.map((d) => ({ country_code: d.country_code, dial_code: d.dial_code, name: `${displayName('region', d.country_code, visitor)} (+${d.dial_code})` })),
             'name'
         ),
-    // CurrencyController::index: Symfony Intl's name in the display locale, which falls back to
-    // English; the stored name only for a code Symfony has no entry for (it throws). Table order.
-    currencies: (visitor) =>
-        state.reference.currencies.map((c) => ({ ...c, name: displayName('currency', c.code, visitor.replace(/_/g, '-'), 'none') ?? c.name })),
+    // CurrencyController::index: Symfony Intl's name, else, where Symfony throws, the stored
+    // one. Table order.
+    currencies: (visitor) => state.reference.currencies.map((c) => ({ ...c, name: symfonyCurrencyName(c.code, visitor) ?? c.name })),
 };
 
 /**
  * GET /countries/{locale}, /countries/dial-codes/{locale}, /currencies/{locale}: auth:sanctum →
- * prevent-duplicate → auth.apikey → deduct → the controller. The display locale is not
- * validated: ICU names a region in whatever locale it is given, falling back to its default.
+ * prevent-duplicate → auth.apikey → deduct → the controller. Nothing checks the display locale;
+ * it is named as `displayName` and `symfonyCurrencyName` say.
  */
 function referenceList(req, list, visitor, fullUrl) {
     const unauthenticated = sanctum(req);
