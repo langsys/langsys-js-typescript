@@ -18,12 +18,14 @@ import type { TFunction } from './types/translation-fn.js';
 import type { iCategories, iTranslations } from './types/translations.js';
 import { structuredCloneShim } from './utils.js';
 
-/** One reference list in one display locale: the list held, the read in flight, or the last failures. */
+/**
+ * One reference list in one display locale: the list held, the read in flight, or, for each
+ * set of credentials a read was sent under, its failures in a row and when it may next send.
+ */
 interface ReferenceListEntry {
     list?: unknown;
     reading?: Promise<unknown>;
-    failures?: number;
-    retryAt?: number;
+    failed?: Map<string, { failures: number; retryAt?: number }>;
 }
 
 class LangsysAppClass {
@@ -35,7 +37,7 @@ class LangsysAppClass {
     /**
      * The reference lists read so far (REF-1), keyed by list and display locale: a list the API
      * answered is held for the core's lifetime, a read in flight is shared, and a failed read is
-     * remembered for CACHE-2's window. Memory only: on a server the core is the long-lived
+     * remembered for CACHE-2's window under the credentials it was sent with. Memory only: on a server the core is the long-lived
      * module, so the hold already outlives the request, and nothing goes to a cache another
      * host reads (CACHE-1).
      */
@@ -580,14 +582,15 @@ class LangsysAppClass {
     /**
      * Read one reference list in a display locale (REF-1), or answer the one held for it.
      *
-     * The display locale is the one given, else the current one, in WIRE-3's form; one not
-     * shaped as a locale is refused before anything is sent, since it is written into the
-     * request. A locale form is asked for that locale alone and answers that locale's entry,
+     * The display locale is the one given, else the current one, canonical as the core serves
+     * it; one not shaped as a locale is refused before anything is sent, since it is written
+     * into the request. A locale form is asked for that locale alone and answers that locale's entry,
      * whose key and codes are in the organisation's code format, so it is matched and recoded
      * in WIRE-3's form; a locale the API does not hold answers `empty()`, held like any
      * answer. Nothing here throws but `requireCredentials` (WIRE-4): a refused locale, a failed
      * read and an answer not of the list's shape answer `empty()` with the cause logged, and
-     * a failed read is remembered for CACHE-2's window, inside which the call sends nothing.
+     * a failed read is remembered for CACHE-2's window under its credentials, inside which a
+     * call under them sends nothing; a call under other credentials still reads.
      * An unconfigured core sends nothing and logs nothing, whatever the display locale,
      * `init()`'s refusal being its one warning. Each caller gets its own copy of a held list,
      * so what one caller does to it never reaches the next; `copy: false` is for the core's own
@@ -620,8 +623,11 @@ class LangsysAppClass {
             const shared = await held.reading;
             return shared === undefined ? empty() : answer(shared);
         }
-        if (held?.retryAt !== undefined && Date.now() < held.retryAt) {
-            this.debug.log(`LangsysApp.${method}: the last read of ${route} (${locale}) failed, so none is sent until`, new Date(held.retryAt));
+        // CACHE-2's window is the credentials' own: a key refused in one scope holds back no other's read.
+        const sender = `${credentials.projectid}\0${credentials.key}`;
+        const failed = held?.failed?.get(sender);
+        if (failed?.retryAt !== undefined && Date.now() < failed.retryAt) {
+            this.debug.log(`LangsysApp.${method}: the last read of ${route} (${locale}) under these credentials failed, so none is sent until`, new Date(failed.retryAt));
             return empty();
         }
 
@@ -652,34 +658,33 @@ class LangsysAppClass {
         if (this.referenceLists.get(key)?.reading === reading) {
             if (list !== undefined) this.referenceLists.set(key, { list });
             else {
-                const failures = (held?.failures ?? 0) + 1;
-                this.referenceLists.set(key, { failures, retryAt: Date.now() + failureWindowMs(failures) });
+                const failures = (failed?.failures ?? 0) + 1;
+                const others = new Map(held?.failed);
+                this.referenceLists.set(key, { failed: others.set(sender, { failures, retryAt: Date.now() + failureWindowMs(failures) }) });
             }
         }
         return list === undefined ? empty() : answer(list);
     }
 
     /**
-     * An explicit refresh of one list and display locale: the held list and any failure window
-     * go, so the next call reads. The count of failures in a row stays, so a refresh that fails
-     * again widens CACHE-2's window as any failure in a row does.
+     * An explicit refresh of one list and display locale: the held list and every failure
+     * window go, so the next call reads. Each credentials' count of failures in a row stays, so
+     * a refresh that fails again widens CACHE-2's window as any failure in a row does.
      */
     private forgetReferenceList(key: string): void {
-        const failures = this.referenceLists.get(key)?.failures;
-        if (failures) this.referenceLists.set(key, { failures });
+        const failed = this.referenceLists.get(key)?.failed;
+        if (failed) this.referenceLists.set(key, { failed: new Map([...failed].map(([sender, { failures }]) => [sender, { failures }])) });
         else this.referenceLists.delete(key);
     }
 
     /**
-     * A reference list's display locale (REF-1): the one given, in WIRE-3's form, else the
-     * current one. WIRE-3's form, `_` read as `-` and lowercased, is the API's own for its
-     * locale codes, and a given locale is asked for as written, with no alias resolved. The
-     * current locale is the one the core serves, as `t()` and the catalog do, on both
-     * profiles: the request scope's, else the store's, each canonical, so a store holding
-     * `iw-IL` names its lists in `he-il`.
+     * A reference list's display locale (REF-1): the one given, else the current one, each
+     * canonical, as the core normalises the locale it serves. The current locale is the one
+     * `t()` and the catalog serve, on both profiles: the request scope's, else the store's. So
+     * a given `iw-IL` and a store holding `iw-IL` both name their lists in `he-il`.
      */
     private displayLocale(inLocale?: string): string {
-        if (inLocale) return wire3Locale(inLocale);
+        if (inLocale) return wire3Locale(canonicalizeLocale(inLocale));
         const current = activeScope()?.locale || canonicalizeLocale(this.config?.sUserLocale?.get?.() || '') || this.config?.baseLocale || 'en';
         return wire3Locale(current);
     }
@@ -867,8 +872,8 @@ function localeEntry(data: unknown, locale: string, grouped: boolean, empty: () 
 }
 
 /**
- * WIRE-3's form of a locale identifier: `_` read as `-`, lowercased, and nothing else, so a
- * display locale with a space anywhere is refused as REF-1 refuses any other not shaped as one.
+ * WIRE-3's form of a locale identifier: `_` read as `-`, lowercased, and nothing else. It is the
+ * form of the API's own codes, so a code a reference list answers keeps the code the API holds.
  */
 function wire3Locale(value: unknown): string {
     return typeof value === 'string' ? value.replace(/_/g, '-').toLowerCase() : '';

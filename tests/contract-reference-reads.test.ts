@@ -118,7 +118,7 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         expect(es).not.toEqual(await doubleList(route, 'en-us'));
     });
 
-    it('with no locale it answers the current locale’s list, and with one that locale’s, read in WIRE-3’s form', async () => {
+    it('with no locale it answers the current locale’s list, and with one that locale’s, canonical', async () => {
         await configured();
         expect(await call()).toEqual(await doubleList(route, 'es-es'));
         expect(await call('en_US')).toEqual(await doubleList(route, 'en-us'));
@@ -140,6 +140,20 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         expect(await call()).toEqual(posix);
         const scope = await createRequestScope({ locale: 'en_US_POSIX' });
         expect(await scope.run(() => call())).toEqual(posix);
+    });
+
+    it.each(['iw-IL', ' fr-FR '])('a given display locale is normalised as the current one: a given %j answers the list a store holding it answers', async (given) => {
+        resetSdk();
+        await LangsysApp.init({ projectid: 'p1', key: 'k1', UserLocaleStore: createSignal(given), baseLocale: 'en', apiUrl: fx.baseUrl });
+        const served = await call();
+        expect(served).not.toEqual(empty);
+        // Asked for as written, it would answer nothing: the table holds he-il and not iw-il,
+        // iw-il's path is failing, and a locale with spaces is not shaped as one. The current
+        // locale, es-es, answers another list.
+        await configured();
+        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path: `/${route}/iw-il`, status: 503 }] }));
+        expect(await call()).not.toEqual(served);
+        expect(await call(given)).toEqual(served);
     });
 
     it('two callers sharing one read each get their own copy', async () => {
@@ -164,7 +178,7 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         expect(await call('en-us')).toEqual(await doubleList(route, 'en-us'));
     });
 
-    it.each(['../projects', 'es/es', 'es?x=1', 'es-es#x', '%2e%2e', 'es es', ' es-es', 'es-es '])('a display locale shaped as %j sends nothing, answers the empty value and warns', async (bad) => {
+    it.each(['../projects', 'es/es', 'es?x=1', 'es-es#x', '%2e%2e', 'es es'])('a display locale shaped as %j sends nothing, answers the empty value and warns', async (bad) => {
         await configured();
         const sent = countRequests();
         expect(await call(bad)).toEqual(empty);
@@ -207,6 +221,23 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         expect(await call('fr-fr')).toEqual(empty);
         vi.setSystemTime(Date.now() + 3_000);
         expect(await call('fr-fr')).toEqual(await doubleList(route, 'fr-fr'));
+    });
+
+    it('the failure window is the credentials’ own: inside it, a read under the same credentials sends nothing, and one under other credentials sends and answers', async () => {
+        const path = route.startsWith('locales') ? `/${route}` : `/${route}/fr-fr`;
+        await configured();
+        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path, status: 503, times: 1 }], projects: [{ id: 'p2', base_locale: 'en-us', target_locales: ['fr-fr'] }], keys: [{ key: 'k2', project: 'p2', type: 'read' }] }));
+        vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+        expect(await call('fr-fr')).toEqual(empty);
+        // The fault is spent, so any read now would answer the list.
+        const same = await createRequestScope({ locale: 'es-es', credentials: { projectid: 'p1', key: 'k1' } });
+        expect(await same.run(() => call('fr-fr'))).toEqual(empty);
+        // A refusal under a third key is that key's own, and leaves the module's window as it was.
+        const refused = await createRequestScope({ locale: 'es-es', credentials: { projectid: 'p1', key: 'k-unknown' } });
+        expect(await refused.run(() => call('fr-fr'))).toEqual(empty);
+        expect(await call('fr-fr')).toEqual(empty);
+        const other = await createRequestScope({ locale: 'es-es', credentials: { projectid: 'p2', key: 'k2' } });
+        expect(await other.run(() => call('fr-fr'))).toEqual(await doubleList(route, 'fr-fr'));
     });
 
     it('unconfigured, it sends nothing, answers the empty value, and logs nothing of its own', async () => {
@@ -306,7 +337,8 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         await configured();
         const refused = await createRequestScope({ locale: 'en-us', credentials: { projectid: 'p1', key: 'k-unknown' } });
         expect(await refused.run(() => call())).toEqual(empty);
-        expect(await call('en-us')).toEqual(empty);
+        // The refusal's window is that key's: the module's own read inside it sends and answers.
+        expect(await call('en-us')).toEqual(await doubleList(route, 'en-us'));
 
         resetSdk();
         await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
@@ -337,16 +369,6 @@ describe.each(LOCALE_FORMS)('REF-1 against the contract double: $name answers th
         expect(posix).not.toEqual(empty);
     });
 
-    it('a display locale given is asked for as written, with no alias resolved: iw-IL asks for iw-il', async () => {
-        // A table holding iw-il and not he-il, so only a request for iw-il answers a list.
-        await fx.seed(seed({ ...REFERENCE, locales: [...REFERENCE.locales.filter((code) => code !== 'he-il'), 'iw-il'] }));
-        await configured();
-        expect(await doubleList(route, 'he-il')).toBeUndefined();
-        const iwIl = await doubleList(route, 'iw-il');
-        expect(iwIl).not.toEqual(empty);
-        expect(await call('iw-IL')).toEqual(iwIl);
-    });
-
     it('a display locale the API does not hold answers the empty value, held like any answer', async () => {
         await configured();
         vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
@@ -356,17 +378,6 @@ describe.each(LOCALE_FORMS)('REF-1 against the contract double: $name answers th
         // Past any failure window: an answer held, not a failure remembered.
         vi.setSystemTime(Date.now() + 600_000);
         expect(await call('xx-yy')).toEqual(empty);
-    });
-});
-
-describe.each(LISTS.filter((list) => !list.route.startsWith('locales')))('REF-1 against the contract double: $name asks for a given display locale as written', ({ route, call, empty }) => {
-    it('iw-IL asks for iw-il, not he-il: with a fault on he-il’s path, it answers iw-il’s list', async () => {
-        await configured();
-        // ICU names a list in iw-il as it does in he-il, so only the path tells them apart.
-        const iwIl = await doubleList(route, 'iw-il');
-        expect(iwIl).not.toEqual(empty);
-        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path: `/${route}/he-il`, status: 503 }] }));
-        expect(await call('iw-IL')).toEqual(iwIl);
     });
 });
 
