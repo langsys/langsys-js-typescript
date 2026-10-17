@@ -590,7 +590,8 @@ class LangsysAppClass {
      * answer. Nothing here throws but `requireCredentials` (WIRE-4): a refused locale, a failed
      * read and an answer not of the list's shape answer `empty()` with the cause logged, and
      * a failed read is remembered for CACHE-2's window under its credentials, inside which a
-     * call under them sends nothing; a call under other credentials still reads.
+     * call under them sends nothing; a call under other credentials still reads, though one made
+     * while a read is in flight shares it, whoever sent it.
      * An unconfigured core sends nothing and logs nothing, whatever the display locale,
      * `init()`'s refusal being its one warning. Each caller gets its own copy of a held list,
      * so what one caller does to it never reaches the next; `copy: false` is for the core's own
@@ -623,7 +624,7 @@ class LangsysAppClass {
             const shared = await held.reading;
             return shared === undefined ? empty() : answer(shared);
         }
-        // CACHE-2's window is the credentials' own: a key refused in one scope holds back no other's read.
+        // CACHE-2's window is the credentials' own: a read that failed under one key holds back no other key's read.
         const sender = `${credentials.projectid}\0${credentials.key}`;
         const failed = held?.failed?.get(sender);
         if (failed?.retryAt !== undefined && Date.now() < failed.retryAt) {
