@@ -37,8 +37,8 @@ const RESEEDED = {
     currencies: [{ code: 'CHF', name: 'Swiss Franc', symbol: 'CHF' }],
 };
 
-const seed = (reference: unknown = REFERENCE, extra: { format?: string; faults?: unknown[]; keys?: unknown[] } = {}) => ({
-    projects: [{ id: 'p1', base_locale: 'en-us', target_locales: ['fr-fr'], locale_code_format: extra.format ?? 'lowercase-hyphen' }],
+const seed = (reference: unknown = REFERENCE, extra: { format?: string; faults?: unknown[]; keys?: unknown[]; projects?: unknown[] } = {}) => ({
+    projects: [{ id: 'p1', base_locale: 'en-us', target_locales: ['fr-fr'], locale_code_format: extra.format ?? 'lowercase-hyphen' }, ...(extra.projects ?? [])],
     keys: [{ key: 'k1', project: 'p1', type: 'read' }, ...(extra.keys ?? [])],
     reference,
     faults: extra.faults ?? [],
@@ -292,6 +292,16 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         expect(await second.run(() => call())).toEqual(held);
     });
 
+    it('one hold serves every project: a request scope under another project, with its own key, answers the held list with no read', async () => {
+        await configured();
+        const held = await call('fr-fr');
+        expect(held).toEqual(await doubleList(route, 'fr-fr'));
+        await fx.seed(seed(RESEEDED, { projects: [{ id: 'p2', base_locale: 'en-us', target_locales: ['fr-fr'] }], keys: [{ key: 'k2', project: 'p2', type: 'read' }] }));
+        expect(await doubleList(route, 'fr-fr', 'k2')).not.toEqual(held);
+        const other = await createRequestScope({ locale: 'fr-fr', credentials: { projectid: 'p2', key: 'k2' } });
+        expect(await other.run(() => call())).toEqual(held);
+    });
+
     it('a request scope reads under its own credentials: a scope’s refused key answers empty under a configured module, and a valid one answers under an unconfigured module', async () => {
         await configured();
         const refused = await createRequestScope({ locale: 'en-us', credentials: { projectid: 'p1', key: 'k-unknown' } });
@@ -419,6 +429,24 @@ describe('REF-1 against the contract double: what reads the held lists', () => {
         expect(await LangsysApp.getLocalesData('fr-fr')).toEqual([]);
         vi.setSystemTime(Date.now() + 3_000);
         expect(await LangsysApp.getLocalesData('fr-fr')).toEqual(await doubleList('locales/data', 'fr-fr'));
+    });
+
+    it('the first success resets the count, as CACHE-2 does: a refresh failing after it opens the first window, not a wider one', async () => {
+        await configured();
+        const failing = seed(REFERENCE, { faults: [{ method: 'GET', path: '/locales/data', status: 503 }] });
+        await fx.seed(failing);
+        vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+        expect(await LangsysApp.getLocalesData('fr-fr')).toEqual([]);
+        await fx.seed(seed());
+        vi.setSystemTime(Date.now() + 3_001);
+        const list = await LangsysApp.getLocalesData('fr-fr');
+        expect(list).toEqual(await doubleList('locales/data', 'fr-fr'));
+        await fx.seed(failing);
+        expect(await LangsysApp.getLocalesData('fr-fr', true)).toEqual([]);
+        await fx.seed(seed());
+        // The first failure after a success: 3 seconds, so a call 3 seconds on reads again.
+        vi.setSystemTime(Date.now() + 3_001);
+        expect(await LangsysApp.getLocalesData('fr-fr')).toEqual(list);
     });
 
     it('the locale data init() reads for getLocaleName never rejects, when a later init() was refused under requireCredentials', async () => {
