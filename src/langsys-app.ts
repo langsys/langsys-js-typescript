@@ -866,9 +866,12 @@ function localeEntry(data: unknown, locale: string, grouped: boolean, empty: () 
     return Object.values(entry).every((entries) => Array.isArray(entries)) ? entry : undefined;
 }
 
-/** WIRE-3's form of a locale identifier: trimmed, `_` read as `-`, lowercased, and nothing else. */
+/**
+ * WIRE-3's form of a locale identifier: `_` read as `-`, lowercased, and nothing else, so a
+ * display locale with a space anywhere is refused as REF-1 refuses any other not shaped as one.
+ */
 function wire3Locale(value: unknown): string {
-    return typeof value === 'string' ? value.trim().replace(/_/g, '-').toLowerCase() : '';
+    return typeof value === 'string' ? value.replace(/_/g, '-').toLowerCase() : '';
 }
 
 /** A locale list with every entry's `code` in WIRE-3's form, in the flat or data shape or grouped by language. */

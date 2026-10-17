@@ -69,7 +69,7 @@ async function doubleList(route: string, locale: string, key = 'k1'): Promise<un
     const body = await (await fetch(url, { headers: { 'x-authorization': key } })).json();
     if (!byLocale) return body.data;
     const [, entry] = Object.entries(body.data).find(([k]) => wire3(k) === locale) ?? [];
-    return wire3Codes(entry);
+    return entry === undefined ? undefined : wire3Codes(entry);
 }
 
 /** A configured core whose current locale is es-es. */
@@ -88,6 +88,9 @@ function countRequests(): string[] {
 
 let errors: ReturnType<typeof vi.spyOn>;
 const logged = () => errors.mock.calls.flat().map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join(' ');
+/** The lines a console method was called with that mention `text`, each as one string. */
+const linesWith = (calls: unknown[][], text: string) =>
+    calls.map((call) => call.map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join(' ')).filter((line) => line.includes(text));
 
 beforeAll(async () => {
     fx = await startContractFixture();
@@ -161,26 +164,31 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         expect(await call('en-us')).toEqual(await doubleList(route, 'en-us'));
     });
 
-    it.each(['../projects', 'es/es', 'es?x=1', 'es-es#x', '%2e%2e', 'es es'])('a display locale shaped as %s sends nothing and answers the empty value', async (bad) => {
+    it.each(['../projects', 'es/es', 'es?x=1', 'es-es#x', '%2e%2e', 'es es', ' es-es', 'es-es '])('a display locale shaped as %j sends nothing, answers the empty value and warns', async (bad) => {
         await configured();
         const sent = countRequests();
         expect(await call(bad)).toEqual(empty);
         expect(sent).toEqual([]);
+        expect(linesWith(vi.mocked(console.warn).mock.calls, `LangsysApp.${name}: "${wire3(bad)}" is not a locale`)).toHaveLength(1);
     });
 
     it.each([
-        ['an error status', { status: 500 }],
-        ['a dropped connection', { drop: true }],
-        ['an answer that is not of the list’s shape', { body: JSON.stringify({ status: true, data: route.startsWith('locales') ? { 'fr-fr': { Spanish: 'not a list' } } : { ES: 'Spain' } }) }],
-        ['an answer that is not JSON', { body: '<html>gateway</html>', content_type: 'text/html' }],
-    ])('with %s it answers the empty value and logs the cause; inside the window it sends nothing, and after it reads', async (_, fault) => {
+        ['an error status', { status: 500 }, 'HTTP 500'],
+        ['a dropped connection', { drop: true }, 'Error communicating with API Server'],
+        ['an answer that is not of the list’s shape', { body: JSON.stringify({ status: true, data: route.startsWith('locales') ? { 'fr-fr': { Spanish: 'not a list' } } : { ES: 'Spain' } }) }, "is not of the list's shape"],
+        ['an answer that is not JSON', { body: '<html>gateway</html>', content_type: 'text/html' }, 'is not valid JSON'],
+    ])('with %s it answers the empty value and logs the cause; inside the window it sends nothing, and after it reads', async (_, fault, cause) => {
         const path = route.startsWith('locales') ? `/${route}` : `/${route}/fr-fr`;
         // After init(), whose own read of the current locale's data would take the fault.
         await configured();
         await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path, ...fault }] }));
         vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
         expect(await call('fr-fr')).toEqual(empty);
-        expect(logged()).toContain(`LangsysApp.${name}`);
+        // The core's own line names the call, the list, the display locale and the cause.
+        const said = linesWith(errors.mock.calls, `LangsysApp.${name}`);
+        expect(said).toHaveLength(1);
+        expect(said[0]).toContain(`${route} (fr-fr)`);
+        expect(said[0]).toContain(cause);
         // The fault is spent, so a read now would answer the list: the window sends none.
         expect(await call('fr-fr')).toEqual(empty);
         vi.setSystemTime(Date.now() + 3_001);
@@ -319,11 +327,14 @@ describe.each(LOCALE_FORMS)('REF-1 against the contract double: $name answers th
         expect(posix).not.toEqual(empty);
     });
 
-    it('a display locale given is asked for as written, with no alias resolved: iw-IL asks for iw-il, which the API does not hold', async () => {
+    it('a display locale given is asked for as written, with no alias resolved: iw-IL asks for iw-il', async () => {
+        // A table holding iw-il and not he-il, so only a request for iw-il answers a list.
+        await fx.seed(seed({ ...REFERENCE, locales: [...REFERENCE.locales.filter((code) => code !== 'he-il'), 'iw-il'] }));
         await configured();
-        expect(REFERENCE.locales).not.toContain('iw-il');
-        expect(await doubleList(route, 'he-il')).not.toEqual(empty);
-        expect(await call('iw-IL')).toEqual(empty);
+        expect(await doubleList(route, 'he-il')).toBeUndefined();
+        const iwIl = await doubleList(route, 'iw-il');
+        expect(iwIl).not.toEqual(empty);
+        expect(await call('iw-IL')).toEqual(iwIl);
     });
 
     it('a display locale the API does not hold answers the empty value, held like any answer', async () => {
@@ -339,13 +350,13 @@ describe.each(LOCALE_FORMS)('REF-1 against the contract double: $name answers th
 });
 
 describe.each(LISTS.filter((list) => !list.route.startsWith('locales')))('REF-1 against the contract double: $name asks for a given display locale as written', ({ route, call, empty }) => {
-    it('iw-IL asks for iw-il, not he-il: a fault on iw-il’s path answers the empty value', async () => {
+    it('iw-IL asks for iw-il, not he-il: with a fault on he-il’s path, it answers iw-il’s list', async () => {
         await configured();
         // ICU names a list in iw-il as it does in he-il, so only the path tells them apart.
-        expect(await doubleList(route, 'iw-il')).not.toEqual(empty);
-        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path: `/${route}/iw-il`, status: 503 }] }));
-        vi.spyOn(console, 'error').mockImplementation(() => {});
-        expect(await call('iw-IL')).toEqual(empty);
+        const iwIl = await doubleList(route, 'iw-il');
+        expect(iwIl).not.toEqual(empty);
+        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path: `/${route}/he-il`, status: 503 }] }));
+        expect(await call('iw-IL')).toEqual(iwIl);
     });
 });
 

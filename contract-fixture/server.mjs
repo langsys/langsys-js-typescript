@@ -22,6 +22,7 @@
  */
 import { createServer } from 'node:http';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 // ---------------------------------------------------------------------------------------
 // State
@@ -694,8 +695,18 @@ const isIcuRoot = (visitor) => {
     return locale === 'und' || locale.split('-')[0] === 'root';
 };
 
-/** The currencies Symfony Intl's root bundle names, each by its code (symfony/intl v7.4.8, as langsys2 locks it). */
-const ROOT_CURRENCY_CODES = ['AUD', 'BRL', 'CAD', 'CNY', 'EUR', 'GBP', 'HKD', 'ILS', 'INR', 'JPY', 'KRW', 'MXN', 'NZD', 'PHP', 'TWD', 'USD', 'VND', 'XAF', 'XCD', 'XCG', 'XOF', 'XPF'];
+/**
+ * symfony/intl's data, as langsys2 locks it (symfony-intl.json): each locale with a currency
+ * bundle and the currencies its bundle names, and the locale aliases.
+ */
+const SYMFONY_INTL = JSON.parse(readFileSync(new URL('./symfony-intl.json', import.meta.url), 'utf8'));
+
+/** Whether a locale's currency bundle names a currency: undefined where it has no bundle. */
+function bundleNames(locale, code) {
+    const bundle = Object.hasOwn(SYMFONY_INTL.currency_bundles, locale) ? SYMFONY_INTL.currency_bundles[locale] : undefined;
+    if (!bundle) return undefined;
+    return bundle.holds ? bundle.holds.includes(code) : SYMFONY_INTL.all_currencies.includes(code) && !bundle.lacks.includes(code);
+}
 
 /** ICU's data for a display locale, or null for one it has none for or cannot parse. */
 function icuData(visitor) {
@@ -733,23 +744,59 @@ function rootName(type, code) {
     return subtags.length ? `${language} (${subtags.join(', ')})` : language;
 }
 
+/** PHP's locale_compose given no language: a ValueError, which CurrencyController does not catch. */
+class LocaleComposeError extends Error {}
+
 /**
- * Symfony Intl's Currencies::getName, as CurrencyController calls it: the name in the first
- * locale of the display locale's fallback chain that ICU has data for (`es-ES`, then `es`; a
- * one-subtag locale of two or three letters falls back to `en`, `en` to `root`). The root
- * bundle names only the currencies in ROOT_CURRENCY_CODES. Symfony throws, and the controller
- * keeps the stored name, for a code the chain's locale has no entry for, for `und` and any
- * locale starting `und-`, and for a one-subtag locale of four or more letters.
+ * PHP's locale_parse, for a display locale of the modelled shape: a language, then a script, a
+ * region and variants, with no extension or private-use subtag. `root` and `und` alone are
+ * empty, `und` names no language, a script is title-cased, a region of two or three letters or
+ * three digits upper-cased, and each later subtag is a variant, upper-cased.
+ */
+function localeParse(locale) {
+    if (locale === 'root' || locale === 'und') return [];
+    const subtags = locale.split('_');
+    const parsed = subtags[0] === 'und' ? [] : [['language', subtags[0].toLowerCase()]];
+    let at = 1;
+    if (/^[a-z]{4}$/i.test(subtags[at] ?? '')) parsed.push(['script', subtags[at][0].toUpperCase() + subtags[at++].slice(1).toLowerCase()]);
+    if (/^(?:[a-z]{2,3}|\d{3})$/i.test(subtags[at] ?? '')) parsed.push(['region', subtags[at++].toUpperCase()]);
+    for (let variant = 0; at < subtags.length; at++) parsed.push([`variant${variant++}`, subtags[at].toUpperCase()]);
+    return parsed;
+}
+
+/**
+ * Symfony Intl's Locale::getFallback: a locale of one subtag falls back to `en` when it is two or
+ * three characters long, `en` to `root`, and any other to nothing; a longer one drops its last
+ * subtag, through locale_compose, which throws when no language is left (`und_Latn_ES`).
+ */
+function symfonyFallback(locale) {
+    const parsed = localeParse(locale);
+    if (parsed.length === 1) {
+        if (parsed[0][0] === 'language' && parsed[0][1] === 'en') return 'root';
+        return locale.length < 4 ? 'en' : null;
+    }
+    parsed.pop();
+    if (!parsed.length) return null;
+    if (parsed[0][0] !== 'language') throw new LocaleComposeError(`locale_compose: no language in ${locale}`);
+    return parsed.map(([, subtag]) => subtag).join('_');
+}
+
+/**
+ * Symfony Intl's Currencies::getName as CurrencyController calls it, with the display locale's
+ * `-` turned to `_` and its case kept. BundleEntryReader resolves an alias, reads the locale's
+ * currency bundle if there is one, matched case-sensitively as on the backend's Linux hosts, and
+ * otherwise falls back; so `zh-tw` reads `zh_tw`, has no bundle, and is named in `zh`. The first
+ * bundle on the way that names the currency names it, as ICU names it in that bundle's locale,
+ * and `root` by its code. Undefined where Symfony throws a MissingResourceException, which the
+ * controller catches to keep the stored name; a LocaleComposeError where it throws a ValueError.
  */
 function symfonyCurrencyName(code, visitor) {
-    let locale = icuLocale(visitor);
-    while (locale) {
-        if (locale === 'und') return undefined;
-        if (locale === 'root') return ROOT_CURRENCY_CODES.includes(code.toUpperCase()) ? code.toUpperCase() : undefined;
-        if (icuData(locale)) return displayName('currency', code, locale, 'none');
-        if (locale.includes('-')) locale = locale.slice(0, locale.lastIndexOf('-'));
-        else if (locale === 'en') locale = 'root';
-        else locale = locale.length < 4 ? 'en' : null;
+    const currency = code.toUpperCase();
+    let locale = String(visitor).replace(/-/g, '_');
+    while (locale !== null) {
+        if (Object.hasOwn(SYMFONY_INTL.locale_aliases, locale)) locale = SYMFONY_INTL.locale_aliases[locale];
+        if (bundleNames(locale, currency)) return locale === 'root' ? currency : displayName('currency', currency, locale);
+        locale = symfonyFallback(locale);
     }
     return undefined;
 }
@@ -806,46 +853,53 @@ const LOCALES_INDEX_FIELDS = ['locales', 'project_id', 'append_target_locales', 
 
 /**
  * A query key as PHP's parse_str names it, leading spaces dropped: a key with a bracketed part
- * (`locales[]`, `locales[a]`, `foo[bar]`) by the name before the bracket, and in that name `.`,
- * a space and an unclosed `[` as `_`, so `append.target_locales` is `append_target_locales`. A
- * key with no name before its bracket (`[x]`) is dropped, as null.
+ * (`locales[]`, `locales[a]`, `foo[bar]`) by the name before the bracket, with `index` the text
+ * inside it, and in that name `.`, a space and an unclosed `[` as `_`, so
+ * `append.target_locales` is `append_target_locales`. A key with no name (`=1`, `[x]`) is
+ * dropped, as null.
  */
 function phpQueryKey(name) {
     const key = name.replace(/^ +/, '');
     const open = key.indexOf('[');
-    if (open === 0) return null;
-    const bracketed = open > 0 && key.indexOf(']', open) > open;
-    return { field: (bracketed ? key.slice(0, open) : key).replace(/[. []/g, '_'), bracketed };
+    if (!key || open === 0) return null;
+    const close = open > 0 ? key.indexOf(']', open) : -1;
+    if (close < 0) return { field: key.replace(/[. []/g, '_'), index: null };
+    return { field: key.slice(0, open).replace(/[. ]/g, '_'), index: key.slice(open + 1, close) };
 }
 
 /**
- * The query as LocalesIndexRequest receives it, keyed as PHP parses it. `locales` with a
- * bracket is a list and without one is not; each value is trimmed, an empty one null; and
- * request-dto-processor formats each listed locale as UsesLocales::formatLocale does, `_` to
- * `-` and lowercased. `undeclared` is every key the DTO does not declare, in order. As parse_str
- * does, a scalar field takes its last value, and `locales` takes the shape of its last key: a
- * key without a bracket replaces the list, and one with a bracket after it starts a new list.
+ * The query as LocalesIndexRequest receives it, keyed as PHP parses it, with TrimStrings and
+ * ConvertEmptyStringsToNull applied: each value trimmed, an empty one null. As parse_str does, a
+ * field given twice takes its last value, and `locales` the shape of its last key. A key without
+ * a bracket makes it a string, not a list, or absent when empty; a key with one adds to a list,
+ * started anew if `locales` was not one: `[]` at the next index, `[k]` at index k, replacing
+ * what was there. request-dto-processor formats each listed locale as UsesLocales::formatLocale
+ * does, `_` to `-` and lowercased. `undeclared` is every key the DTO does not declare, in order.
  */
 function localesQuery(url) {
-    let listed = [];
     const undeclared = [];
     const scalars = {};
-    let scalar = false;
+    let locales = null;
+    let next = 0;
     for (const [name, raw] of url.searchParams.entries()) {
         const key = phpQueryKey(name);
         if (!key) continue;
-        const { field, bracketed } = key;
+        const { field, index } = key;
         if (!LOCALES_INDEX_FIELDS.includes(field)) {
             if (!undeclared.includes(field)) undeclared.push(field);
         } else if (field === 'locales') {
-            if (!bracketed) [scalar, listed] = [true, []];
+            if (index === null) locales = clean(raw);
             else {
-                if (scalar) scalar = false;
-                const value = clean(raw);
-                if (value !== null) listed.push(formatLocale(value));
+                if (!(locales instanceof Map)) [locales, next] = [new Map(), 0];
+                // PHP keys an index that is a canonical integer by that integer.
+                const at = index === '' ? next : /^(?:0|-?[1-9]\d*)$/.test(index) ? Number(index) : index;
+                if (typeof at === 'number' && at >= next) next = at + 1;
+                locales.set(at, clean(raw));
             }
         } else scalars[field] = clean(raw);
     }
+    const scalar = typeof locales === 'string';
+    const listed = locales instanceof Map ? [...locales.values()].filter((value) => value !== null).map(formatLocale) : [];
     return { listed, scalar, undeclared, scalars };
 }
 
@@ -929,7 +983,13 @@ function referenceList(req, list, visitor, fullUrl) {
     if (Array.isArray(auth)) return auth;
     const deduct = deductRequest(auth.key);
     if (deduct) return deduct;
-    return [200, { status: true, data: REFERENCE_LISTS[list](visitor) }];
+    try {
+        return [200, { status: true, data: REFERENCE_LISTS[list](visitor) }];
+    } catch (error) {
+        // An exception the controller does not catch, rendered as the backend renders one.
+        if (error instanceof LocaleComposeError) return [500, statusError(500)];
+        throw error;
+    }
 }
 
 // ---------------------------------------------------------------------------------------

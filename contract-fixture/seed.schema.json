@@ -366,7 +366,7 @@
                             },
                             "name": {
                                 "type": "string",
-                                "description": "The stored name, answered where Symfony Intl throws: for a code the display locale's fallback chain has no entry for (under root, any but the 22 currencies its root bundle names), for und and a locale starting und-, and for a one-subtag display locale of four or more letters."
+                                "description": "The stored name, answered where Symfony Intl throws a MissingResourceException: for a currency no currency bundle on the display locale's fallback chain holds (symfony-intl.json), as for und, und with one more subtag, and a one-subtag display locale of four or more letters, whose chains end at once."
                             },
                             "symbol": {
                                 "type": "string"

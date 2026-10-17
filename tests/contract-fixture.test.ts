@@ -652,6 +652,27 @@ describe('the reference lists, as LocaleController, CountryController and Curren
         const scalar = await flat(`${q('es-es')}&locales=x&append_target_locales=0`);
         expect(scalar.body.error.errors).toEqual([expect.objectContaining({ field: 'locales', code: 'invalid_type' })]);
         expect(keysOf(await flat(`${q('fr-fr')}&locales=x&${q('es-es', '&append_target_locales=0')}`))).toEqual(['es-es']);
+        // A key with no name at all is dropped too, as one with a name is not.
+        expect(keysOf(await flat(`=1&${q('es-es', '&append_target_locales=0')}`))).toEqual(['es-es']);
+        expect(fields(await flat(`x=1&${q('es-es', '&append_target_locales=0')}`))).toEqual(['x']);
+    });
+
+    it('a locales index is a key, as PHP keys an array: a repeated index keeps its last value, and an empty locales is none', async () => {
+        await seedWith();
+        const at = (index: string, locale: string) => `locales%5B${index}%5D=${locale}`;
+        expect(keysOf(await flat(`${at('0', 'fr-fr')}&${at('0', 'es-es')}&append_target_locales=0`))).toEqual(['es-es']);
+        expect(keysOf(await flat(`${at('', 'fr-fr')}&${at('0', 'es-es')}&append_target_locales=0`))).toEqual(['es-es']);
+        expect(keysOf(await flat(`${at('a', 'fr-fr')}&${at('a', 'es-es')}&append_target_locales=0`))).toEqual(['es-es']);
+        // Two indexes keep two values; the table orders them.
+        expect(keysOf(await flat(`${at('0', 'fr-fr')}&${at('1', 'es-es')}&append_target_locales=0`))).toEqual(['fr-fr', 'es-es']);
+        expect(keysOf(await flat(`${at('5', 'fr-fr')}&${at('', 'es-es')}&append_target_locales=0`))).toEqual(['fr-fr', 'es-es']);
+        // An empty locales is null after ConvertEmptyStringsToNull, so it asks for none.
+        for (const empty of ['locales=', 'locales', 'locales=%20', `${q('es-es')}&locales=`]) {
+            const res = await flat(`${empty}&append_target_locales=0`);
+            expect(res.status, empty).toBe(200);
+            expect(keysOf(res), empty).toEqual([]);
+        }
+        expect((await flat('locales=x&append_target_locales=0')).status).toBe(422);
     });
 
     it('each display locale names the lists in its own language, with the organisation’s code format on keys and codes', async () => {
@@ -716,6 +737,42 @@ describe('the reference lists, as LocaleController, CountryController and Curren
         expect(await currencies('abcd')).toEqual(['Euro (stored)', 'Colón (stored)', 'Test currency (stored)']);
         expect(await currencies('und')).toEqual(['Euro (stored)', 'Colón (stored)', 'Test currency (stored)']);
         expect(await currencies('es_ES')).toEqual(['euro', 'colón costarricense', 'Test currency (stored)']);
+    });
+
+    it('a currency is named from the first Symfony bundle on the display locale’s chain that holds it, its locale matched by case as on the backend’s Linux hosts', async () => {
+        await seedWith();
+        const currencies = async (locale: string) => (await api(`/currencies/${locale}`, { key: 'k-read' })).body.data.map((c: { name: string }) => c.name);
+        const named = (locale: string) => ['EUR', 'CRC'].map((code) => new Intl.DisplayNames([locale], { type: 'currency' }).of(code));
+        const stored = 'Test currency (stored)';
+        // zh_tw has neither a bundle nor an alias (Symfony's is zh_TW), so it falls back to zh,
+        // Simplified; zh_TW's alias, and zh_hant_tw's fallback, reach zh_Hant, Traditional.
+        expect(named('zh')).not.toEqual(named('zh-Hant'));
+        expect(await currencies('zh-tw')).toEqual([...named('zh'), stored]);
+        expect(await currencies('zh_TW')).toEqual([...named('zh-Hant'), stored]);
+        expect(await currencies('zh-hant-tw')).toEqual([...named('zh-Hant'), stored]);
+        // pt_pt drops its region to pt; sr_latn_ba drops to sr_Latn, and sr_ba to sr.
+        expect(named('pt')).not.toEqual(named('pt-PT'));
+        expect(await currencies('pt-pt')).toEqual([...named('pt'), stored]);
+        expect(await currencies('sr-latn-ba')).toEqual([...named('sr-Latn'), stored]);
+        expect(await currencies('sr-ba')).toEqual([...named('sr'), stored]);
+        // nb has no bundle, and tl's alias fil none: both fall back to en. iw's alias he has one.
+        expect(await currencies('nb')).toEqual([...named('en'), stored]);
+        expect(await currencies('tl')).toEqual([...named('en'), stored]);
+        expect(await currencies('iw-il')).toEqual([...named('he'), stored]);
+        // hi_latn_in drops its region to hi_Latn, whose bundle holds CRC and not EUR, so EUR is
+        // named further along, in hi; hi_latn drops its script straight to hi.
+        expect(await currencies('hi-latn-in')).toEqual([named('hi')[0], named('hi-Latn')[1], stored]);
+        expect(await currencies('hi-latn')).toEqual([...named('hi'), stored]);
+    });
+
+    it('a display locale of und with two subtags more fails as the backend fails: Symfony throws a ValueError the controller does not catch', async () => {
+        await seedWith();
+        const res = await api('/currencies/und-latn-es', { key: 'k-read' });
+        expect(res.status).toBe(500);
+        expect(res.body.error.code).toBe('internal_error');
+        expect((await api('/countries/und-latn-es', { key: 'k-read' })).status).toBe(200);
+        // With one subtag more, Symfony throws a MissingResourceException, which keeps the stored names.
+        expect((await api('/currencies/und-es', { key: 'k-read' })).body.data.map((c: { name: string }) => c.name)).toEqual(['Euro (stored)', 'Colón (stored)', 'Test currency (stored)']);
     });
 
     it('a display locale ICU has no data for is named in English, its fallback; a currency ICU cannot name keeps its stored name', async () => {
