@@ -84,16 +84,20 @@ holds the Locale, Country, DialCode and Currency tables, in table order; names a
 Each route names its rows in the display locale through ICU, as the backend does through PHP's
 `\Locale` and Symfony Intl, so each display locale answers its own list: `Español (Costa Rica)`
 in `es-es`, `Spanish (Costa Rica)` in `en-us`. ICU reads `_` as `-` (`es_ES` is `es-es`), and its
-root locale, `root` or `und`, names a region by its code and a locale by its subtags
-(`es (ES)`). A display locale ICU has no data for falls back to the host's default locale; the
+root locale, `und` or any locale whose language is `root` (`root_ES` too), names a region by its
+code and a locale by its subtags (`es (ES)`); `und` with more subtags (`und_ES`) has no language
+and is not root. A display locale ICU has no data for falls back to the host's default locale; the
 double models a backend host whose default is English, which is PHP's `en_US_POSIX` with nothing
 set, so it answers such a locale in English whatever its own host's locale. The routes run
 `auth:sanctum` (`401`), duplicate requests, API-key authorization (`403`) and the usage balance
 (`402`), and nothing checks the display locale itself.
 
-Query keys are read as PHP's `parse_str` reads them: a key with a bracketed part by the name
-before the bracket (`locales[a]` is `locales`, `foo[bar]` is `foo`), and in a name `.`, a space
-and an unclosed `[` as `_` (`append.target_locales` is `append_target_locales`).
+Query keys are read as PHP's `parse_str` reads them, leading spaces dropped: a key with a
+bracketed part by the name before the bracket (`locales[a]` is `locales`, `foo[bar]` is `foo`),
+and in a name `.`, a space and an unclosed `[` as `_` (`append.target_locales` is
+`append_target_locales`). A key with no name before its bracket (`[x]`) is dropped. A key given
+twice takes its last value, and `locales` the shape of its last key: `locales=x&locales[]=es-es`
+is the list `[es-es]`, and `locales[]=es-es&locales=x` is not a list.
 
 - **The three locale forms** take their display locales as `locales[]` (`locales` alone is
   `422 invalid_type`). request-dto-processor runs after API-key authorization and before the
@@ -114,9 +118,11 @@ and an unclosed `[` as `_` (`append.target_locales` is `append_target_locales`).
   name}` by name, the name carrying the code as `Spain (+34)`, and **currencies** `{code, name,
   symbol, symbol_native, decimal_digits, rounding}` in table order. A currency is named as
   Symfony Intl names it, in the first locale of the display locale's fallback chain that ICU has
-  data for (`es-es`, then `es`; a one-subtag locale of two or three letters, then `en`; `root`
-  by code). Where Symfony throws, the stored name is kept: for `und`, for a one-subtag locale of
-  four or more letters, and for a code it has no entry for.
+  data for (`es-es`, then `es`; a one-subtag locale of two or three letters, then `en`, and `en`
+  then `root`). `root` names only the 22 currencies Symfony's root bundle holds, each by its
+  code (`EUR`, `USD`). Where Symfony throws, the stored name is kept: for a code the chain's
+  locale has no entry for (under `root`, every other currency), for `und` and a locale starting
+  `und-`, and for a one-subtag locale of four or more letters.
 
 **`write_enabled` is computed, never seeded.** A `write` key may write. An `ip_write` key may
 write when the source address is in its allow-list or in `renderer_egress_ips`. Any key may
@@ -180,6 +186,8 @@ fragment kept only when it is a route (`#/…` or `#!/…`).
   `throttle:api` limit of 120 requests a minute, a locale that is not one of the project's
   (`422`), the same routes served without the `/api` prefix, and the `Retry-After` and
   `X-RateLimit-*` headers on a `429`.
+- **A declared scalar field sent as a list** on the locale routes: `append_target_locales[]=0`
+  is read as its value, where the backend refuses it as not of its type.
 - **Routes outside the conformance contract**, among them the deprecated
   `locales/{locale}/{format}` the current locale routes replace. They answer `404`.
 - **On the list routes**, the `page`, `records_per_page`, `order_by` and `filter_by` parameters,

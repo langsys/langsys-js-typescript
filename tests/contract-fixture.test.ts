@@ -640,6 +640,20 @@ describe('the reference lists, as LocaleController, CountryController and Curren
         expect(refused.body.error.errors.map((e: { field: string }) => e.field)).toEqual(['foo']);
     });
 
+    it('query keys are read as PHP parses them: leading spaces dropped, a key with no name dropped, the last key deciding the shape of locales', async () => {
+        await seedWith();
+        const fields = (res: { body: { error: { errors: { field: string }[] } } }) => res.body.error.errors.map((e) => e.field);
+        expect(keysOf(await flat(`%20${q('es-es', '&append_target_locales=0')}`))).toEqual(['es-es']);
+        // A name with a space inside is still a field of its own, and undeclared.
+        expect(fields(await flat(`lo%20cales%5B%5D=es-es&append_target_locales=0`))).toEqual(['lo_cales']);
+        expect(keysOf(await flat(`%5Bx%5D=1&${q('es-es', '&append_target_locales=0')}`))).toEqual(['es-es']);
+        expect(fields(await flat(`x%5B%5D=1&${q('es-es', '&append_target_locales=0')}`))).toEqual(['x']);
+        expect(keysOf(await flat(`locales=x&${q('es-es', '&append_target_locales=0')}`))).toEqual(['es-es']);
+        const scalar = await flat(`${q('es-es')}&locales=x&append_target_locales=0`);
+        expect(scalar.body.error.errors).toEqual([expect.objectContaining({ field: 'locales', code: 'invalid_type' })]);
+        expect(keysOf(await flat(`${q('fr-fr')}&locales=x&${q('es-es', '&append_target_locales=0')}`))).toEqual(['es-es']);
+    });
+
     it('each display locale names the lists in its own language, with the organisation’s code format on keys and codes', async () => {
         await seedWith('posix');
         const es = (await flat(q('es-es', '&append_target_locales=0'))).body.data;
@@ -691,7 +705,13 @@ describe('the reference lists, as LocaleController, CountryController and Curren
         expect(await labels('es_ES')).toEqual(['Costa Rica', 'España', 'Estados Unidos']);
         expect(await labels('root')).toEqual(['CR', 'ES', 'US']);
         expect(await labels('und')).toEqual(['CR', 'ES', 'US']);
-        expect(await currencies('root')).toEqual(['EUR', 'CRC', 'Test currency (stored)']);
+        // Symfony's root bundle names a few currencies, EUR among them, by code; for the rest it throws.
+        expect(await currencies('root')).toEqual(['EUR', 'Colón (stored)', 'Test currency (stored)']);
+        expect(await labels('root_ES')).toEqual(['CR', 'ES', 'US']);
+        expect(await currencies('root_ES')).toEqual(['EUR', 'Colón (stored)', 'Test currency (stored)']);
+        // und with a region has no language: ICU names it in the host's default, and Symfony throws.
+        expect(await labels('und_ES')).toEqual(['Costa Rica', 'Spain', 'United States']);
+        expect(await currencies('und_ES')).toEqual(['Euro (stored)', 'Colón (stored)', 'Test currency (stored)']);
         // Symfony's fallback chain ends for a one-subtag locale of four or more letters, and for und.
         expect(await currencies('abcd')).toEqual(['Euro (stored)', 'Colón (stored)', 'Test currency (stored)']);
         expect(await currencies('und')).toEqual(['Euro (stored)', 'Colón (stored)', 'Test currency (stored)']);

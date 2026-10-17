@@ -128,8 +128,10 @@ To fail loudly instead, pass `requireCredentials: true`: `t()` then throws
 asynchronous render rejects with that error instead, as does the promise
 `registerBlock` returns for a block rendered as a tree. That holds for a
 component mounted before `init()` too: it rejects once `init()` refuses. The
-option fails on the first `t()` call or registration, so a block that only
-reads never fails: one with `register: false`, on any path, and one rendered
+reference lists fail the same way: each list call rejects with that error, and
+`getLocaleName`, which is synchronous, throws it. The option fails on the first
+`t()` call, registration or reference read, so a block that only renders never
+fails: one with `register: false`, on any path, and one rendered
 through `renderBlock` alone and never passed to `registerBlock`. Both show their
 source text.
 
@@ -702,7 +704,7 @@ const locales      = await LangsysApp.getLocales();      // { LanguageName: [{ c
 const localeName   = await LangsysApp.getLocaleNameWithLookup('es-ES', true, 'fr-FR'); // 'Espagnol'
 ```
 
-Each call takes an optional display locale, else the current one as `t()` serves it (inside a request scope, the scope's), and answers the list named in it, with locale codes in the API's lowercase `xx-yy` form (`_` read as `-`) whatever format the organization writes them in. A list is read once per display locale and held for the core's lifetime, so a country field on every page of a server costs one request per locale for the process; concurrent calls share one request, and each call answers its own copy, safe to sort or edit. No call throws: a failed read answers an empty list (`{}` for `getLocales`) and logs why, and that list and locale are not asked again until the catalog's failure window has passed (3 seconds, doubling to 5 minutes). A display locale that is not shaped as a locale is refused with nothing sent, and an unconfigured client answers empty lists without a request, or rejects under `requireCredentials`. `getLocalesData(locale, true)` and `refresh()` read the locale data again.
+Each call takes an optional display locale, else the current one as `t()` serves it (inside a request scope, the scope's), and answers the list named in it, with locale codes in the API's lowercase `xx-yy` form (`_` read as `-`) whatever format the organization writes them in. A list is read once per display locale and held for the core's lifetime, so a country field on every page of a server costs one request per locale for the process; concurrent calls share one request, and each call answers its own copy, safe to sort or edit. No call throws: a failed read answers an empty list (`{}` for `getLocales`) and logs why, and that list and locale are not asked again until the catalog's failure window has passed (3 seconds, doubling to 5 minutes). A display locale that is not shaped as a locale is refused with nothing sent, and an unconfigured client answers empty lists without a request, or rejects under `requireCredentials`; `getLocaleName` then answers `''`, or throws. `getLocalesData(locale, true)` and `refresh()` read the locale data again.
 
 ## The `Signal<T>` primitive
 

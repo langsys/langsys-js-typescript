@@ -685,6 +685,18 @@ const EU_COUNTRY_CODES = ['AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 
 /** A display locale as ICU reads it: `_` as `-`, so `es_ES` is `es-es`. */
 const icuLocale = (visitor) => String(visitor).replace(/_/g, '-').toLowerCase();
 
+/**
+ * ICU's root locale: `und`, and any locale whose language is `root` (`root_ES` too). A locale
+ * with `und` and more subtags (`und_ES`) has no language and falls back to the host's default.
+ */
+const isIcuRoot = (visitor) => {
+    const locale = icuLocale(visitor);
+    return locale === 'und' || locale.split('-')[0] === 'root';
+};
+
+/** The currencies Symfony Intl's root bundle names, each by its code (symfony/intl v7.4.8, as langsys2 locks it). */
+const ROOT_CURRENCY_CODES = ['AUD', 'BRL', 'CAD', 'CNY', 'EUR', 'GBP', 'HKD', 'ILS', 'INR', 'JPY', 'KRW', 'MXN', 'NZD', 'PHP', 'TWD', 'USD', 'VND', 'XAF', 'XCD', 'XCG', 'XOF', 'XPF'];
+
 /** ICU's data for a display locale, or null for one it has none for or cannot parse. */
 function icuData(visitor) {
     try {
@@ -695,8 +707,8 @@ function icuData(visitor) {
 }
 
 /**
- * ICU's display names, which the backend reads through PHP's \Locale. ICU's root locale, `root`
- * or `und`, names a region by its code and a locale by its subtags (`es (ES)`). A display
+ * ICU's display names, which the backend reads through PHP's \Locale. ICU's root locale (`root`,
+ * `root_ES`, `und`) names a region by its code and a locale by its subtags (`es (ES)`). A display
  * locale ICU has no data for, or cannot parse, falls back to the host's default locale; the
  * double models a backend host whose default is English, which is PHP's `en_US_POSIX` with
  * nothing set. A code ICU cannot name is named by itself, or with `fallback: 'none'` is
@@ -704,7 +716,7 @@ function icuData(visitor) {
  */
 function displayName(type, code, visitor, fallback = 'code') {
     const unnamed = fallback === 'code' ? code : undefined;
-    if (['root', 'und'].includes(icuLocale(visitor))) return rootName(type, code);
+    if (isIcuRoot(visitor)) return rootName(type, code);
     const names = new Intl.DisplayNames([icuData(visitor) ?? 'en'], { type, languageDisplay: 'standard', fallback });
     try {
         return names.of(code) ?? unnamed;
@@ -724,16 +736,16 @@ function rootName(type, code) {
 /**
  * Symfony Intl's Currencies::getName, as CurrencyController calls it: the name in the first
  * locale of the display locale's fallback chain that ICU has data for (`es-ES`, then `es`; a
- * one-subtag locale of two or three letters falls back to `en`, `en` to `root`). The chain
- * ends, and Symfony throws, for `und` and for a one-subtag locale of four or more letters, and
- * for a code it has no entry for; the controller then keeps the stored name.
+ * one-subtag locale of two or three letters falls back to `en`, `en` to `root`). The root
+ * bundle names only the currencies in ROOT_CURRENCY_CODES. Symfony throws, and the controller
+ * keeps the stored name, for a code the chain's locale has no entry for, for `und` and any
+ * locale starting `und-`, and for a one-subtag locale of four or more letters.
  */
 function symfonyCurrencyName(code, visitor) {
     let locale = icuLocale(visitor);
     while (locale) {
         if (locale === 'und') return undefined;
-        // Root names a currency by its code, one Symfony has an entry for.
-        if (locale === 'root') return displayName('currency', code, 'en', 'none') === undefined ? undefined : code.toUpperCase();
+        if (locale === 'root') return ROOT_CURRENCY_CODES.includes(code.toUpperCase()) ? code.toUpperCase() : undefined;
         if (icuData(locale)) return displayName('currency', code, locale, 'none');
         if (locale.includes('-')) locale = locale.slice(0, locale.lastIndexOf('-'));
         else if (locale === 'en') locale = 'root';
@@ -793,35 +805,42 @@ function formatCodes(value, format) {
 const LOCALES_INDEX_FIELDS = ['locales', 'project_id', 'append_target_locales', 'user_locale'];
 
 /**
- * A query key as PHP's parse_str names it: a key with a bracketed part (`locales[]`,
- * `locales[a]`, `foo[bar]`) by the name before the bracket, and in that name `.`, a space and
- * an unclosed `[` as `_`, so `append.target_locales` is `append_target_locales`.
+ * A query key as PHP's parse_str names it, leading spaces dropped: a key with a bracketed part
+ * (`locales[]`, `locales[a]`, `foo[bar]`) by the name before the bracket, and in that name `.`,
+ * a space and an unclosed `[` as `_`, so `append.target_locales` is `append_target_locales`. A
+ * key with no name before its bracket (`[x]`) is dropped, as null.
  */
 function phpQueryKey(name) {
-    const open = name.indexOf('[');
-    const bracketed = open > 0 && name.indexOf(']', open) > open;
-    return { field: (bracketed ? name.slice(0, open) : name).replace(/[. []/g, '_'), bracketed };
+    const key = name.replace(/^ +/, '');
+    const open = key.indexOf('[');
+    if (open === 0) return null;
+    const bracketed = open > 0 && key.indexOf(']', open) > open;
+    return { field: (bracketed ? key.slice(0, open) : key).replace(/[. []/g, '_'), bracketed };
 }
 
 /**
  * The query as LocalesIndexRequest receives it, keyed as PHP parses it. `locales` with a
  * bracket is a list and without one is not; each value is trimmed, an empty one null; and
  * request-dto-processor formats each listed locale as UsesLocales::formatLocale does, `_` to
- * `-` and lowercased. `undeclared` is every key the DTO does not declare, in order. A scalar
- * field takes its last value, as parse_str does.
+ * `-` and lowercased. `undeclared` is every key the DTO does not declare, in order. As parse_str
+ * does, a scalar field takes its last value, and `locales` takes the shape of its last key: a
+ * key without a bracket replaces the list, and one with a bracket after it starts a new list.
  */
 function localesQuery(url) {
-    const listed = [];
+    let listed = [];
     const undeclared = [];
     const scalars = {};
     let scalar = false;
     for (const [name, raw] of url.searchParams.entries()) {
-        const { field, bracketed } = phpQueryKey(name);
+        const key = phpQueryKey(name);
+        if (!key) continue;
+        const { field, bracketed } = key;
         if (!LOCALES_INDEX_FIELDS.includes(field)) {
             if (!undeclared.includes(field)) undeclared.push(field);
         } else if (field === 'locales') {
-            if (!bracketed) scalar = true;
+            if (!bracketed) [scalar, listed] = [true, []];
             else {
+                if (scalar) scalar = false;
                 const value = clean(raw);
                 if (value !== null) listed.push(formatLocale(value));
             }

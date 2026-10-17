@@ -319,6 +319,13 @@ describe.each(LOCALE_FORMS)('REF-1 against the contract double: $name answers th
         expect(posix).not.toEqual(empty);
     });
 
+    it('a display locale given is asked for as written, with no alias resolved: iw-IL asks for iw-il, which the API does not hold', async () => {
+        await configured();
+        expect(REFERENCE.locales).not.toContain('iw-il');
+        expect(await doubleList(route, 'he-il')).not.toEqual(empty);
+        expect(await call('iw-IL')).toEqual(empty);
+    });
+
     it('a display locale the API does not hold answers the empty value, held like any answer', async () => {
         await configured();
         vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
@@ -328,6 +335,17 @@ describe.each(LOCALE_FORMS)('REF-1 against the contract double: $name answers th
         // Past any failure window: an answer held, not a failure remembered.
         vi.setSystemTime(Date.now() + 600_000);
         expect(await call('xx-yy')).toEqual(empty);
+    });
+});
+
+describe.each(LISTS.filter((list) => !list.route.startsWith('locales')))('REF-1 against the contract double: $name asks for a given display locale as written', ({ route, call, empty }) => {
+    it('iw-IL asks for iw-il, not he-il: a fault on iw-il’s path answers the empty value', async () => {
+        await configured();
+        // ICU names a list in iw-il as it does in he-il, so only the path tells them apart.
+        expect(await doubleList(route, 'iw-il')).not.toEqual(empty);
+        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path: `/${route}/iw-il`, status: 503 }] }));
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        expect(await call('iw-IL')).toEqual(empty);
     });
 });
 
