@@ -29,7 +29,7 @@ import { activeCatalog, activeScope } from './scope-context.js';
 import { isBlockHandled, isServerCollected, markBlockHandled, rememberSeededBlock } from './served-source.js';
 import { debugNotice } from './notices.js';
 import { claimHost } from './hosts.js';
-import { earlierRichPhrase, groupRuns, renderRun, runToken, toRichNodes, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
+import { earlierRichPhrase, groupRuns, renderRun, runToken, toRichNodes, type MarkerNode, type RunItem, type VarMarker, type VarRun } from './var-markers.js';
 import { config as configStore, currentlyLoadedLocale } from './stores.js';
 import type { CatalogView } from './translations.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -746,12 +746,15 @@ function renderNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved = 
     }
 }
 
+/** What a phrase's markup token stands for when it renders: an element, or a marked value served with its marker. */
+type PhraseSlot = { element: ViewElement; opaque: boolean } | { marker: VarMarker<ViewNode> };
+
 /** A phrase host's children, rendered as `Phrase._render` renders them, from a view. */
 function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] {
     const { category = '', params = {} } = options;
     const values: Record<string, string> = {};
     const children = host.childNodes as unknown as MarkerNode[];
-    const slotOf = (element: MarkerNode, opaque: boolean) => ({ element: element as unknown as ViewElement, opaque });
+    const slotOf = (element: MarkerNode, opaque: boolean): PhraseSlot => ({ element: element as unknown as ViewElement, opaque });
     const { phrase, slots: keyed } = encodeRichPhrase(toRichNodes(children, slotOf, values));
     if (!phrase) return host.childNodes;
     let translated = LangsysApp.Translations.lookup(phrase, category);
@@ -766,15 +769,17 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
         for (const [name, value] of Object.entries(earlier.values)) if (!(name in values)) values[name] = value;
     }
     const locale = currentlyLoadedLocale.get();
-    // Served as source, a phrase with marked values keeps its markers (VAR-3), so a
-    // reader on the client reads each value as its placeholder. The caller's params
-    // fill it as they fill its render: a name written in its text, a marked value the
-    // caller names, and an author's exclusion (TOK-1).
-    if (translated === null && Object.keys(values).length) return withSourceFilled(host.childNodes, { ...values, ...params }, params, locale);
     // A translation from the catalog is marked resolved, as a block's host is, so a
     // client never reads it as the source phrase (GATE-10).
     if (translated !== null && locale && locale !== configStore.baseLocale) host.setAttribute(RESOLVED_MARKER_ATTR, locale);
-    const raw = translated ?? phrase;
+    let raw = translated ?? phrase;
+    // Served as source, a phrase with marked values renders as a translation does, the
+    // whole sentence interpolated at once. Each marked value is a markup slot holding its
+    // placeholder, so it keeps its marker (VAR-3) and a reader on the client reads it as
+    // its placeholder.
+    if (translated === null && Object.keys(values).length) {
+        ({ phrase: raw, slots } = encodeRichPhrase(toRichNodes(children, slotOf, {}, true, (marker): PhraseSlot => ({ marker: marker as unknown as VarMarker<ViewNode> }))));
+    }
     const resolved = interpolate(raw, { ...values, ...params, ...markupTokenValues(slots.length) }, locale);
     const parts = splitSentinels(resolved);
     if (!parts) return [new ViewText(stripSentinels(resolved))];
@@ -787,6 +792,20 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
         else if ('open' in part) {
             const slot = slots[part.open];
             if (!slot) return [new ViewText(stripSentinels(resolved))];
+            if ('marker' in slot) {
+                // A marked value: its value as the sentence interpolated it, inside its marker.
+                const [open, close] = slot.marker.frame as [ViewNode, ViewNode?];
+                if (close) {
+                    current.push(open);
+                    stack.push(current);
+                } else {
+                    const element = open as ViewElement;
+                    const clone = new ViewElement(element.tagName, Object.fromEntries(element.attrs), [], element.source);
+                    current.push(clone);
+                    stack.push(clone.childNodes);
+                }
+                continue;
+            }
             const { element, opaque } = slot;
             // Opaque (TOK-1): its source content as given, the caller's params filled into an
             // author's exclusion as plain text, and whatever a translation put inside its pair dropped.
@@ -794,42 +813,14 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
             const clone = new ViewElement(element.tagName, Object.fromEntries(element.attrs), shown, element.source);
             current.push(clone);
             stack.push(opaque ? [] : clone.childNodes);
-        } else stack.pop();
+        } else {
+            stack.pop();
+            const slot = slots[part.close];
+            const close = slot && 'marker' in slot ? slot.marker.frame[1] : undefined;
+            if (close) stack[stack.length - 1]!.push(close);
+        }
     }
     return top;
-}
-
-/**
- * Source content filled as its render fills it, each marker kept around its value: its
- * text interpolated with `fill`, a marked value the caller names written as that param,
- * and each author's exclusion filled with the caller's params (`withParams`). Code is
- * copied as it is.
- */
-function withSourceFilled(
-    nodes: readonly ViewNode[],
-    fill: Readonly<Record<string, unknown>>,
-    params: Readonly<Record<string, unknown>>,
-    locale: string
-): ViewNode[] {
-    const filled = (node: ViewNode): ViewNode => {
-        if (node instanceof ViewText) return new ViewText(interpolate(node.nodeValue, fill, locale));
-        if (!(node instanceof ViewElement) || NON_TRANSLATABLE_ELEMENTS.includes(node.tagName.toLowerCase())) return node;
-        const children = takesParams(node as unknown as Element) ? withParams(node.childNodes, params) : withSourceFilled(node.childNodes, fill, params, locale);
-        return new ViewElement(node.tagName, Object.fromEntries(node.attrs), children, node.source);
-    };
-    return (groupRuns(nodes as unknown as MarkerNode[]) as unknown as RunItem<ViewNode>[]).flatMap((item) => {
-        if (!('run' in item)) return [filled(item.node)];
-        return item.run.parts.flatMap((part) => {
-            if ('text' in part) return [filled(part.text)];
-            const { name, value, frame } = part.marker;
-            const [open, close] = frame as [ViewNode, ViewNode?];
-            const shown = name in params ? [new ViewText(interpolate(`{${name}}`, params, locale))] : value;
-            if (close) return [open, ...shown, close];
-            // The attribute form: the marking element, around the value shown.
-            const element = open as ViewElement;
-            return [new ViewElement(element.tagName, Object.fromEntries(element.attrs), shown, element.source)];
-        });
-    });
 }
 
 /** Opaque content copied with the caller's params filled into its text (`fillOpaqueText`); code is copied as it is. */

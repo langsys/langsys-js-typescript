@@ -250,12 +250,16 @@ function splitAtMarkers(template: string, names: string[]): string[] | null {
  *
  * `exclude: false` walks into opaque elements, as the reader did before TOK-1 bound
  * this path: the earlier key a phrase holding one was registered under (`earlierRichPhrase`).
+ *
+ * With `marker`, each marked value is a markup slot holding its placeholder, with
+ * `marker`'s payload: how a phrase served as its source renders inside its markers.
  */
 export function toRichNodes<N extends MarkerNode, T>(
     children: ArrayLike<N>,
     payload: (element: N, opaque: boolean) => T,
     values: Record<string, string> = {},
-    exclude = true
+    exclude = true,
+    marker?: (marker: VarMarker<N>) => T
 ): RichTextNode<T>[] {
     const out: RichTextNode<T>[] = [];
     for (const item of groupRuns(children)) {
@@ -263,7 +267,7 @@ export function toRichNodes<N extends MarkerNode, T>(
             for (const part of item.run.parts) {
                 if ('text' in part) out.push({ text: part.text.nodeValue ?? '' });
                 else {
-                    out.push({ param: part.marker.name });
+                    out.push(marker ? { children: [{ param: part.marker.name }], payload: marker(part.marker) } : { param: part.marker.name });
                     if (!(part.marker.name in values)) {
                         values[part.marker.name] = normalizeTokenText(part.marker.value.map((node) => node.nodeValue ?? '').join(''));
                     }
@@ -275,7 +279,7 @@ export function toRichNodes<N extends MarkerNode, T>(
         if (node.nodeType === TEXT) out.push({ text: node.nodeValue ?? '' });
         else if (node.nodeType === ELEMENT) {
             const opaque = isOpaqueInPhrase(node as unknown as AttributeReader);
-            const children = opaque && exclude ? [] : toRichNodes(node.childNodes as ArrayLike<N>, payload, values, exclude);
+            const children = opaque && exclude ? [] : toRichNodes(node.childNodes as ArrayLike<N>, payload, values, exclude, marker);
             out.push({ children, payload: payload(node, opaque) });
         }
     }

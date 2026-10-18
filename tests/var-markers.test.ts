@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangsysAppAPI } from '../src/api.js';
-import { registerBlock, renderBlock, serializeTree, tokenizeTree, warnUnrenderedBlock, type BlockNode } from '../src/block-tree.js';
+import { registerBlock, renderBlock, serializeTree, tokenizeTree, warnUnrenderedBlock, type BlockNode, type RenderedNode } from '../src/block-tree.js';
 import { generateCustomId } from '../src/content-block.js';
 import { _resetDiscoveryState } from '../src/discovery.js';
 import { LangsysApp } from '../src/langsys-app.js';
@@ -251,7 +251,7 @@ describe('VAR-3 as tree nodes: the same token, rendered with the typed param', (
         expect(serializeTree(renderBlock(host, { category: 'UI' }).nodes as BlockNode[])).toBe('<span data-ls-phrase>Based on <!--ls:n-->3<!--/ls--> reviews</span>');
     });
 
-    describe('a phrase host served as source on a miss is filled as its render fills it, its markers kept', () => {
+    describe('a phrase host served as source on a miss renders as its render does, its markers kept', () => {
         // Found by the Svelte lane: a name written beside a marked value stayed as written on a miss.
         const marked: BlockNode[] = [{ comment: 'ls:user_name' }, { text: 'Ana' }, { comment: '/ls' }];
         const params = { user_name: 'Ana', name: 'NICK' };
@@ -270,22 +270,92 @@ describe('VAR-3 as tree nodes: the same token, rendered with the typed param', (
             );
         });
 
-        it('a marked value the caller names shows the caller’s param, in either form', () => {
+        it('a marked value the caller names shows the caller’s param, in either form, a number written for the locale', () => {
             const attribute: BlockNode = { tag: 'span', attrs: { 'data-ls-param': 'user_name' }, children: [{ text: 'Ana' }] };
+            const points: BlockNode[] = [{ comment: 'ls:points' }, { text: '12345' }, { comment: '/ls' }];
             expect(serializeTree(render([{ text: 'Hi ' }, ...marked], { user_name: 'Bea' }))).toBe('<span data-ls-phrase>Hi <!--ls:user_name-->Bea<!--/ls--></span>');
             expect(serializeTree(render([{ text: 'Hi ' }, attribute], { user_name: 'Bea' }))).toBe('<span data-ls-phrase>Hi <span data-ls-param="user_name">Bea</span></span>');
+            expect(serializeTree(render([{ text: 'You have ' }, ...points, { text: ' points' }], { points: 12345 }))).toBe(
+                '<span data-ls-phrase>You have <!--ls:points-->12.345<!--/ls--> points</span>'
+            );
         });
 
-        it('a name the caller does not pass stays as written', () => {
-            expect(serializeTree(render([{ text: 'Hi %other% {other}, ' }, ...marked], params))).toBe('<span data-ls-phrase>Hi %other% {other}, <!--ls:user_name-->Ana<!--/ls--></span>');
+        it('each element keeps the source index of the input element it renders', () => {
+            const attribute: BlockNode = { tag: 'span', attrs: { 'data-ls-param': 'user_name' }, children: [{ text: 'Ana' }] };
+            const sources = (nodes: RenderedNode[]): number[] => nodes.flatMap((n) => ('tag' in n ? [n.source, ...sources(n.children)] : []));
+            const children: BlockNode[] = [{ text: 'Hi ' }, { tag: 'b', attrs: {}, children: [{ text: '%name%' }] }, { text: ', ' }, attribute, { text: ' and ' }, { tag: 'i', attrs: {}, children: marked }];
+            const out = renderBlock([{ tag: 'span', attrs: { 'data-ls-phrase': true }, children }], { category: 'UI', params }).nodes;
+            expect(serializeTree(out as BlockNode[])).toBe(
+                '<span data-ls-phrase>Hi <b>NICK</b>, <span data-ls-param="user_name">Ana</span> and <i><!--ls:user_name-->Ana<!--/ls--></i></span>'
+            );
+            expect(sources(out)).toEqual([0, 1, 2, 3]);
+        });
+
+        it('a marked value inside inline markup keeps its marker there', () => {
+            expect(serializeTree(render([{ text: 'Signed in as ' }, { tag: 'b', attrs: {}, children: marked }, { text: ', %name%' }], params))).toBe(
+                '<span data-ls-phrase>Signed in as <b><!--ls:user_name-->Ana<!--/ls--></b>, NICK</span>'
+            );
+        });
+
+        it('a name the caller does not pass is its placeholder, as the Phrase class shows it', async () => {
+            expect(serializeTree(render([{ text: 'Hi %other% {other}, ' }, ...marked], params))).toBe('<span data-ls-phrase>Hi {other} {other}, <!--ls:user_name-->Ana<!--/ls--></span>');
+            const host = mount('<span data-ls-phrase>Hi %other% {other}, <!--ls:user_name-->Ana<!--/ls--></span>').firstElementChild! as HTMLElement;
+            live.push(new Phrase(host, { category: 'UI', params }));
+            await settle();
+            expect(host.textContent).toBe('Hi {other} {other}, Ana');
+        });
+
+        describe('an ICU argument the host splits renders as a hit on its source does', () => {
+            // Found by the Svelte lane: interpolated a text node at a time, the argument never parsed.
+            const b: BlockNode = { tag: 'b', attrs: {}, children: [{ text: '#' }] };
+            const cases: Array<[string, BlockNode[], Record<string, ParamPrimitive>, string, string]> = [
+                [
+                    'a marked value inside a branch',
+                    [{ text: '{n, plural, one {# item for ' }, ...marked, { text: '} other {# items for ' }, ...marked, { text: '}}' }],
+                    { n: 1, user_name: 'Ana' },
+                    '{n, plural, one {# item for {user_name}} other {# items for {user_name}}}',
+                    '<span data-ls-phrase>1 item for <!--ls:user_name-->Ana<!--/ls--></span>',
+                ],
+                [
+                    'inline markup inside the argument',
+                    [{ text: 'You have {n, plural, one {' }, b, { text: ' item} other {' }, b, { text: ' items}} from ' }, ...marked],
+                    { n: 3, user_name: 'Ana' },
+                    'You have {n, plural, one {{m0o}#{m0c} item} other {{m1o}#{m1c} items}} from {user_name}',
+                    '<span data-ls-phrase>You have <b>3</b> items from <!--ls:user_name-->Ana<!--/ls--></span>',
+                ],
+                [
+                    'a written number beside an ICU argument',
+                    [{ text: '{c, plural, one {# item} other {# items}} for ' }, ...marked, { text: ', %points% points' }],
+                    { c: 2, points: 12345, user_name: 'Ana' },
+                    '{c, plural, one {# item} other {# items}} for {user_name}, {points} points',
+                    '<span data-ls-phrase>2 items for <!--ls:user_name-->Ana<!--/ls-->, 12345 points</span>',
+                ],
+                [
+                    'a marked number the caller names beside an ICU argument',
+                    [{ text: '{c, plural, one {# item} other {# items}}, ' }, { comment: 'ls:points' }, { text: '12345' }, { comment: '/ls' }, { text: ' points' }],
+                    { c: 2, points: 12345 },
+                    '{c, plural, one {# item} other {# items}}, {points} points',
+                    '<span data-ls-phrase>2 items, <!--ls:points-->12345<!--/ls--> points</span>',
+                ],
+            ];
+            it.each(cases)('%s', (_shape, children, with_, key, served) => {
+                const miss = render(children, with_);
+                expect(serializeTree(miss)).toBe(served);
+                // Control: the source as the catalog's translation, a hit, shows the same text.
+                catalog({ [key]: key });
+                const hit = render(children, with_);
+                expect(serializeTree(hit)).toContain('data-ls-resolved');
+                expect(textOf(hit)).toBe(textOf(miss));
+            });
         });
 
         it('control: the DOM Phrase shows the same text on the miss, and a hit shows the translation', async () => {
+            // The miss first: the Phrase class's flush puts the phrase in the catalog as its own text.
+            expect(textOf(render([{ text: 'Hi %name%, ' }, ...marked], params))).toBe('Hi NICK, Ana');
             const host = mount('<span data-ls-phrase>Hi %name%, <!--ls:user_name-->Ana<!--/ls--></span>').firstElementChild! as HTMLElement;
             live.push(new Phrase(host, { category: 'UI', params }));
             await settle();
             expect(host.textContent).toBe('Hi NICK, Ana');
-            expect(textOf(render([{ text: 'Hi %name%, ' }, ...marked], params))).toBe('Hi NICK, Ana');
             catalog({ 'Hi {name}, {user_name}': 'Ciao {name}, {user_name}' });
             expect(textOf(render([{ text: 'Hi %name%, ' }, ...marked], params))).toBe('Ciao NICK, Ana');
         });
