@@ -378,6 +378,20 @@ describe('VAR-3 as tree nodes: the same token, rendered with the typed param', (
                 await settle();
                 expect(host.innerHTML).toBe('Type <code>DELETE</code> to remove 2 files');
             });
+
+            it('the Phrase class renders a quoted element as its element under the earlier key too (TOK-1)', async () => {
+                // A read-only session: nothing it registers is stored over the earlier key's translation.
+                writeEnabled.set(false);
+                catalog({
+                    "Type '{m0o}DELETE{m0c}' for {m1o}Acme{m1c}: {n, plural, one {# file} other {# files}}":
+                        "Escriba '{m0o}BORRAR{m0c}' para {m1o}Acme{m1c}: {n, plural, one {# archivo} other {# archivos}}",
+                });
+                const host = mount("<span data-ls-phrase>Type '<code>DELETE</code>' for <span translate=\"no\">Acme</span>: {n, plural, one {# file} other {# files}}</span>")
+                    .firstElementChild! as HTMLElement;
+                live.push(new Phrase(host, { category: 'UI', params: { n: 2 } }));
+                await settle();
+                expect(host.innerHTML).toBe('Escriba <code>BORRAR</code> para <span translate="no">Acme</span>: 2 archivos');
+            });
         });
 
         it('control: the miss shows the text the DOM Phrase shows, and a hit shows the translation', async () => {
