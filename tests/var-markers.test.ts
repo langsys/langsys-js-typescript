@@ -337,6 +337,21 @@ describe('VAR-3 as tree nodes: the same token, rendered with the typed param', (
                     '{c, plural, one {# item} other {# items}}, {points} points',
                     '<span data-ls-phrase>2 items, <!--ls:points-->12345<!--/ls--> points</span>',
                 ],
+                [
+                    'a marked date the caller names, and a written boolean, beside an ICU argument',
+                    [{ text: '{n, plural, one {# item} other {# items}} since ' }, { comment: 'ls:since' }, { text: 'yesterday' }, { comment: '/ls' }, { text: ', pinned %pinned%' }],
+                    { n: 3, since: new Date(2026, 9, 18), pinned: false },
+                    '{n, plural, one {# item} other {# items}} since {since}, pinned {pinned}',
+                    `<span data-ls-phrase>3 items since <!--ls:since-->${new Intl.DateTimeFormat('es-es', { dateStyle: 'medium' }).format(new Date(2026, 9, 18))}<!--/ls-->, pinned false</span>`,
+                ],
+                [
+                    // An apostrophe before `{` quotes in ICU, on a hit as here: no markup token shows.
+                    'a quoted marked value in a phrase with an ICU argument',
+                    [{ text: "Delete '" }, { comment: 'ls:name' }, { text: 'Ana' }, { comment: '/ls' }, { text: "' and its {n, plural, one {# file} other {# files}}?" }],
+                    { n: 2, name: 'Ana' },
+                    "Delete '{name}' and its {n, plural, one {# file} other {# files}}?",
+                    '<span data-ls-phrase>Delete <!--ls:name-->{name}<!--/ls--> and its 2 files?</span>',
+                ],
             ];
             it.each(cases)('%s', (_shape, children, with_, key, served) => {
                 const miss = render(children, with_);
@@ -349,7 +364,7 @@ describe('VAR-3 as tree nodes: the same token, rendered with the typed param', (
             });
         });
 
-        it('control: the DOM Phrase shows the same text on the miss, and a hit shows the translation', async () => {
+        it('control: the miss shows the text the DOM Phrase shows, and a hit shows the translation', async () => {
             // The miss first: the Phrase class's flush puts the phrase in the catalog as its own text.
             expect(textOf(render([{ text: 'Hi %name%, ' }, ...marked], params))).toBe('Hi NICK, Ana');
             const host = mount('<span data-ls-phrase>Hi %name%, <!--ls:user_name-->Ana<!--/ls--></span>').firstElementChild! as HTMLElement;

@@ -204,7 +204,7 @@ export function interpolate(
         let formatterError: unknown;
         if (!hasNullParam) {
             try {
-                return new IntlMessageFormat(template, resolved).format(params) as string;
+                return formatIcu(new IntlMessageFormat(template, resolved), params, resolved);
             } catch (error) {
                 formatterError = error;
             }
@@ -232,7 +232,7 @@ export function interpolate(
         }
         if (defaulted.length || formatterError === undefined) {
             try {
-                return new IntlMessageFormat(recovered as never, resolved).format(params) as string;
+                return formatIcu(new IntlMessageFormat(recovered as never, resolved), params, resolved);
             } catch (error) {
                 formatterError = error;
             }
@@ -513,6 +513,18 @@ function renderWithoutFormatter(nodes: IcuNode[], params: Record<string, unknown
         }
     }
     return out;
+}
+
+/**
+ * An ICU message formatted to one string. The formatter returns its parts instead when a
+ * plain argument is neither a string nor a number (a Date, or `true`), and writes `false`
+ * as nothing; so a boolean goes in as `true` or `false`, and any other part is written as
+ * the simple path writes it (`formatScalar`).
+ */
+function formatIcu(message: IntlMessageFormat, params: Record<string, unknown>, locale: string): string {
+    const scalars = Object.fromEntries(Object.entries(params ?? {}).map(([name, value]) => [name, typeof value === 'boolean' ? String(value) : value]));
+    const out: unknown = message.format(scalars as never);
+    return Array.isArray(out) ? out.map((part) => (typeof part === 'string' ? part : formatScalar(part, locale))).join('') : String(out);
 }
 
 /** A supplied value as the simple path renders it: CLDR numbers and medium dates. */

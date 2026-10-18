@@ -145,6 +145,20 @@ describe('interpolate — mixed ICU + simple slots', () => {
         expect(interpolate(tpl, { name: 'Sarah', n: 1 }, 'en')).toBe('Hello Sarah, 1 alert');
         expect(interpolate(tpl, { name: 'Sarah', n: 5 }, 'en')).toBe('Hello Sarah, 5 alerts');
     });
+
+    it('writes a Date or a boolean in a plain argument as the simple path does, as one string', () => {
+        const d = new Date('2026-05-27T12:00:00.000Z');
+        const tpl = '{n, plural, one {# alert} other {# alerts}} since {d}; muted {a}, pinned {b}';
+        const out = interpolate(tpl, { n: 2, d, a: true, b: false }, 'de-DE');
+        expect(out).toBe(`2 alerts since ${interpolate('{d}', { d }, 'de-DE')}; muted true, pinned false`);
+        expect(typeof out).toBe('string');
+    });
+
+    it('control: a boolean still selects its branch', () => {
+        const tpl = '{a, select, true {on} false {off} other {?}} {n, plural, one {# item} other {# items}}';
+        expect(interpolate(tpl, { a: true, n: 1 }, 'en')).toBe('on 1 item');
+        expect(interpolate(tpl, { a: false, n: 1 }, 'en')).toBe('off 1 item');
+    });
 });
 
 describe('interpolate — malformed ICU fallback', () => {
