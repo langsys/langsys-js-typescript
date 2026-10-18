@@ -1225,9 +1225,12 @@ export class Translations {
                         __symbol__: lookupCat,
                     } as iTranslations;
                 }
-                // Known now, as its own text, unless that catalog already holds it: a switch's
-                // catalog, published while the request was out, may carry its translation.
-                if (!Object.prototype.hasOwnProperty.call(latest[lookupCat], tokenObj.token)) latest[lookupCat][tokenObj.token] = tokenObj.token;
+                // Known now, with no translation, as the API serves such a phrase (`null`), unless that
+                // catalog already holds it: a switch's catalog, published while the request was out,
+                // may carry its translation. Known by key presence, it is never sent again; `lookup`
+                // reads it as a miss, so an earlier key's translation still renders (TOK-1) and its
+                // source is never marked resolved (GATE-10).
+                if (!Object.prototype.hasOwnProperty.call(latest[lookupCat], tokenObj.token)) latest[lookupCat][tokenObj.token] = null as unknown as string;
                 latest[lookupCat]['__category__'] = lookupCat;
             });
             sTranslations.set({ ...latest });

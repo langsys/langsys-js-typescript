@@ -7,7 +7,7 @@ import { LangsysApp } from '../src/langsys-app.js';
 import { Phrase } from '../src/phrase.js';
 import { Translate } from '../src/translate.js';
 import { createSignal } from '../src/signal.js';
-import { currentlyLoadedLocale } from '../src/stores.js';
+import { currentlyLoadedLocale, sTranslations } from '../src/stores.js';
 import canonicalization from './fixtures/canonicalization-reference.json';
 import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
 import { resetSdk, until } from './helpers/sdk-session.js';
@@ -40,6 +40,8 @@ type Seeded = { phrase: string; category?: string; translations?: Record<string,
 const seedWith = (phrases: Seeded[] = [], blocks: { category: string; custom_id: string; phrases: Seeded[] }[] = []) =>
     fx.seed({ projects: [{ ...PROJECT, phrases, blocks }], keys: [{ key: 'k-write', project: 'p1', type: 'write' }] });
 const stored = async () => (await fx.state()).projects.p1.phrases.map((p) => p.phrase);
+/** Whether this session's catalog holds the phrase: its registration has flushed. */
+const heldLocally = (phrase: string) => Object.prototype.hasOwnProperty.call(sTranslations.get().UI ?? {}, phrase);
 
 async function client() {
     resetSdk();
@@ -208,6 +210,9 @@ describe('a phrase registered under its earlier key renders that translation and
         expect(host.querySelector('span')).toBe(span);
         await until(async () => (await stored()).includes(row.expected_phrase));
         expect(await stored()).not.toContain(row.earlier_phrase);
+        // Its registration flushed, the current key is known with no translation, so the earlier one still renders.
+        await until(() => heldLocally(row.expected_phrase));
+        expect(host.innerHTML).toBe('Bienvenido a <span translate="no">Langsys</span>, <b>amigo</b>');
     });
 
     it('tree path: the earlier translation renders with the element restored from source, and only the current key registers', async () => {
@@ -221,6 +226,19 @@ describe('a phrase registered under its earlier key renders that translation and
         void registerBlock(tree, { category: 'UI' });
         await until(async () => (await stored()).includes(row.expected_phrase));
         expect(await stored()).not.toContain(row.earlier_phrase);
+        await until(() => heldLocally(row.expected_phrase));
+        expect(serializeTree(renderBlock(phraseHost(row.html), { category: 'UI' }).nodes)).toBe(
+            '<span data-ls-phrase data-ls-resolved="es-es">Bienvenido a <span translate="no">Langsys</span>, <b>amigo</b></span>'
+        );
+    });
+
+    it('a phrase with no translation anywhere renders its source, never marked resolved, once its registration has flushed (GATE-10)', async () => {
+        await client();
+        const html = 'Hello <b>new</b> world';
+        void registerBlock(phraseHost(html), { category: 'UI' });
+        await until(() => heldLocally('Hello {m0o}new{m0c} world'));
+        expect(await stored()).toContain('Hello {m0o}new{m0c} world');
+        expect(serializeTree(renderBlock(phraseHost(html), { category: 'UI' }).nodes)).toBe('<span data-ls-phrase>Hello <b>new</b> world</span>');
     });
 
     it('control: with the current key translated, the earlier one is not consulted', async () => {

@@ -123,6 +123,8 @@ heading records the INTENT rather than the number. There is no summary-regenerat
 
 ### Fixed
 
+- **A phrase a write session registers is held as the API serves it, with no translation.** The core stored a phrase it had just registered as its own text, which reads as a translation. So once its registration was sent, a `<Phrase>` whose translation is under its earlier key (TOK-1) fell back to its source, and `renderBlock` marked a phrase's source text resolved (GATE-10). It is now held as `null`, as the API serves a registered phrase with no translation: known, so never sent again, and read as a miss.
+
 - **A quoted element in an ICU `<Phrase>` renders as its element.** In an ICU phrase an apostrophe before `{` quotes, so `Type '<code>DELETE</code>' to remove {n, plural, …}` showed its markup token, `{m0o}DELETE{m0c}`, in place of the element, through the `Phrase` class and `renderBlock` alike, and a served translation quoting one was never recovered. The element renders on every path, and no markup token reaches the page.
 
 - **An ICU phrase writes a Date or a boolean as a plain phrase does.** In a plain argument of an ICU phrase (`{n, plural, …} since {d}`), a Date or `true` came back from `t()` as the formatter's parts, an array a page printed as `since ,Sun Oct 18 2026 …`, and `false` came back as nothing. Each is now written as the simple path writes it, a medium date for the locale, `true` or `false`, and `t()` returns one string. A boolean still selects its branch.
