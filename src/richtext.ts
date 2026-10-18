@@ -30,6 +30,7 @@
 //   open(i)  = U+E000  <i>  U+E001
 //   close(i) = U+E002  <i>  U+E003
 import { encodeRichPhrase, isOpaqueInPhrase, isTranslationExcluded, NON_TRANSLATABLE_ELEMENTS } from './identity.js';
+import { interpolate } from './interpolate.js';
 import { earlierRichPhrase, paramElementName, toRichNodes, type MarkerNode } from './var-markers.js';
 
 const SENT_OPEN_START = String.fromCharCode(0xe000);
@@ -133,6 +134,17 @@ export function markupTokenValues(slotCount: number): Record<string, string> {
         values[`m${i}c`] = `${SENT_CLOSE_START}${i}${SENT_CLOSE_END}`;
     }
     return values;
+}
+
+/**
+ * A rich phrase interpolated with its markup tokens as sentinels (`markupTokenValues`).
+ * In an ICU phrase an apostrophe before `{` quotes, so a token can come out as written;
+ * it is read as its sentinel too, so its element renders and no `{mNo}` reaches the page.
+ */
+export function interpolateRich(template: string, params: Record<string, unknown>, slotCount: number, locale: string): string {
+    const tokens = markupTokenValues(slotCount);
+    const resolved = interpolate(template, { ...params, ...tokens }, locale);
+    return resolved.replace(/\{(m\d+[oc])\}/g, (whole, token: string) => tokens[token] ?? whole);
 }
 
 /**

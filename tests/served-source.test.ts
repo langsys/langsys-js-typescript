@@ -240,6 +240,18 @@ describe('Phrase over a served host renders the next locale from the source phra
         expect(misses()).toEqual([]);
     });
 
+    it('recovers a translation that quotes an element in an ICU phrase, rendered as its element', async () => {
+        const key = "Type '{m0o}DELETE{m0c}' to remove {n, plural, one {# file} other {# files}}";
+        catalog({ [key]: "Scrivi '{m0o}DELETE{m0c}' per rimuovere {n, plural, one {# file} other {# file}}" }, 'it-it');
+        const p = mount('<p data-ls-phrase data-ls-resolved="it-it">Scrivi <code>DELETE</code> per rimuovere 2 file</p>').querySelector('p')!;
+        live.push(new Phrase(p as HTMLElement, { category: 'UI', params: { n: 2 } }));
+        await settle();
+        catalog({ [key]: "Tapez '{m0o}DELETE{m0c}' pour supprimer {n, plural, one {# fichier} other {# fichiers}}" }, 'fr-fr');
+        await settle();
+        expect(p.innerHTML).toBe('Tapez <code>DELETE</code> pour supprimer 2 fichiers');
+        expect(misses()).toEqual([]);
+    });
+
     it('maps a served translation’s reordered elements back to their source slots', async () => {
         const key = 'A {m0o}big{m0c} {m1o}world{m1c}';
         catalog({ [key]: '{m1o}mondo{m1c} {m0o}grande{m0c}' }, 'it-it');

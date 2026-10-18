@@ -352,6 +352,13 @@ describe('VAR-3 as tree nodes: the same token, rendered with the typed param', (
                     "Delete '{name}' and its {n, plural, one {# file} other {# files}}?",
                     '<span data-ls-phrase>Delete <!--ls:name-->{name}<!--/ls--> and its 2 files?</span>',
                 ],
+                [
+                    'a quoted element in a phrase with an ICU argument',
+                    [{ text: "Type '" }, { tag: 'code', attrs: {}, children: [{ text: 'DELETE' }] }, { text: "' to remove " }, ...marked, { text: ' and her {n, plural, one {# file} other {# files}}' }],
+                    { n: 2, user_name: 'Ana' },
+                    "Type '{m0o}DELETE{m0c}' to remove {user_name} and her {n, plural, one {# file} other {# files}}",
+                    '<span data-ls-phrase>Type <code>DELETE</code> to remove <!--ls:user_name-->Ana<!--/ls--> and her 2 files</span>',
+                ],
             ];
             it.each(cases)('%s', (_shape, children, with_, key, served) => {
                 const miss = render(children, with_);
@@ -361,6 +368,15 @@ describe('VAR-3 as tree nodes: the same token, rendered with the typed param', (
                 const hit = render(children, with_);
                 expect(serializeTree(hit)).toContain('data-ls-resolved');
                 expect(textOf(hit)).toBe(textOf(miss));
+            });
+
+            it('a quoted element renders as its element with no marked value too, on the tree path and in the Phrase class', async () => {
+                const children: BlockNode[] = [{ text: "Type '" }, { tag: 'code', attrs: {}, children: [{ text: 'DELETE' }] }, { text: "' to remove {n, plural, one {# file} other {# files}}" }];
+                expect(serializeTree(render(children, { n: 2 }))).toBe('<span data-ls-phrase>Type <code>DELETE</code> to remove 2 files</span>');
+                const host = mount("<span data-ls-phrase>Type '<code>DELETE</code>' to remove {n, plural, one {# file} other {# files}}</span>").firstElementChild! as HTMLElement;
+                live.push(new Phrase(host, { category: 'UI', params: { n: 2 } }));
+                await settle();
+                expect(host.innerHTML).toBe('Type <code>DELETE</code> to remove 2 files');
             });
         });
 

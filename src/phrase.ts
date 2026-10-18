@@ -1,7 +1,7 @@
-import { interpolate, warnUnmatchedParams } from './interpolate.js';
+import { warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { isOpaqueInPhrase } from './identity.js';
-import { applyInPlace, encodeRichText, fillOpaque, markupTokenValues, reconstitute, takesParams, type EncodedRichText, type RichSlot } from './richtext.js';
+import { applyInPlace, encodeRichText, fillOpaque, interpolateRich, reconstitute, takesParams, type EncodedRichText, type RichSlot } from './richtext.js';
 import type { Unsubscriber } from './signal.js';
 import { currentlyLoadedLocale, navigationEpoch, sTranslations } from './stores.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -223,14 +223,13 @@ export class Phrase {
         const earlier = translated === null && this.earlier ? LangsysApp.Translations.lookup(this.earlier.phrase, this.category) : null;
         if (earlier !== null) {
             const { slots, values } = this.earlier!;
-            const resolved = interpolate(earlier, { ...values, ...this.values, ...this.params, ...markupTokenValues(slots.length) }, currentlyLoadedLocale.get());
+            const resolved = interpolateRich(earlier, { ...values, ...this.values, ...this.params }, slots.length, currentlyLoadedLocale.get());
             this.host.replaceChildren(...reconstitute(resolved, slots, this.host.ownerDocument ?? document));
             fillOpaque(slots, this.params);
             return;
         }
         const raw = translated ?? this.phrase;
-        const params = { ...this.values, ...this.params, ...markupTokenValues(this.slots.length) };
-        const resolved = interpolate(raw, params, currentlyLoadedLocale.get());
+        const resolved = interpolateRich(raw, { ...this.values, ...this.params }, this.slots.length, currentlyLoadedLocale.get());
         // Into the nodes already there when the translation keeps the markup's shape, so a
         // framework's references to them stay live; rebuilt only when it does not.
         if (!applyInPlace(this.host, resolved, (element) => this.slotOf.get(element))) {

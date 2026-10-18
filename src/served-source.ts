@@ -2,7 +2,7 @@ import type { SeededBlock, SeededPhrase } from './block-tree.js';
 import { tokenSlots, type TokenSlot } from './content-block.js';
 import { normalizeMarkupPlaceholders, normalizeTokenText } from './identity.js';
 import { interpolate } from './interpolate.js';
-import { markupTokenValues, splitSentinels } from './richtext.js';
+import { interpolateRich, splitSentinels } from './richtext.js';
 import { runToken, type MarkerNode, type VarRun } from './var-markers.js';
 import { logger } from './logger.js';
 import { activeCatalog } from './scope-context.js';
@@ -149,7 +149,6 @@ export function recoverPhraseSource(
     if (!bucket || typeof bucket !== 'object') return null;
     const locale = currentlyLoadedLocale.get();
     const target = textOf(servedPhrase);
-    const values = { ...params, ...markupTokenValues(slotCount) };
     const found: Array<{ phrase: string; order: number[] }> = [];
     for (const [key, value] of Object.entries(bucket as unknown as Record<string, unknown>)) {
         if (key.startsWith('__') || (value !== null && typeof value === 'object')) continue;
@@ -157,7 +156,7 @@ export function recoverPhraseSource(
         // Translated, or as itself: a phrase can be served in its source.
         const texts = typeof value === 'string' && value ? [value, key] : [key];
         for (const text of texts) {
-            const resolved = interpolate(text, values, locale);
+            const resolved = interpolateRich(text, params, slotCount, locale);
             if (textOf(resolved) !== target) continue;
             const parts = splitSentinels(resolved);
             const order = parts?.flatMap((part) => ('open' in part ? [part.open] : [])) ?? [];

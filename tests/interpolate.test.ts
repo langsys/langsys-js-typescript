@@ -154,6 +154,18 @@ describe('interpolate — mixed ICU + simple slots', () => {
         expect(typeof out).toBe('string');
     });
 
+    it('the same where an argument is recovered: one the caller does not pass, and a null one', () => {
+        const d = new Date('2026-05-27T12:00:00.000Z');
+        const medium = interpolate('{d}', { d }, 'es-ES');
+        expect(interpolate('{g, select, f {Ella} other {Elle}} desde {d}, fijado {b}', { d, b: false }, 'es-ES')).toBe(`Elle desde ${medium}, fijado false`);
+        expect(interpolate('{n, plural, one {# item} other {# items}} since {d}, pinned {b}', { n: null, d, b: true }, 'es-ES')).toBe(`{n} items since ${medium}, pinned true`);
+    });
+
+    it('a Date that is the whole output of its branch is written as the simple path writes it', () => {
+        const d = new Date('2026-05-27T12:00:00.000Z');
+        expect(interpolate('{s, select, done {{d}} other {pending}}', { s: 'done', d }, 'de-DE')).toBe(interpolate('{d}', { d }, 'de-DE'));
+    });
+
     it('control: a boolean still selects its branch', () => {
         const tpl = '{a, select, true {on} false {off} other {?}} {n, plural, one {# item} other {# items}}';
         expect(interpolate(tpl, { a: true, n: 1 }, 'en')).toBe('on 1 item');

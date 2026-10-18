@@ -516,15 +516,17 @@ function renderWithoutFormatter(nodes: IcuNode[], params: Record<string, unknown
 }
 
 /**
- * An ICU message formatted to one string. The formatter returns its parts instead when a
- * plain argument is neither a string nor a number (a Date, or `true`), and writes `false`
- * as nothing; so a boolean goes in as `true` or `false`, and any other part is written as
- * the simple path writes it (`formatScalar`).
+ * An ICU message formatted to one string. When a plain argument is neither a string nor a
+ * number (a Date, or `true`), the formatter returns its parts instead, or that one value
+ * when it is the whole output, and it writes `false` as nothing. So a boolean goes in as
+ * `true` or `false`, and any value that is not a string is written as the simple path
+ * writes it (`formatScalar`).
  */
 function formatIcu(message: IntlMessageFormat, params: Record<string, unknown>, locale: string): string {
     const scalars = Object.fromEntries(Object.entries(params ?? {}).map(([name, value]) => [name, typeof value === 'boolean' ? String(value) : value]));
     const out: unknown = message.format(scalars as never);
-    return Array.isArray(out) ? out.map((part) => (typeof part === 'string' ? part : formatScalar(part, locale))).join('') : String(out);
+    if (typeof out === 'string') return out;
+    return Array.isArray(out) ? out.map((part) => (typeof part === 'string' ? part : formatScalar(part, locale))).join('') : formatScalar(out, locale);
 }
 
 /** A supplied value as the simple path renders it: CLDR numbers and medium dates. */

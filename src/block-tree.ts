@@ -24,7 +24,7 @@ import {
 import { encodeRichPhrase, generateCustomId, historicalCustomIds, NON_TRANSLATABLE_ELEMENTS, normalizeMarkupPlaceholders, normalizeTokenText } from './identity.js';
 import { interpolate, isICU } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
-import { fillOpaqueText, markupTokenValues, splitSentinels, stripSentinels, takesParams } from './richtext.js';
+import { fillOpaqueText, interpolateRich, splitSentinels, stripSentinels, takesParams } from './richtext.js';
 import { activeCatalog, activeScope } from './scope-context.js';
 import { isBlockHandled, isServerCollected, markBlockHandled, rememberSeededBlock } from './served-source.js';
 import { debugNotice } from './notices.js';
@@ -777,15 +777,10 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
     // whole sentence interpolated at once. Each marked value is a markup slot holding its
     // placeholder, so it keeps its marker (VAR-3) and a reader on the client reads it as
     // its placeholder.
-    const fromSource = translated === null && Object.keys(values).length > 0;
-    if (fromSource) {
+    if (translated === null && Object.keys(values).length) {
         ({ phrase: raw, slots } = encodeRichPhrase(toRichNodes(children, slotOf, {}, true, (marker): PhraseSlot => ({ marker: marker as unknown as VarMarker<ViewNode> }))));
     }
-    const tokens = markupTokenValues(slots.length);
-    let resolved = interpolate(raw, { ...values, ...params, ...tokens }, locale);
-    // In an ICU phrase an apostrophe before `{` quotes, so a markup token of the source's
-    // own encoding can come out as written; it renders as its slot, never as `{mNo}`.
-    if (fromSource) resolved = resolved.replace(/\{(m\d+[oc])\}/g, (whole, token: string) => tokens[token] ?? whole);
+    const resolved = interpolateRich(raw, { ...values, ...params }, slots.length, locale);
     const parts = splitSentinels(resolved);
     if (!parts) return [new ViewText(stripSentinels(resolved))];
 
