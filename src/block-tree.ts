@@ -765,11 +765,12 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
         slots = earlier.slots;
         for (const [name, value] of Object.entries(earlier.values)) if (!(name in values)) values[name] = value;
     }
-    // Served as source, a phrase with marked values keeps its markers (VAR-3), so a
-    // reader on the client reads the same phrase. The caller's params still fill an
-    // author's exclusion, as they do when the phrase renders (TOK-1).
-    if (translated === null && Object.keys(values).length) return withExclusionsFilled(host.childNodes, params);
     const locale = currentlyLoadedLocale.get();
+    // Served as source, a phrase with marked values keeps its markers (VAR-3), so a
+    // reader on the client reads each value as its placeholder. The caller's params
+    // fill it as they fill its render: a name written in its text, a marked value the
+    // caller names, and an author's exclusion (TOK-1).
+    if (translated === null && Object.keys(values).length) return withSourceFilled(host.childNodes, { ...values, ...params }, params, locale);
     // A translation from the catalog is marked resolved, as a block's host is, so a
     // client never reads it as the source phrase (GATE-10).
     if (translated !== null && locale && locale !== configStore.baseLocale) host.setAttribute(RESOLVED_MARKER_ATTR, locale);
@@ -798,12 +799,36 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
     return top;
 }
 
-/** Source content as given, with the caller's params filled into each author's exclusion inside it. */
-function withExclusionsFilled(nodes: readonly ViewNode[], params: Readonly<Record<string, unknown>>): ViewNode[] {
-    return nodes.map((node) => {
+/**
+ * Source content filled as its render fills it, each marker kept around its value: its
+ * text interpolated with `fill`, a marked value the caller names written as that param,
+ * and each author's exclusion filled with the caller's params (`withParams`). Code is
+ * copied as it is.
+ */
+function withSourceFilled(
+    nodes: readonly ViewNode[],
+    fill: Readonly<Record<string, unknown>>,
+    params: Readonly<Record<string, unknown>>,
+    locale: string
+): ViewNode[] {
+    const filled = (node: ViewNode): ViewNode => {
+        if (node instanceof ViewText) return new ViewText(interpolate(node.nodeValue, fill, locale));
         if (!(node instanceof ViewElement) || NON_TRANSLATABLE_ELEMENTS.includes(node.tagName.toLowerCase())) return node;
-        const children = takesParams(node as unknown as Element) ? withParams(node.childNodes, params) : withExclusionsFilled(node.childNodes, params);
+        const children = takesParams(node as unknown as Element) ? withParams(node.childNodes, params) : withSourceFilled(node.childNodes, fill, params, locale);
         return new ViewElement(node.tagName, Object.fromEntries(node.attrs), children, node.source);
+    };
+    return (groupRuns(nodes as unknown as MarkerNode[]) as unknown as RunItem<ViewNode>[]).flatMap((item) => {
+        if (!('run' in item)) return [filled(item.node)];
+        return item.run.parts.flatMap((part) => {
+            if ('text' in part) return [filled(part.text)];
+            const { name, value, frame } = part.marker;
+            const [open, close] = frame as [ViewNode, ViewNode?];
+            const shown = name in params ? [new ViewText(interpolate(`{${name}}`, params, locale))] : value;
+            if (close) return [open, ...shown, close];
+            // The attribute form: the marking element, around the value shown.
+            const element = open as ViewElement;
+            return [new ViewElement(element.tagName, Object.fromEntries(element.attrs), shown, element.source)];
+        });
     });
 }
 

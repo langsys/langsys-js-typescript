@@ -11,6 +11,7 @@ import { Phrase } from '../src/phrase.js';
 import { _resetSeededBlocks } from '../src/served-source.js';
 import { config as configStore, currentlyLoadedLocale, sTranslations, writeEnabled } from '../src/stores.js';
 import { Translate } from '../src/translate.js';
+import type { ParamPrimitive } from '../src/types/translation-fn.js';
 
 /**
  * VAR-1, VAR-3, VAR-7: a value from a variable is a placeholder, never part of a
@@ -248,6 +249,46 @@ describe('VAR-3 as tree nodes: the same token, rendered with the typed param', (
             { tag: 'span', attrs: { 'data-ls-phrase': true }, children: [{ text: 'Based on ' }, { comment: 'ls:n' }, { text: '3' }, { comment: '/ls' }, { text: ' reviews' }] },
         ];
         expect(serializeTree(renderBlock(host, { category: 'UI' }).nodes as BlockNode[])).toBe('<span data-ls-phrase>Based on <!--ls:n-->3<!--/ls--> reviews</span>');
+    });
+
+    describe('a phrase host served as source on a miss is filled as its render fills it, its markers kept', () => {
+        // Found by the Svelte lane: a name written beside a marked value stayed as written on a miss.
+        const marked: BlockNode[] = [{ comment: 'ls:user_name' }, { text: 'Ana' }, { comment: '/ls' }];
+        const params = { user_name: 'Ana', name: 'NICK' };
+        const render = (children: BlockNode[], with_: Record<string, ParamPrimitive>) =>
+            renderBlock([{ tag: 'span', attrs: { 'data-ls-phrase': true }, children }], { category: 'UI', params: with_ }).nodes as BlockNode[];
+        const textOf = (nodes: BlockNode[]): string => nodes.map((n) => ('text' in n ? n.text : 'tag' in n ? textOf(n.children ?? []) : '')).join('');
+
+        it.each(['%name%', '{name}'])('a name written as %s is filled', (written) => {
+            expect(serializeTree(render([{ text: `Hi ${written}, ` }, ...marked], params))).toBe('<span data-ls-phrase>Hi NICK, <!--ls:user_name-->Ana<!--/ls--></span>');
+        });
+
+        it('a number is written for the locale in its text, and as its digits in an author’s exclusion (TOK-1)', () => {
+            const exclusion: BlockNode = { tag: 'b', attrs: { translate: 'no' }, children: [{ text: '#%points%' }] };
+            expect(serializeTree(render([{ text: 'You have %points% points, ' }, ...marked, { text: ', card ' }, exclusion], { points: 12345 }))).toBe(
+                '<span data-ls-phrase>You have 12.345 points, <!--ls:user_name-->Ana<!--/ls-->, card <b translate="no">#12345</b></span>'
+            );
+        });
+
+        it('a marked value the caller names shows the caller’s param, in either form', () => {
+            const attribute: BlockNode = { tag: 'span', attrs: { 'data-ls-param': 'user_name' }, children: [{ text: 'Ana' }] };
+            expect(serializeTree(render([{ text: 'Hi ' }, ...marked], { user_name: 'Bea' }))).toBe('<span data-ls-phrase>Hi <!--ls:user_name-->Bea<!--/ls--></span>');
+            expect(serializeTree(render([{ text: 'Hi ' }, attribute], { user_name: 'Bea' }))).toBe('<span data-ls-phrase>Hi <span data-ls-param="user_name">Bea</span></span>');
+        });
+
+        it('a name the caller does not pass stays as written', () => {
+            expect(serializeTree(render([{ text: 'Hi %other% {other}, ' }, ...marked], params))).toBe('<span data-ls-phrase>Hi %other% {other}, <!--ls:user_name-->Ana<!--/ls--></span>');
+        });
+
+        it('control: the DOM Phrase shows the same text on the miss, and a hit shows the translation', async () => {
+            const host = mount('<span data-ls-phrase>Hi %name%, <!--ls:user_name-->Ana<!--/ls--></span>').firstElementChild! as HTMLElement;
+            live.push(new Phrase(host, { category: 'UI', params }));
+            await settle();
+            expect(host.textContent).toBe('Hi NICK, Ana');
+            expect(textOf(render([{ text: 'Hi %name%, ' }, ...marked], params))).toBe('Hi NICK, Ana');
+            catalog({ 'Hi {name}, {user_name}': 'Ciao {name}, {user_name}' });
+            expect(textOf(render([{ text: 'Hi %name%, ' }, ...marked], params))).toBe('Ciao NICK, Ana');
+        });
     });
 
     it('registers the template, and nothing for a unit made only of markers', async () => {
