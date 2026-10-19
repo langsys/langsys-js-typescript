@@ -208,18 +208,24 @@ describe('the catalog serves a phrase at the base locale as the backend does, an
     });
 
     it('a phrase sent as untranslatable is null at the base locale too; control: the same text sent without the flag', async () => {
-        await register('k-write', [flagged('Acme', false), phrase('Acme Labs')]);
-        expect((await atBase()).data.UI).toMatchObject({ Acme: null, 'Acme Labs': 'Acme Labs' });
+        await register('k-write', [flagged('Acme', false), phrase('Acme', 'Brand')]);
+        const data = (await atBase()).data;
+        expect(data.UI.Acme).toBeNull();
+        expect(data.Brand).toEqual({ Acme: 'Acme' });
     });
 
     it.each([
         ['https://acme.example/docs?q=1', null],
+        ['HTTPS://EXAMPLE.COM/docs', null],
+        ['ftp://files.acme.example', null],
         ['mailto:support@acme.example', null],
+        ['tel:+15551234', null],
         ['support@acme.com', null],
         ['acme.com', null],
         ['rate_limit_exceeded', null],
         ['2500', null],
         ['1e10', null],
+        ['1E10', null],
         ['NT$2500', null],
         ['5 USD', null],
         ['12:30:45', null],
@@ -230,6 +236,8 @@ describe('the catalog serves a phrase at the base locale as the backend does, an
         ['Hello.World', 'Hello.World'],
         ['USDA approved', 'USDA approved'],
         ['EURUSD', 'EURUSD'],
+        ['100USD', '100USD'],
+        ['USD100', 'USD100'],
         ['Visit https://acme.com today', 'Visit https://acme.com today'],
         ['well-known', 'well-known'],
         ['C', 'C'],
@@ -246,13 +254,18 @@ describe('the catalog serves a phrase at the base locale as the backend does, an
                     ...BASE_SEED.projects[0],
                     phrases: [
                         { category: 'UI', phrase: '{count} files', translations: { 'en-us': '{count, plural, one {# file} other {# files}}' } },
+                        { category: 'UI', phrase: '{gender} replied', translations: { 'en-us': '{gender, select, female {She replied} other {They replied}}' } },
                         { category: 'UI', phrase: 'Welcome', translations: { 'en-us': 'Hi there' } },
                     ],
                 },
                 BASE_SEED.projects[1],
             ],
         });
-        expect((await atBase()).data.UI).toEqual({ '{count} files': '{count, plural, one {# file} other {# files}}', Welcome: 'Welcome' });
+        expect((await atBase()).data.UI).toEqual({
+            '{count} files': '{count, plural, one {# file} other {# files}}',
+            '{gender} replied': '{gender, select, female {She replied} other {They replied}}',
+            Welcome: 'Welcome',
+        });
     });
 
     it('a content block’s phrases follow the same rule', async () => {
@@ -272,9 +285,10 @@ describe('the catalog serves a phrase at the base locale as the backend does, an
     });
 
     it('untranslated words count only the translatable phrases served null', async () => {
+        // The total is not asserted: the backend counts words its own way (README, Not modelled).
         await register('k-write', [phrase('Two words'), phrase('https://acme.example')]);
-        expect(await atBase()).toMatchObject({ words: 4, untranslated_words: 0 });
-        expect((await catalog('k-read')).body).toMatchObject({ words: 4, untranslated_words: 2 });
+        expect((await atBase()).untranslated_words).toBe(0);
+        expect((await catalog('k-read')).body.untranslated_words).toBe(2);
     });
 
     it('registering a held phrase again sets its flag from the batch’s last occurrence; a new one takes its first', async () => {
@@ -367,6 +381,14 @@ describe('translations sent with the phrases are stored as human translations (M
 
     it('the base locale is not a target locale', async () => {
         expect((await register('k-write', [withTranslations('Home', { 'en-us': 'Home' })])).status).toBe(422);
+    });
+
+    it('a phrase whose text has nothing to translate stores the translation sent with it, and is served null', async () => {
+        // ProvidedTranslationService skips only an item sent with `translatable: false`.
+        const res = await register('k-write', [withTranslations('acme.com', { 'es-es': 'acme.es' })]);
+        expect(res.body.data).toEqual({ human_translations_saved: 1, human_translations_skipped: 0 });
+        expect((await catalog('k-read')).body.data.UI['acme.com']).toBeNull();
+        expect((await fx.state()).projects.p1.phrases.find((p) => p.phrase === 'acme.com')!.translations).toEqual({ 'es-es': 'acme.es' });
     });
 
     it('a content block ignores the map, and so does an untranslatable phrase', async () => {
