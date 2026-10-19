@@ -232,6 +232,27 @@ fragment kept only when it is a route (`#/…` or `#!/…`).
   locale's list came back, not on a name's exact wording.
 - **Word counts** in the catalog envelope count whitespace-separated words, which is close to
   the backend's count and never asserted on.
+- **A content block served whole or not at all.** The backend serves a block with every phrase
+  `null` in a locale where any of its translatable phrases has no translation. The double serves
+  each phrase's own translation.
+- **Content-block identity** (`ContentBlockIdentityService`). The backend treats the same phrases,
+  in the same order and category, as one block whatever `custom_id` a client sends, and serves it
+  under every id it was sent with. It names a block sent with no `custom_id` by its content, gives
+  a block that moves to another category the translations of the block it was, and rebuilds the
+  block a known id names in place when its content changes. The double keys a block by category
+  and `custom_id`, and adds new phrases to the block it holds.
+- **Translations sent with phrases as a list.** The backend takes `translations` as a list of
+  `{locale, translation}` entries, on a phrase item and on each phrase of a content block, refuses
+  a map keyed by locale with `422`, and names a refused locale by its entry
+  (`translatable_items.N.translations.M.locale`). The double takes the map, on phrase items only.
+- **Plain-text plurals for an SDK without ICU.** The backend serves a client that does not send
+  `X-Langsys-Capabilities: icu` each ICU message as a flat template. The double serves every
+  client the ICU message.
+- **The data format of `GET /translations/data`.** The backend answers it with item rows (ids,
+  flags, timestamps) unless `format=flat` is sent. The double answers the flat catalog on both
+  routes.
+- **Key order in the catalog.** The backend sorts categories by name, and each category's items
+  by their translation state, then by text. The double keeps the order phrases registered in.
 
 ## Faults
 
