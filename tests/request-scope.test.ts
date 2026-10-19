@@ -142,7 +142,7 @@ describe('SRV-7: one visitor’s render never carries another’s locale', () =>
             expect(LangsysApp.Translations.lookupContent('UI', 'b1', 'One')).toBe('Eins');
             expect(isContentBlockKnown('UI', 'b1')).toBe(true);
         });
-        expect(LangsysApp.Translations.lookup('Hello', 'UI'), 'control: the page catalog holds no German').toBeNull();
+        expect(LangsysApp.Translations.lookup('Hello', 'UI'), 'control: the page catalog, at the base locale, holds its own text').toBe('Hello');
         expect(isContentBlockKnown('UI', 'b1')).toBe(false);
     });
 

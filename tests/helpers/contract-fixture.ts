@@ -22,13 +22,13 @@ export interface AcceptedState {
     projects: Record<
         string,
         {
-            phrases: Array<{ category: string | null; phrase: string; translations: Record<string, string | null> }>;
+            phrases: Array<{ category: string | null; phrase: string; translatable: boolean; translations: Record<string, string | null> }>;
             blocks: Array<{
                 category: string | null;
                 custom_id: string;
                 content: string | null;
                 label: string | null;
-                phrases: Array<{ phrase: string; translations: Record<string, string | null> }>;
+                phrases: Array<{ phrase: string; translatable: boolean; translations: Record<string, string | null> }>;
             }>;
         }
     >;

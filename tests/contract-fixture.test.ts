@@ -195,6 +195,126 @@ describe('it holds state: a second read observes the first write', () => {
     });
 });
 
+describe('the catalog serves a phrase at the base locale as the backend does, and an untranslatable one as null', () => {
+    // TranslationService::generateTranslationsData, over the translatable flag registration
+    // stores (TranslatableItemService, PhraseAnalyzer), at langsys fec9d822.
+    const atBase = async () => (await catalog('k-read', 'p1', 'en-us')).body;
+    const flagged = (text: string, translatable: boolean) => ({ ...phrase(text), translatable });
+
+    it('at the base locale a translatable phrase is its own text; at a target locale it waits for its translation', async () => {
+        await register('k-write', [phrase('Brand new')]);
+        expect((await atBase()).data.UI).toEqual({ Hello: 'Hello', 'Brand new': 'Brand new' });
+        expect((await catalog('k-read')).body.data.UI).toEqual({ Hello: 'Hola', 'Brand new': null });
+    });
+
+    it('a phrase sent as untranslatable is null at the base locale too; control: the same text sent without the flag', async () => {
+        await register('k-write', [flagged('Acme', false), phrase('Acme Labs')]);
+        expect((await atBase()).data.UI).toMatchObject({ Acme: null, 'Acme Labs': 'Acme Labs' });
+    });
+
+    it.each([
+        ['https://acme.example/docs?q=1', null],
+        ['mailto:support@acme.example', null],
+        ['support@acme.com', null],
+        ['acme.com', null],
+        ['rate_limit_exceeded', null],
+        ['2500', null],
+        ['1e10', null],
+        ['NT$2500', null],
+        ['5 USD', null],
+        ['12:30:45', null],
+        [':-D', null],
+        ['🎉 100', null],
+        ['2.5 - 11.5', '2.5 - 11.5'],
+        ['$5.00', '$5.00'],
+        ['Hello.World', 'Hello.World'],
+        ['USDA approved', 'USDA approved'],
+        ['EURUSD', 'EURUSD'],
+        ['Visit https://acme.com today', 'Visit https://acme.com today'],
+        ['well-known', 'well-known'],
+        ['C', 'C'],
+    ])('text with nothing to translate is untranslatable, as PhraseAnalyzer reads it: %j', async (text, atBaseLocale) => {
+        await register('k-write', [phrase(text)]);
+        expect((await atBase()).data.UI[text]).toBe(atBaseLocale);
+    });
+
+    it('a stored ICU message is served at the base locale in place of the phrase; control: other stored text is not', async () => {
+        await fx.seed({
+            ...BASE_SEED,
+            projects: [
+                {
+                    ...BASE_SEED.projects[0],
+                    phrases: [
+                        { category: 'UI', phrase: '{count} files', translations: { 'en-us': '{count, plural, one {# file} other {# files}}' } },
+                        { category: 'UI', phrase: 'Welcome', translations: { 'en-us': 'Hi there' } },
+                    ],
+                },
+                BASE_SEED.projects[1],
+            ],
+        });
+        expect((await atBase()).data.UI).toEqual({ '{count} files': '{count, plural, one {# file} other {# files}}', Welcome: 'Welcome' });
+    });
+
+    it('a content block’s phrases follow the same rule', async () => {
+        await register('k-write', [
+            { type: 'content_block', custom_id: 'b1', category: 'Home', content: '<p/>', phrases: [{ phrase: 'Read more' }, { phrase: 'https://acme.example' }, { phrase: 'Hidden', translatable: false }] },
+        ]);
+        expect((await atBase()).data.Home).toEqual({ b1: { 'Read more': 'Read more', 'https://acme.example': null, Hidden: null } });
+        expect((await catalog('k-read')).body.data.Home).toEqual({ b1: { 'Read more': null, 'https://acme.example': null, Hidden: null } });
+    });
+
+    it('a block registered again holds its phrases with the flags it is sent with', async () => {
+        const block = (hidden: boolean) => ({ type: 'content_block', custom_id: 'b1', category: 'Home', content: '<p/>', phrases: [{ phrase: 'Read more' }, { phrase: 'Hidden', translatable: hidden }] });
+        await register('k-write', [block(false)]);
+        expect((await atBase()).data.Home.b1.Hidden).toBeNull();
+        await register('k-write', [block(true)]);
+        expect((await atBase()).data.Home.b1.Hidden).toBe('Hidden');
+    });
+
+    it('untranslated words count only the translatable phrases served null', async () => {
+        await register('k-write', [phrase('Two words'), phrase('https://acme.example')]);
+        expect(await atBase()).toMatchObject({ words: 4, untranslated_words: 0 });
+        expect((await catalog('k-read')).body).toMatchObject({ words: 4, untranslated_words: 2 });
+    });
+
+    it('registering a held phrase again sets its flag from the batch’s last occurrence; a new one takes its first', async () => {
+        await register('k-write', [flagged('Acme', false)]);
+        expect((await atBase()).data.UI.Acme).toBeNull();
+        await register('k-write', [phrase('Acme')]);
+        expect((await atBase()).data.UI.Acme).toBe('Acme');
+        await register('k-write', [flagged('Acme', false), phrase('Acme')]);
+        await register('k-write', [flagged('Fresh', false), phrase('Fresh')]);
+        expect((await atBase()).data.UI).toMatchObject({ Acme: 'Acme', Fresh: null });
+    });
+
+    it('a seeded phrase is held as registration would hold it', async () => {
+        await fx.seed({
+            ...BASE_SEED,
+            projects: [
+                {
+                    ...BASE_SEED.projects[0],
+                    phrases: [{ category: 'UI', phrase: 'acme.com' }, { category: 'UI', phrase: 'Acme', translatable: false }, { category: 'UI', phrase: 'Plain' }],
+                    blocks: [{ category: 'Home', custom_id: 'b1', phrases: [{ phrase: 'Shown' }, { phrase: 'Kept', translatable: false }] }],
+                },
+                BASE_SEED.projects[1],
+            ],
+        });
+        const data = (await atBase()).data;
+        expect(data.UI).toEqual({ 'acme.com': null, Acme: null, Plain: 'Plain' });
+        expect(data.Home).toEqual({ b1: { Shown: 'Shown', Kept: null } });
+    });
+
+    it('the state reports each phrase’s flag', async () => {
+        await register('k-write', [flagged('Acme', false), phrase('Plain')]);
+        const held = (await fx.state()).projects.p1.phrases.map(({ phrase, translatable }) => ({ phrase, translatable }));
+        expect(held).toEqual([
+            { phrase: 'Hello', translatable: true },
+            { phrase: 'Acme', translatable: false },
+            { phrase: 'Plain', translatable: true },
+        ]);
+    });
+});
+
 describe('translations sent with the phrases are stored as human translations (MIG-9)', () => {
     // ProvidedTranslationService at langsys main 17a191cd.
     const QUOTA_SEED = {
