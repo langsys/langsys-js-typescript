@@ -189,8 +189,9 @@ describe('a seed reaches the clone translated', () => {
         expect(second.keys[0].key).not.toBe(first.keys[0].key);
     });
 
-    it('machine translation is on where the seed leaves it out, as on the double, and as given where it says', () => {
-        expect(lastSeed().doc.projects.map((p: any) => p.machine_translate_new_phrases)).toEqual([true, false]);
+    it('machine translation reaches the clone as the seed gives it: left out where it is left out, and as given where it says', () => {
+        expect(lastSeed().doc.projects.map((p: any) => 'machine_translate_new_phrases' in p)).toEqual([false, true]);
+        expect(lastSeed().doc.projects[1].machine_translate_new_phrases).toBe(false);
     });
 
     it('the seed’s loopback entries name the seed’s own address, every request comes from it, and other entries stay', async () => {
@@ -205,8 +206,8 @@ describe('a seed reaches the clone translated', () => {
         expect(lastApi().headers['x-forwarded-for']).toBe(own);
     });
 
-    it('faults and the older-server switches left at their defaults never reach the clone; the rest of config does', async () => {
-        await fx.seed({ ...SEED, config: { ...SEED.config, legacy_omit_capability: false, drop_uncategorized_blocks: false }, faults: [{ method: 'GET', path: '/translations', status: 503 }] });
+    it('faults never reach the clone; the rest of config does', async () => {
+        await fx.seed({ ...SEED, faults: [{ method: 'GET', path: '/translations', status: 503 }] });
         const doc = lastSeed().doc;
         expect(doc).not.toHaveProperty('faults');
         expect(doc.config).toEqual({ batch_limit: 3, renderer_egress_ips: [expect.any(String), '10.9.9.9'] });
@@ -399,24 +400,6 @@ describe('a seed a clone cannot take stays on the in-process double', () => {
         expect(stub.api).toHaveLength(1);
     });
 
-    it('an older server’s behaviour: the double answers without the capability fields', async () => {
-        stub.clear();
-        await fx.seed({ ...SEED, config: { ...SEED.config, legacy_omit_capability: true } });
-        expect(stub.seeds).toEqual([]);
-        const authorize = await call('/authorize-project/p1', { key: 'k-write' });
-        expect(authorize.status).toBe(200);
-        expect(authorize.body.data).not.toHaveProperty('write_enabled');
-    });
-
-    it('an older server’s drop of an uncategorised block: the double answers 200 and stores nothing', async () => {
-        stub.clear();
-        await fx.seed({ ...SEED, config: { ...SEED.config, drop_uncategorized_blocks: true } });
-        expect(stub.seeds).toEqual([]);
-        const block = { type: 'content_block', custom_id: 'b0', category: '', content: '<p>Loose</p>', phrases: [{ phrase: 'Loose' }] };
-        expect((await call('/translatable-items', { key: 'k-write', body: JSON.stringify({ project_id: 'p1', translatable_items: [block] }) })).status).toBe(200);
-        expect((await fx.state()).projects.p1.blocks.map((b) => b.custom_id)).not.toContain('b0');
-        expect(stub.api).toEqual([]);
-    });
 });
 
 describe('the clock, starting and stopping', () => {

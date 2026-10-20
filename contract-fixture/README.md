@@ -47,13 +47,13 @@ one state, so the forwarder translates:
   `127.0.0.1` entries name it, so the hint limiter's count starts at zero with each seed. Every
   request names its fixture in `X-Sdk-Fixture`, so one whose key names no fixture runs with the
   seed's `config`.
-- `machine_translate_new_phrases` defaults to true, as here. A seeded block with no `content`
-  is stored with a placeholder, which state reads back as null.
+- `machine_translate_new_phrases` reaches the clone as the seed gives it. Left out, the clone
+  holds it off where this double holds it on, so a row that relies on it names it. A seeded block
+  with no `content` is stored with a placeholder, which state reads back as null.
 - Faults apply in the forwarder, and a connection the clone drops is dropped. A clone has no
   clock: advancing it waits that long.
-- A seed carrying `reference`, `config.legacy_omit_capability` or
-  `config.drop_uncategorized_blocks` asks for what a clone cannot be, and is served by this
-  double, which the forwarder runs alongside.
+- A seed carrying `reference` asks for tables a clone shares between tests, and is served by
+  this double, which the forwarder runs alongside.
 
 At start it sends the clone a seed only a clone refuses with 422 and creates nothing from, and it
 stops there when the target answers anything else.
@@ -197,8 +197,6 @@ phrases are `null`.
 A content block with no category registers, and the flat catalog serves it under
 `__uncategorized__`, the key uncategorised phrases use. The literal `__uncategorized__` is
 never accepted as a category on registration, so the key only ever appears on the read side.
-The seed option `drop_uncategorized_blocks` reproduces the backend's former behaviour, which
-answered `200` and stored nothing, for a regression test.
 
 **Each phrase registers translatable or not, as `TranslatableItemService` decides.** A phrase,
 standalone or in a content block, is untranslatable when it is sent with `translatable: false`,

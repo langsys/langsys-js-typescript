@@ -506,50 +506,6 @@ describe('HINT-6 sync with the server normalizer', () => {
 });
 
 /**
- * GATE-8 constraint 3 — the write fallback and the report lane must be gated by
- * ONE condition, not two that happen to co-occur.
- *
- * A server with no `write_enabled` has no `/discovery/hint` to receive a report
- * either. Deriving those two facts separately lets them diverge, and the
- * divergent state — reporting to an endpoint that does not exist — is silent by
- * construction. This asserts the pathological payload directly: `auto_discovery`
- * PRESENT and permissive, `write_enabled` ABSENT.
- */
-describe('GATE-8 constraint 3: absent write_enabled gates the report lane off', () => {
-    it('does not report when auto_discovery says yes but write_enabled is absent', async () => {
-        const { LangsysApp } = await import('../src/langsys-app.js');
-        const { createSignal } = await import('../src/signal.js');
-        const { autoDiscovery: policy } = await import('../src/stores.js');
-
-        vi.spyOn(globalThis, 'fetch').mockImplementation(
-            async (url) =>
-                ({
-                    ok: true,
-                    status: 200,
-                    statusText: 'OK',
-                    url: String(url),
-                    headers: { get: () => 'application/json' },
-                    // Legacy server: permissive policy, no capability field.
-                    json: async () => ({ status: true, data: { key_type: 'read', auto_discovery: true } }),
-                }) as unknown as Response,
-        );
-
-        await LangsysApp.init({
-            projectid: 'p',
-            key: 'k',
-            UserLocaleStore: createSignal('en-us'),
-            baseLocale: 'en-us',
-        });
-
-        expect(policy.get()).toBe(false); // one condition drove both
-
-        recordMissForDiscovery('UI', 'Phrase on a legacy server');
-        await runOutJitter();
-        expect(sent).toEqual([]);
-    });
-});
-
-/**
  * HINT-5: each report waits 5 to 30 seconds of jitter, and does not fetch the catalog
  * first.
  *

@@ -82,6 +82,8 @@ afterAll(async () => {
 beforeEach(async () => {
     await fx.seed(BASE_SEED);
 });
+// A project accepts a hint only while it machine-translates new content.
+const HINT_SEED = { ...BASE_SEED, projects: [{ ...BASE_SEED.projects[0], machine_translate_new_phrases: true }, BASE_SEED.projects[1]] };
 
 describe('it starts the way the README says', () => {
     it('reports an /api base URL on 127.0.0.1', () => {
@@ -181,13 +183,6 @@ describe('it holds state: a second read observes the first write', () => {
             b0: { Loose: null },
             b1: { 'No key at all': null },
         });
-    });
-
-    it('the regression knob reproduces the backend dropping that block: 200 and nothing stored', async () => {
-        await fx.seed({ ...BASE_SEED, config: { ...BASE_SEED.config, drop_uncategorized_blocks: true } });
-        const res = await register('k-write', [{ type: 'content_block', custom_id: 'b0', category: '', phrases: [{ phrase: 'Loose' }] }]);
-        expect(res.status).toBe(200);
-        expect((await fx.state()).projects.p1.blocks).toEqual([]);
     });
 
     it('an empty project answers data as [], not {}', async () => {
@@ -508,7 +503,7 @@ describe('errors are the backend’s at langsys main 17a191cd: status, envelope,
         await fx.seed({ ...BASE_SEED, keys: [...BASE_SEED.keys, { key: 'k-dup', project: 'p1', type: 'read', duplicate_guard: { max_attempts: 1, window_seconds: 60 } }] });
         await catalog('k-dup');
         expect(code(await catalog('k-dup'))).toBe('duplicate_request');
-        await fx.seed({ ...BASE_SEED, config: { ...BASE_SEED.config, hint_rate_per_minute: 1 } });
+        await fx.seed({ ...HINT_SEED, config: { ...BASE_SEED.config, hint_rate_per_minute: 1 } });
         await hint(undefined, 'https://www.site.local/a');
         expect((await hint(undefined, 'https://www.site.local/b')).body).toEqual(E('too_many_requests', 'Too many requests. Please try again later.'));
     });
@@ -561,16 +556,6 @@ describe('write_enabled is computed from key, address and grant', () => {
         expect(await writeEnabled('k-grant', grant), 'past it').toBe(false);
     });
 
-    it('a legacy server omits write_enabled and auto_discovery everywhere', async () => {
-        await fx.seed({ ...BASE_SEED, config: { ...BASE_SEED.config, legacy_omit_capability: true } });
-        const auth = (await api('/authorize-project/p1', { key: 'k-write' })).body.data;
-        expect(auth).not.toHaveProperty('write_enabled');
-        expect(auth).not.toHaveProperty('auto_discovery');
-        expect(auth).not.toHaveProperty('discovery_base_locale_only');
-        expect(auth.key_type).toBe('write');
-        expect((await catalog('k-write')).body).not.toHaveProperty('write_enabled');
-    });
-
     it('serves discovery_base_locale_only inside authorize data and beside data on both catalog routes, default false', async () => {
         expect((await api('/authorize-project/p1', { key: 'k-read' })).body.data.discovery_base_locale_only).toBe(false);
         const projects = [{ ...BASE_SEED.projects[0], discovery_base_locale_only: true }, BASE_SEED.projects[1]];
@@ -586,6 +571,9 @@ describe('write_enabled is computed from key, address and grant', () => {
 
 describe('hints follow the backend acceptance rules, and only an accepted hint is stored', () => {
     const stored = async () => (await fx.state()).hints;
+    beforeEach(async () => {
+        await fx.seed(HINT_SEED);
+    });
 
     it('the canonical public site reports, normalised as the backend normalises', async () => {
         const res = await hint('k-public', 'https://site.local/pricing?utm_source=x&b=2&a=1#features');
@@ -613,7 +601,7 @@ describe('hints follow the backend acceptance rules, and only an accepted hint i
         await hint('k-writer-reporter', 'https://site.local/writer');
         expect(await stored()).toEqual([]);
         const keys = BASE_SEED.keys.map((k) => (k.key === 'k-writer-reporter' ? { ...k, ip_allowlist: [] } : k));
-        await fx.seed({ ...BASE_SEED, keys });
+        await fx.seed({ ...HINT_SEED, keys });
         await hint('k-writer-reporter', 'https://site.local/writer');
         expect(await stored()).toEqual([{ project_id: 'p1', url: 'https://site.local/writer' }]);
     });
@@ -628,16 +616,16 @@ describe('hints follow the backend acceptance rules, and only an accepted hint i
     });
 
     it('a project that does not translate new content, or has no credits, stores nothing', async () => {
-        const projects = [{ ...BASE_SEED.projects[0], machine_translate_new_phrases: false }, BASE_SEED.projects[1]];
-        await fx.seed({ ...BASE_SEED, projects });
+        const projects = [{ ...HINT_SEED.projects[0], machine_translate_new_phrases: false }, BASE_SEED.projects[1]];
+        await fx.seed({ ...HINT_SEED, projects });
         await hint('k-public', 'https://site.local/g');
-        await fx.seed({ ...BASE_SEED, projects: [{ ...BASE_SEED.projects[0], credits_exhausted: true }, BASE_SEED.projects[1]] });
+        await fx.seed({ ...HINT_SEED, projects: [{ ...HINT_SEED.projects[0], credits_exhausted: true }, BASE_SEED.projects[1]] });
         await hint('k-public', 'https://site.local/h');
         expect(await stored()).toEqual([]);
     });
 
     it('limits per source address with 429, and a rate-limited hint is not stored', async () => {
-        await fx.seed({ ...BASE_SEED, config: { ...BASE_SEED.config, hint_rate_per_minute: 5 } });
+        await fx.seed({ ...HINT_SEED, config: { ...BASE_SEED.config, hint_rate_per_minute: 5 } });
         const statuses: number[] = [];
         for (let i = 0; i < 6; i++) statuses.push((await hint('k-public', `https://site.local/p${i}`)).status);
         expect(statuses).toEqual([204, 204, 204, 204, 204, 429]);

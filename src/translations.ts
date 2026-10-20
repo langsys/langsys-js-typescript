@@ -104,12 +104,22 @@ export function noticeUnusableWriteCapability(enabled: boolean, keyType: string 
     if (enabled || (keyType !== 'write' && keyType !== 'ip_write')) return;
 
     logger.warn(
-        `Langsys: this session cannot write. The key is '${keyType}', but the server resolved ` +
-            `write_enabled=false for this request — so missing phrases will NOT be registered and nothing ` +
+        `Langsys: this session cannot write. The key is '${keyType}', but the server's answer did not ` +
+            `make this request write-enabled — so missing phrases will NOT be registered and nothing ` +
             `will appear in the Translation Manager. For an 'ip_write' key this usually means the address ` +
             `is not allow-listed; otherwise supply a write grant via LangsysApp.setWriteGrant(). Page URLs ` +
             `may still be reported for discovery if auto_discovery is enabled for this key.`
     );
+}
+
+/**
+ * The write decision a catalog answer carries. The API sends it on every answer, and one
+ * without it is not write-enabled, exactly as if it said false (GATE-8). A failed read
+ * answers nothing about it, so the decision already held stays.
+ */
+export function answeredWriteDecision(response: { errors?: unknown; write_enabled?: unknown }): boolean | undefined {
+    if (typeof response.write_enabled === 'boolean') return response.write_enabled;
+    return response.errors ? undefined : false;
 }
 
 /** Test seam — the latch is module state and must not leak between cases. */
@@ -1322,7 +1332,7 @@ export class Translations {
         // inside `data`, which IS the category map. Refreshed on every catalog
         // fetch so a capability change (a grant arriving, an IP allow-list
         // edit) is picked up without re-running init.
-        this.applyWriteEnabled(response.write_enabled);
+        this.applyWriteEnabled(answeredWriteDecision(response));
 
         // Project policy, re-read on every fetch so a mid-session flip is picked up
         // without re-running `init()`. A top-level sibling of `data` on both catalog

@@ -65,6 +65,11 @@ describe('a key that should write but cannot', () => {
 
         expect(said()).toContain('cannot write');
     });
+
+    it('warns for a write key whose answer carries no write_enabled, which is not write-enabled (GATE-8)', () => {
+        authorize({ key_type: 'write' });
+        expect(said()).toContain('cannot write');
+    });
 });
 
 describe('the catalog-fetch channel reaches the notice too', () => {
@@ -116,13 +121,6 @@ describe('the cases that must stay silent', () => {
 
     it('says nothing when the session CAN write', () => {
         authorize({ key_type: 'write', write_enabled: true });
-        expect(said()).not.toContain('cannot write');
-    });
-
-    it('says nothing when the server does not speak the capability at all', () => {
-        // Absent write_enabled takes the legacy-inference path; it has its own
-        // warning and is not an OBS-1 case.
-        authorize({ key_type: 'write' });
         expect(said()).not.toContain('cannot write');
     });
 });

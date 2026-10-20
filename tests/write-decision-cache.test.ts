@@ -93,19 +93,22 @@ describe('GATE-4 on /authorize-project: the flag is inside data, and the body is
     it('init reads the decision from the authorize body and writes it to no storage', async () => {
         const fetchMock = vi.fn(async (url: string) => {
             if (String(url).includes('authorize-project')) return ok({ status: true, data: { key_type: 'write', write_enabled: true } });
-            // No flag on this catalog envelope, so a true decision can only have come
-            // from the authorize body.
+            // No flag on this catalog envelope, which leaves the session not write-enabled
+            // (GATE-8), so a true decision on the way can only have come from the authorize body.
             if (String(url).includes('translations')) return ok({ status: true, data: { UI: { Hello: 'Hola' } } });
             return ok({ status: true, data: [] });
         });
         vi.stubGlobal('fetch', fetchMock);
+        const decisions: Array<boolean | undefined> = [];
+        const unsubscribe = writeEnabled.subscribe((value) => decisions.push(value));
 
         await LangsysApp.init({ projectid: 'p', key: 'k', UserLocaleStore: createSignal('es-es'), baseLocale: 'en' });
         live.push(LangsysApp.Translations);
         await vi.waitFor(() => expect(cachedCatalog().length, 'control: the catalog reached storage').toBeGreaterThan(0));
+        unsubscribe();
 
         expect(fetchMock.mock.calls.some(([url]) => String(url).includes('authorize-project')), 'control: authorize was called').toBe(true);
-        expect(writeEnabled.get(), 'control: the decision was read from inside the authorize body').toBe(true);
+        expect(decisions, 'control: the decision was read from inside the authorize body').toContain(true);
         expect(leaks()).toEqual([]);
     });
 });

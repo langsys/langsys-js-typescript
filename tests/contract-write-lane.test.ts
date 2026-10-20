@@ -123,19 +123,6 @@ describe('REG-9: batches follow the limit the server advertises', () => {
     });
 });
 
-describe('GATE-8: a missing write_enabled is a version signal', () => {
-    it('against a legacy server a write key registers and a read key does not', async () => {
-        await fx.seed(withConfig({ legacy_omit_capability: true }));
-        await session('k-read');
-        t('Legacy read');
-        await sleep(SETTLE_MS);
-        await session('k-write');
-        t('Legacy write');
-        await until(async () => (await registered()).includes('Legacy write'));
-        expect(await registered()).not.toContain('Legacy read');
-    });
-});
-
 describe('REG-10: a registration never reports success for work that did not happen', () => {
     const block = { custom_id: 'b-reg10', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['A', 'B'] };
     const blockIds = async () => (await fx.state()).projects.p1.blocks.map((b) => b.custom_id);

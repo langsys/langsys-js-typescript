@@ -8,7 +8,7 @@ import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
 import { settleNotices } from './notices.js';
 import { activeScope } from './scope-context.js';
 import type { SeededBlock, SeededPhrase } from './block-tree.js';
-import { failureWindowMs, noticeUnusableWriteCapability, Translations } from './translations.js';
+import { failureWindowMs, Translations } from './translations.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig, iLangsysInitConfig, WriteGrant } from './types/config.js';
 import type { iCountryDialCode, iCountryList } from './types/countries.js';
@@ -107,36 +107,17 @@ class LangsysAppClass {
             this.debug.log('API Key Type:', authData.key_type);
         }
 
-        // ONE condition drives both the write fallback and the report lane.
-        // A server with no `write_enabled` predates the capability, which means
-        // it also has no `/discovery/hint` to receive a report — so reading
-        // those two facts from separate signals lets them diverge, and the
-        // divergent state (reporting to an endpoint that does not exist) is
-        // silent by construction. Relying on `auto_discovery` also being absent
-        // would work today and only by coincidence.
-        const serverSpeaksCapability = typeof authData.write_enabled === 'boolean';
-
-        if (serverSpeaksCapability) {
-            this.Translations.applyWriteEnabled(authData.write_enabled as boolean, authData.key_type);
-            this.debug.log(`Session write-enabled (${context}):`, authData.write_enabled);
-            noticeUnusableWriteCapability(authData.write_enabled as boolean, authData.key_type);
-        } else {
-            // An ABSENT field is not `false`. It means the server predates
-            // `write_enabled`, and treating absence as a refusal would leave
-            // the SDK write-inert against every deployment that hasn't shipped
-            // the flag yet — silently, for every consumer, until the API
-            // catches up. That turns a release-ordering mistake into a dead
-            // integration, so fall back to the old inference for exactly this
-            // case. It is sound because `ip_write` cannot exist on a backend
-            // that doesn't return the flag, so `key_type` still describes the
-            // whole truth there.
-            const legacy = authData.key_type === 'write';
-            this.debug.warn(
-                `Server did not return write_enabled (${context}) — falling back to key_type ` +
-                    `'${authData.key_type ?? 'unknown'}' => ${legacy}. Upgrade the API for IP-gated and grant-based writes.`
-            );
-            this.Translations.applyWriteEnabled(legacy, authData.key_type);
+        // The server decides, from the key, the caller's address and any grant, and says so in
+        // `write_enabled`. An answer without it is not write-enabled, exactly as if it said
+        // false (GATE-8): read as permission, a missing field would turn the stripped cache
+        // into an open gate. Reporting is the policy's alone, so a session read this way
+        // reports as any read-only session does (HINT-1).
+        const enabled = authData.write_enabled === true;
+        if (typeof authData.write_enabled !== 'boolean') {
+            this.debug.warn(`The server's answer carried no write_enabled (${context}), so this session is not write-enabled.`);
         }
+        this.Translations.applyWriteEnabled(enabled, authData.key_type);
+        this.debug.log(`Session write-enabled (${context}):`, enabled);
 
         // Project policy: register and hint only while rendering the base locale. Read
         // here as well as on every catalog fetch, because a read-only session may never
@@ -154,16 +135,9 @@ class LangsysAppClass {
             this.debug.log(`Batch limit (${context}):`, limit);
         }
 
-        if (!serverSpeaksCapability) {
-            // Same condition, deliberately not a second derivation. Whatever the
-            // legacy server said about policy is moot — there is nowhere to
-            // report to. Note this is the one place the two are coupled: while
-            // the server DOES speak the capability, policy remains strictly
-            // independent of it (see `autoDiscovery`), and the canonical public
-            // site is write-disabled AND reporting-permitted.
-            autoDiscovery.set(false);
-            this.debug.log(`Discovery reporting disabled (${context}): server predates the capability`);
-        } else if (typeof authData.auto_discovery === 'boolean') {
+        // Policy is independent of the capability (see `autoDiscovery`): the canonical public
+        // site is write-disabled AND reporting-permitted.
+        if (typeof authData.auto_discovery === 'boolean') {
             autoDiscovery.set(authData.auto_discovery);
             this.debug.log(`Discovery reporting permitted (${context}):`, authData.auto_discovery);
         }

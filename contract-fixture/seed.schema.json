@@ -35,16 +35,6 @@
                     },
                     "default": [],
                     "description": "content_discovery.renderer_egress_ips. An ip_write key needs at least one for a hint to be accepted, and these addresses may write with an ip_write key."
-                },
-                "legacy_omit_capability": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Behave as a server that predates write_enabled, auto_discovery and discovery_base_locale_only: all three are omitted from every response."
-                },
-                "drop_uncategorized_blocks": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Reproduce the backend's former drop of a content block with no category (200, nothing stored), for a regression row."
                 }
             }
         },

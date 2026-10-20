@@ -22,15 +22,15 @@
  *   limiter counts per address, so its count starts at zero with each seed, as on the double.
  * - Every request names its fixture in X-Sdk-Fixture, so one whose key names no fixture (no
  *   key, an unknown key, a key with no project) runs with the seed's config, as on the double.
- * - `machine_translate_new_phrases` takes the double's default, true, where a seed leaves it
- *   out.
+ * - `machine_translate_new_phrases` reaches the clone as the seed gives it. Left out, the clone
+ *   holds it off and the double on, so a row that relies on it names it.
  * - A seeded block with no `content` is stored with a placeholder, since the backend holds
  *   none without one, and state reads it back as null.
  * - Faults are applied here, before forwarding. A connection the clone or the double drops
  *   is dropped here too.
  * - A clone has no clock: advancing it waits that long in real time.
- * - A seed the clone cannot take (reference tables, or the behaviour of an older server) is
- *   served by the in-process double, started alongside.
+ * - A seed carrying reference tables, which a clone shares between tests, is served by the
+ *   in-process double, started alongside.
  *
  * Node built-ins only.
  */
@@ -109,8 +109,6 @@ async function startDouble() {
 function doubleOnly(doc) {
     const reasons = [];
     if (doc.reference !== undefined) reasons.push('reference');
-    if (doc.config?.legacy_omit_capability) reasons.push('config.legacy_omit_capability');
-    if (doc.config?.drop_uncategorized_blocks) reasons.push('config.drop_uncategorized_blocks');
     return reasons;
 }
 
@@ -152,15 +150,11 @@ function translateSeed(ctx, doc) {
     const out = structuredClone(doc);
     const caller = (list) => (Array.isArray(list) ? list.map((entry) => (LOOPBACK.has(entry) ? ctx.address : entry)) : list);
     if (out.config && typeof out.config === 'object') {
-        // The clone refuses these fields outright; off is the double's default, and the clone's behaviour.
-        delete out.config.legacy_omit_capability;
-        delete out.config.drop_uncategorized_blocks;
         if ('renderer_egress_ips' in out.config) out.config.renderer_egress_ips = caller(out.config.renderer_egress_ips);
     }
     for (const p of Array.isArray(out.projects) ? out.projects : []) {
         if (!p || typeof p !== 'object') continue;
         p.id = mapProject(ctx, p.id);
-        if (p.machine_translate_new_phrases === undefined) p.machine_translate_new_phrases = true;
         for (const b of Array.isArray(p.blocks) ? p.blocks : []) {
             if (b && typeof b === 'object' && (b.content === undefined || b.content === null)) b.content = NO_CONTENT;
         }

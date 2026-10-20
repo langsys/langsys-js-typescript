@@ -5,7 +5,7 @@ import { LangsysApp } from './langsys-app.js';
 import { canonicalizeLocale } from './locale.js';
 import { activeScope, enterScope, runInScope, runOutsideScopes, type ActiveScope } from './scope-context.js';
 import { batchLimit, config as configStore } from './stores.js';
-import { AUTO_SSR_FLUSH_THRESHOLD, noticeSsrGrantDegradation, type CatalogView } from './translations.js';
+import { AUTO_SSR_FLUSH_THRESHOLD, answeredWriteDecision, noticeSsrGrantDegradation, type CatalogView } from './translations.js';
 import type { RequestSeed, SeededBlock } from './block-tree.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { TFunction } from './types/translation-fn.js';
@@ -369,11 +369,11 @@ async function fetchCatalog(locale: string, credentials: ApiCredentials | undefi
         const response = await LangsysAppAPI.getTranslations(locale, { credentials: credentials ?? LangsysAppAPI.moduleCredentials() });
         // Under the module-wide key the answer is the process's write capability, as the
         // page's fetch records it. A scope's own key answers for that scope alone.
-        if (!credentials) LangsysApp.Translations.applyWriteEnabled(response.write_enabled);
+        if (!credentials) LangsysApp.Translations.applyWriteEnabled(answeredWriteDecision(response));
         if (response.errors) return null;
         return {
             catalog: freeze(normalizeCatalog((isRecord(response.data) ? response.data : {}) as iCategories)),
-            writeEnabled: typeof response.write_enabled === 'boolean' ? response.write_enabled : undefined,
+            writeEnabled: answeredWriteDecision(response),
         };
     } catch {
         return null;

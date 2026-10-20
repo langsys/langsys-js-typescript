@@ -33,11 +33,6 @@ const DEFAULT_CONFIG = Object.freeze({
     hint_rate_per_minute: 120, // config content_discovery.hint_rate_per_minute
     hint_dedup_ttl_seconds: 60, // config content_discovery.hint_dedup_ttl_seconds
     renderer_egress_ips: [], // config content_discovery.renderer_egress_ips
-    legacy_omit_capability: false, // a server that predates write_enabled, auto_discovery and discovery_base_locale_only
-    // Reproduces the backend's former drop of an uncategorised content block, which
-    // answered 200 and stored nothing. Off by default: the backend registers such a block.
-    // For a regression row only.
-    drop_uncategorized_blocks: false,
 });
 
 let state = emptyState();
@@ -554,13 +549,9 @@ function authorizeProject(req, projectId, url) {
         target_locales: project.target_locales,
         default_locales: Object.fromEntries(project.target_locales.map((l) => [l.split('-')[0], l])),
         key_type: auth.key.type,
-        ...(state.config.legacy_omit_capability
-            ? {}
-            : {
-                  write_enabled: auth.writeEnabled,
-                  auto_discovery: auth.key.report_discovered_content,
-                  discovery_base_locale_only: project.discovery_base_locale_only,
-              }),
+        write_enabled: auth.writeEnabled,
+        auto_discovery: auth.key.report_discovered_content,
+        discovery_base_locale_only: project.discovery_base_locale_only,
         langsys_settings: { translatable_items: { batch_limit: state.config.batch_limit } },
     };
     return [200, { status: true, data }];
@@ -588,12 +579,8 @@ function translations(req, query, url) {
     if (!project) return [422, validationFailed([entry('project_id', 'required', 'The project is required.')])];
     if (auth.key.project !== project.id) return ERRORS.forbidden();
     const { data, additional } = catalog(project, query.locale);
-    const envelope = { status: true, ...additional };
-    if (!state.config.legacy_omit_capability) {
-        envelope.write_enabled = auth.writeEnabled;
-        // Top-level, beside write_enabled and never inside `data`, on both catalog routes.
-        envelope.discovery_base_locale_only = project.discovery_base_locale_only;
-    }
+    // Top-level, beside write_enabled and never inside `data`, on both catalog routes.
+    const envelope = { status: true, ...additional, write_enabled: auth.writeEnabled, discovery_base_locale_only: project.discovery_base_locale_only };
     envelope.data = data;
     return [200, envelope];
 }
@@ -646,10 +633,7 @@ function translatableItems(req, body, url) {
             else upsertPhrase(project, item.category ?? null, item.phrase, {}, translatable);
         } else {
             // An uncategorised block arrives with a null category, because empty strings
-            // become null on input. It registers. `drop_uncategorized_blocks` reproduces
-            // the backend's former behaviour, which skipped every phrase of such a block.
-            const uncategorised = item.category === null || item.category === undefined;
-            if (uncategorised && state.config.drop_uncategorized_blocks) continue;
+            // become null on input. It registers.
             const phrases = (item.phrases ?? [])
                 .filter((p) => p && p.phrase)
                 .map((p) => ({ ...p, translatable: registersTranslatable(p.translatable, p.phrase) }));

@@ -27,9 +27,10 @@ import { installBrowser, resetSdk, session as startSession, setHref, sleep, t, u
 let fx: ContractFixture;
 const PAGE = 'https://site.local/page';
 
+// A project accepts a hint only while it machine-translates new content.
 const SEED = {
     config: { renderer_egress_ips: ['10.9.9.9'] },
-    projects: [{ id: 'p1', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local' }],
+    projects: [{ id: 'p1', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local', machine_translate_new_phrases: true }],
     keys: [
         // Read-only from here, and permitted to report: the canonical public site.
         { key: 'k-public', project: 'p1', type: 'ip_write', report_discovered_content: true },
@@ -243,7 +244,7 @@ describe('SRV-2: a page’s report goes out under the page’s key', () => {
         vi.useRealTimers();
         await fx.seed({
             ...SEED,
-            projects: [...SEED.projects, { id: 'other', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local' }],
+            projects: [...SEED.projects, { id: 'other', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local', machine_translate_new_phrases: true }],
             keys: [...SEED.keys, { key: 'k-other', project: 'other', type: 'ip_write', report_discovered_content: true }],
         });
         await session('k-public');
