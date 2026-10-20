@@ -24,6 +24,40 @@ It prints one line when ready:
 
 Point the SDK at `base_url`. Node 18 or later; no dependencies.
 
+## Forwarding to an SDK test clone
+
+`forwarder.mjs` serves the same two namespaces and prints the same ready line, with the API
+answered by a real Langsys instance: an SDK test clone (langsys `docs/sdk-test-clone.md`). `/api`
+goes to the clone's API and the setup namespace to its `/__fixture` routes, so a suite seeds,
+calls and reads back exactly as it does here.
+
+```sh
+NODE_EXTRA_CA_CERTS=~/.config/valet/CA/LaravelValetCASelfSigned.pem \
+  node contract-fixture/forwarder.mjs --target https://api.langsys5.test [--port N] [--log FILE]
+```
+
+A seed means what it means on the double. The clone holds many fixtures, where the double holds
+one state, so the forwarder translates:
+
+- A seed creates a fixture and then resets the one before it; a refused seed answers 400 and
+  leaves the earlier one in place.
+- Project ids and keys are mapped to fresh ones per seed (a UUID, a random key), since a clone
+  takes only ids nothing has used. Requests, answers and state are mapped both ways.
+- Each seed calls from a loopback address of its own, sent as `X-Forwarded-For`, and the seed's
+  `127.0.0.1` entries name it, so the hint limiter's count starts at zero with each seed. Every
+  request names its fixture in `X-Sdk-Fixture`, so one whose key names no fixture runs with the
+  seed's `config`.
+- `machine_translate_new_phrases` defaults to true, as here. A seeded block with no `content`
+  is stored with a placeholder, which state reads back as null.
+- Faults apply in the forwarder, and a connection the clone drops is dropped. A clone has no
+  clock: advancing it waits that long.
+- A seed carrying `reference`, `config.legacy_omit_capability` or
+  `config.drop_uncategorized_blocks` asks for what a clone cannot be, and is served by this
+  double, which the forwarder runs alongside.
+
+The tests take this path when `LANGSYS_CONTRACT_TARGET` names the clone's origin
+(`LANGSYS_CONTRACT_LOG` names the file the forwarder logs each seed's route to).
+
 ## Routes
 
 The real API routes an SDK calls:

@@ -35,10 +35,20 @@ export interface AcceptedState {
     hints: Array<{ project_id: string; url: string }>;
 }
 
-/** `env` is added to the double's environment, for a case that needs a host setting such as its locale. */
+/**
+ * `env` is added to the double's environment, for a case that needs a host setting such as its locale.
+ *
+ * With `LANGSYS_CONTRACT_TARGET` set to an SDK test clone's origin, the double runs in its
+ * forwarding mode (`contract-fixture/forwarder.mjs`) and the clone answers the API.
+ * `LANGSYS_CONTRACT_LOG` names the file the forwarder logs its seeds to.
+ */
 export async function startContractFixture(env: Record<string, string> = {}): Promise<ContractFixture> {
-    const script = join(process.cwd(), 'contract-fixture', 'server.mjs');
-    const child: ChildProcess = spawn(process.execPath, [script], { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, ...env } });
+    const target = process.env.LANGSYS_CONTRACT_TARGET;
+    const log = process.env.LANGSYS_CONTRACT_LOG;
+    const args = target
+        ? [join(process.cwd(), 'contract-fixture', 'forwarder.mjs'), '--target', target, ...(log ? ['--log', log] : [])]
+        : [join(process.cwd(), 'contract-fixture', 'server.mjs')];
+    const child: ChildProcess = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, ...env } });
 
     const ready = await new Promise<{ base_url: string; fixture_url: string }>((resolve, reject) => {
         let buffered = '';

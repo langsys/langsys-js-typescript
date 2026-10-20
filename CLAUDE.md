@@ -56,6 +56,7 @@ example/
 
 contract-fixture/           # The fleet's API contract double (spec CONF-2) — not shipped in the package
     server.mjs              # Runnable HTTP double, Node built-ins only
+    forwarder.mjs           # The same namespaces answered by an SDK test clone (a real backend), for LANGSYS_CONTRACT_TARGET runs
     seed.schema.json        # The seed document for POST /__fixture/seed
     symfony-intl.json       # symfony/intl's currency bundles and locale aliases, as the backend locks them
     README.md               # What it enforces, in the backend's order, and what it does not model
