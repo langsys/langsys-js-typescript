@@ -42,7 +42,7 @@ const SEED = {
 };
 
 const GERMAN = ['Hallo', 'Tschüss'];
-const registered = async () => (await fx.state()).projects.p1.phrases.map((p) => p.phrase);
+const registered = async () => (await fx.held('k-write', 'p1', 'de')).phrases;
 const page = (tr: (p: string, c: string) => string) => `<h1>${tr('Hello', 'UI')}</h1><p>${tr('Goodbye', 'UI')}</p>`;
 
 async function init(key = 'k-write', ssrTokenStrategy: 'client' | 'server' | 'auto' = 'server') {
@@ -298,9 +298,9 @@ describe('SRV-7 with SRV-3: misses are the scope’s own, and sent only by close
         const de = await createRequestScope({ locale: 'de' });
         const block = { custom_id: 'b-scope', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['Block A', 'Block B'] };
         await expect(de.run(() => registerContentBlock(block as never))).resolves.toEqual({ status: false, skipped: true, reason: 'deferred' });
-        expect((await fx.state()).projects.p1.blocks.map((b) => b.custom_id)).not.toContain('b-scope');
+        expect(Object.keys((await fx.held('k-write', 'p1', 'de')).blocks)).not.toContain('b-scope');
         await de.close();
-        expect((await fx.state()).projects.p1.blocks.map((b) => b.custom_id)).toContain('b-scope');
+        expect(Object.keys((await fx.held('k-write', 'p1', 'de')).blocks)).toContain('b-scope');
     });
 
     it('a read-only key sends nothing on close; the write key on the same render is the control', async () => {

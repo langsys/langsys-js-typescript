@@ -39,7 +39,7 @@ const PROJECT = { id: 'p1', base_locale: 'en', target_locales: ['es-es'], websit
 type Seeded = { phrase: string; category?: string; translations?: Record<string, string> };
 const seedWith = (phrases: Seeded[] = [], blocks: { category: string; custom_id: string; phrases: Seeded[] }[] = []) =>
     fx.seed({ projects: [{ ...PROJECT, phrases, blocks }], keys: [{ key: 'k-write', project: 'p1', type: 'write' }] });
-const stored = async () => (await fx.state()).projects.p1.phrases.map((p) => p.phrase);
+const stored = async () => (await fx.held('k-write', 'p1', 'es-es')).phrases;
 /** Whether this session's catalog holds the phrase: its registration has flushed. */
 const heldLocally = (phrase: string) => Object.prototype.hasOwnProperty.call(sTranslations.get().UI ?? {}, phrase);
 

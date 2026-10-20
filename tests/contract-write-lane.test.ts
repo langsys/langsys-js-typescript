@@ -41,7 +41,9 @@ const withAllowlist = (list: string[]) => ({
     keys: SEED.keys.map((k) => (k.key === 'k-ipw' ? { ...k, ip_allowlist: list } : k)),
 });
 
-const registered = async () => (await fx.state()).projects.p1.phrases.map((p) => p.phrase);
+// What was registered, as the API's catalog serves it.
+const registered = async () => (await fx.held('k-write', 'p1', 'es-es')).phrases;
+const heldBlocks = async () => Object.keys((await fx.held('k-write', 'p1', 'es-es')).blocks);
 
 const session = (key: string, opts: { awaitCatalog?: boolean; locale?: string } = {}) => startSession(fx.baseUrl, key, opts);
 
@@ -125,7 +127,7 @@ describe('REG-9: batches follow the limit the server advertises', () => {
 
 describe('REG-10: a registration never reports success for work that did not happen', () => {
     const block = { custom_id: 'b-reg10', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['A', 'B'] };
-    const blockIds = async () => (await fx.state()).projects.p1.blocks.map((b) => b.custom_id);
+    const blockIds = heldBlocks;
 
     it('from a session the double computes read-only, the skip is a non-success naming "not write-enabled"', async () => {
         await session('k-read');
@@ -166,7 +168,7 @@ describe('One registration request per block in flight', () => {
         { tag: 'p', children: [{ text: 'Once B' }] },
     ];
     const id = generateCustomId('UI', ['Once A', 'Once B']);
-    const heldAs = async (customId: string) => (await fx.state()).projects.p1.blocks.filter((b) => b.custom_id === customId);
+    const heldAs = async (customId: string) => (await heldBlocks()).filter((id) => id === customId);
 
     /**
      * How many registration requests carried the block, read at the transport seam. The double
@@ -279,7 +281,7 @@ describe('A registration answered after the catalog changed keeps that catalogâ€
 
     it('a block: the switched catalogâ€™s translation renders, and the registration was answered', async () => {
         await registerThenSwitch(() => void registerBlock(tree, { category: 'VAR', params: { name: 'Ana' } }));
-        expect((await fx.state()).projects.p1.blocks.some((b) => b.custom_id === id)).toBe(true);
+        expect(await heldBlocks()).toContain(id);
         expect(LangsysApp.Translations.lookupContent('VAR', id, 'A caption')).toBe('Un pie de foto');
         expect(serializeTree(renderBlock(tree, { category: 'VAR', params: { name: 'Ana' } }).nodes)).toBe('<img alt="Imagen de Ana" src="/a.png"><p>Un pie de foto</p>');
     });
@@ -359,14 +361,14 @@ describe('GATE-9 on the content-block path', () => {
         const block = { custom_id: 'b-gated', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['Gated A', 'Gated B'] };
         await expect(registerContentBlock(block as never)).resolves.toEqual({ status: false, skipped: true, reason: 'base-locale-gate' });
         await sleep(300);
-        expect((await fx.state()).projects.p1.blocks.map((b) => b.custom_id)).not.toContain('b-gated');
+        expect(await heldBlocks()).not.toContain('b-gated');
     });
 
     it('control: off, the same block is registered', async () => {
         await session('k-write');
         const block = { custom_id: 'b-open', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['Open A', 'Open B'] };
         await registerContentBlock(block as never);
-        expect((await fx.state()).projects.p1.blocks.map((b) => b.custom_id)).toContain('b-open');
+        expect(await heldBlocks()).toContain('b-open');
     });
 });
 

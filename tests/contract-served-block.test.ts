@@ -76,7 +76,8 @@ const TREE: BlockNode[] = [
 /** The same project without the outer block: new page content around a block already translated. */
 const SEED_NEW_OUTER = { ...SEED, projects: [{ ...SEED.projects[0]!, blocks: SEED.projects[0]!.blocks.filter((b) => b.custom_id === INNER) }] };
 
-const heldIds = async () => (await fx.state()).projects.p1.blocks.map((b) => b.custom_id).sort();
+// Registrations as the API's catalog serves them; a block's stored content only `state()` reads (CONF-2).
+const heldIds = async () => Object.keys((await fx.held('k-write', 'p1', 'it-it')).blocks).sort();
 const contentOf = async (id: string) => (await fx.state()).projects.p1.blocks.find((b) => b.custom_id === id)?.content;
 const live: Translate[] = [];
 
@@ -204,7 +205,7 @@ describe('a seeded registration right after init sends nothing the catalog holds
             globalThis.fetch = realFetch;
         }
         expect(posted.filter((body) => body.includes(INNER) || body.includes('Pricing plans'))).toEqual([]);
-        expect((await fx.state()).projects.p1.phrases.map((p) => p.phrase)).not.toContain('Pricing plans');
+        expect((await fx.held('k-write', 'p1', 'it-it')).phrases).not.toContain('Pricing plans');
         expect(await contentOf('seeded-new')).toBe('<p>New one</p><p>New two</p>');
     });
 });
@@ -309,6 +310,6 @@ describe('SRV-5: a Suspense fallback swapped out inside the settle window, again
         await until(async () => (await heldIds()).includes(REAL));
         await sleep(SETTLE_MS);
         expect(await heldIds()).not.toContain(SPINNER);
-        expect((await fx.state()).projects.p1.blocks.find((b) => b.custom_id === REAL)!.phrases.map((p) => p.phrase)).toEqual(['Intro one', 'Real content']);
+        expect((await fx.held('k-write', 'p1', 'it-it')).blocks[REAL]).toEqual(['Intro one', 'Real content']);
     });
 });

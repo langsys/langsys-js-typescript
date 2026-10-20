@@ -93,7 +93,8 @@ function recordRequests(): void {
     });
 }
 
-const phrasesOf = async (project: string) => (await fx.state()).projects[project]!.phrases.map((p) => p.phrase);
+const READER: Record<string, string> = { zero: 'key-zero', one: 'key-one', two: 'key-two' };
+const phrasesOf = async (project: string) => (await fx.held(READER[project]!, project, 'de')).phrases;
 const keysOf = (requests: Sent[]) => [...new Set(requests.map((r) => r.key))];
 
 async function init(key = 'key-zero', ssrTokenStrategy: 'client' | 'server' | 'auto' = 'server') {
@@ -200,8 +201,8 @@ describe('SRV-2: two scopes in one process never share a credential', () => {
         expect(await one.run(() => inherited.close())).toEqual({ status: true });
 
         expect(sent.map((r) => `${r.key} ${r.project}`)).toEqual(['key-one one', 'key-zero zero']);
-        expect(await phrasesOf('one')).toEqual(['Hello', 'Closed inside two']);
-        expect(await phrasesOf('zero')).toEqual(['Hello', 'Closed inside one']);
+        expect(await phrasesOf('one')).toEqual(['Closed inside two', 'Hello']);
+        expect(await phrasesOf('zero')).toEqual(['Closed inside one', 'Hello']);
         expect(await phrasesOf('two')).toEqual(['Hello']);
     });
 
@@ -232,7 +233,7 @@ describe('SRV-2 with SRV-3: a scope’s write capability is its own key’s', ()
         expect(sent.filter((r) => r.key === 'key-two-read').map((r) => r.method)).toEqual(['GET', 'GET']);
         expect(await phrasesOf('two')).toEqual(['Hello']);
         expect(control.closed).toEqual({ status: true });
-        expect(await phrasesOf('zero')).toEqual(['Hello', 'From the process']);
+        expect(await phrasesOf('zero')).toEqual(['From the process', 'Hello']);
     });
 
     it('two keys for one project never share a catalog, so a reader after a writer still pushes nothing', async () => {
@@ -243,7 +244,7 @@ describe('SRV-2 with SRV-3: a scope’s write capability is its own key’s', ()
         expect(sent.filter((r) => r.path === '/translations').map((r) => r.key)).toEqual(['key-two', 'key-two-read']);
         expect(writer.closed).toEqual({ status: true });
         expect(reader.closed).toEqual({ status: false, skipped: true, reason: 'not-write-enabled' });
-        expect(await phrasesOf('two')).toEqual(['Hello', 'From the writer']);
+        expect(await phrasesOf('two')).toEqual(['From the writer', 'Hello']);
     });
 
     it('a scope with a grant and one without, on the same key, never share a write decision', async () => {
@@ -278,7 +279,7 @@ describe('SRV-2 with SRV-3: a scope’s write capability is its own key’s', ()
         inherited.run(() => topLevelT('From the reader', 'UI'));
         expect(own.closed).toEqual({ status: true });
         expect(await inherited.close()).toEqual({ status: false, skipped: true, reason: 'not-write-enabled' });
-        expect(await phrasesOf('one')).toEqual(['Hello', 'From a writer']);
+        expect(await phrasesOf('one')).toEqual(['From a writer', 'Hello']);
         expect(await phrasesOf('zero')).toEqual(['Hello']);
     });
 

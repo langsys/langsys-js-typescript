@@ -26,11 +26,15 @@ const g = globalThis as unknown as Record<string, unknown>;
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function until(check: () => boolean | Promise<boolean>, timeoutMs = 8000): Promise<void> {
+// Against an SDK test clone a check is a real read, often the catalog, which the backend
+// builds per request: polled every 25ms from several files at once, the reads alone saturate it.
+const againstClone = Boolean(process.env.LANGSYS_CONTRACT_TARGET);
+
+export async function until(check: () => boolean | Promise<boolean>, timeoutMs = againstClone ? 30_000 : 8000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         if (await check()) return;
-        await sleep(25);
+        await sleep(againstClone ? 250 : 25);
     }
     throw new Error(`condition not met within ${timeoutMs}ms`);
 }

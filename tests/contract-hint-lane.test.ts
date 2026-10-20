@@ -48,7 +48,7 @@ function drift(key: string, change: Record<string, unknown>) {
 const session = (key: string) => startSession(fx.baseUrl, key);
 const gated = () => ({ ...SEED, projects: [{ ...SEED.projects[0], discovery_base_locale_only: true }] });
 const hints = async () => (await fx.state()).hints.map((h) => h.url);
-const blocks = async () => (await fx.state()).projects.p1.blocks.map((b) => b.custom_id);
+const blocks = async () => Object.keys((await fx.held('k-public', 'p1', 'es-es')).blocks);
 
 /** Record misses on the current page and run out the jitter, so the report goes out now. */
 async function missAndRunOutJitter(...phrases: string[]): Promise<void> {
