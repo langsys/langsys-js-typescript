@@ -6,8 +6,9 @@
  *
  * Usage: `node forwarder.mjs --target https://api.langsys5.test [--port N] [--log FILE]`.
  * Prints the same ready line as `server.mjs`. A clone served over HTTPS by a local CA needs
- * that CA in NODE_EXTRA_CA_CERTS. `--log` appends one JSON line per seed: where it went, and
- * why when it stayed on the in-process double or the clone refused it.
+ * that CA in NODE_EXTRA_CA_CERTS. `--log` appends one JSON line when it starts, naming its
+ * in-process double, and one per seed: where it went, and why when it stayed on the double or
+ * the clone refused it.
  *
  * A seed means what it means on the double. The clone holds many fixtures and the double
  * one state, so the forwarder translates:
@@ -260,7 +261,7 @@ async function seed(doc) {
 }
 
 async function fixtureRoute(req, res, path, raw) {
-    if (current.mode === 'double' && !(req.method === 'POST' && path === '/seed')) {
+    if (current.mode === 'double' && !(req.method === 'POST' && (path === '/seed' || path === '/reset'))) {
         const response = await fetch(`${double.origin}/__fixture${path}`, { method: req.method, headers: requestHeaders(req), body: raw.length ? raw : undefined });
         return relay(res, response);
     }
@@ -273,6 +274,7 @@ async function fixtureRoute(req, res, path, raw) {
     })();
     if (req.method === 'POST' && path === '/seed') return send(res, ...(await seed(body ?? {})));
     if (req.method === 'POST' && path === '/reset') {
+        // Nothing is held after it: a clone fixture is reset, and the double's state is never read again.
         await resetClone(current);
         current = context('clone');
         return send(res, 200, { ok: true });
@@ -377,13 +379,16 @@ function readRaw(req) {
     });
 }
 
-// The clone answers an unknown fixture 404 once it is reachable and trusted; anything else stops here.
-const probe = await fixtureCall('GET', `/state?fixture=${randomUUID()}`).catch((error) => ({ status: 0, text: String(error?.cause ?? error) }));
-if (probe.status !== 404) {
-    process.stderr.write(`forwarder: ${target}/__fixture is not an SDK test clone's (answered ${probe.status}: ${probe.text.slice(0, 300)})\n`);
+// Only a clone has a seed route: it refuses a field its seed does not declare with 422 and creates
+// nothing, where any other instance answers a missing route. Anything else stops here.
+const probe = await fixtureCall('POST', '/seed', { forwarder_probe: true }).catch((error) => ({ status: 0, text: String(error?.cause ?? error), json: null }));
+const isClone = probe.status === 422 && (probe.json?.error?.errors ?? []).some((e) => e.field === 'forwarder_probe' && e.code === 'not_allowed');
+if (!isClone) {
+    process.stderr.write(`forwarder: ${target}/__fixture is not an SDK test clone's (a probe seed answered ${probe.status}: ${probe.text.slice(0, 300)})\n`);
     double.child.kill('SIGTERM');
     process.exit(2);
 }
+log({ event: 'started', target, double: double.origin });
 
 const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://fixture.local');

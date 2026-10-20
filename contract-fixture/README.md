@@ -55,8 +55,18 @@ one state, so the forwarder translates:
   `config.drop_uncategorized_blocks` asks for what a clone cannot be, and is served by this
   double, which the forwarder runs alongside.
 
-The tests take this path when `LANGSYS_CONTRACT_TARGET` names the clone's origin
-(`LANGSYS_CONTRACT_LOG` names the file the forwarder logs each seed's route to).
+At start it sends the clone a seed only a clone refuses with 422 and creates nothing from, and it
+stops there when the target answers anything else.
+
+The tests take this path when `LANGSYS_CONTRACT_TARGET` names the clone's origin, and the vitest
+config then gives each case and hook the time a real clock takes:
+
+```sh
+LANGSYS_CONTRACT_TARGET=https://api.langsys5.test \
+NODE_EXTRA_CA_CERTS=~/.config/valet/CA/LaravelValetCASelfSigned.pem npm test
+```
+
+`LANGSYS_CONTRACT_LOG` names the file the forwarder logs its start and each seed's route to.
 
 ## Routes
 
