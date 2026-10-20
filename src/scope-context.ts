@@ -22,7 +22,7 @@ export interface ActiveScope {
     /** Hold a content block for the scope's flush after the response. */
     recordBlock(block: iContentBlock): void;
     /** Remember a block the scope rendered, for its seed. */
-    recordRendered(block: { customId: string; category: string; tokens: string[]; shape: 'phrase' | 'block' }): void;
+    recordRendered(block: { customId: string; category: string; tokens: string[]; shape: 'phrase' | 'block'; content?: string; register?: false }): void;
 }
 
 /** The ambient-context shape `AsyncLocalStorage` has, so the core never imports `node:async_hooks`. */

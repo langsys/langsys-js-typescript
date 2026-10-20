@@ -153,6 +153,7 @@ describe('a block rendered with register: false is never registered from its see
     it('the seed marks it, and registerBlock(seededBlock) does nothing', async () => {
         const seed = await serverSeed(() => void renderBlock(tree, { category: 'UI', register: false }));
         expect(seed.blocks[id]).toMatchObject({ tokens: ['Goodbye Bo', 'See you'], register: false });
+        expect(seed.blocks[id]).not.toHaveProperty('content');
         registerBlock(seed.blocks[id]);
         await settle();
         expect(sent).toEqual([]);
@@ -164,5 +165,102 @@ describe('a block rendered with register: false is never registered from its see
         registerBlock(seed.blocks[id]);
         await settle();
         expect(sent.map((i) => i.custom_id)).toEqual([id]);
+    });
+});
+
+describe('a seed registers from the client exactly what a registration over the same nodes sends', () => {
+    const p = (text: string): BlockNode => ({ tag: 'p', children: [{ text }] });
+    const host = (children: BlockNode[], attrs: Record<string, string | boolean> = {}): BlockNode => ({ tag: 'section', attrs: { 'data-ls-contentblock': true, ...attrs }, children });
+    const value = (name: string, text: string): BlockNode => ({ tag: 'p', children: [{ comment: `ls:${name}` }, { text }, { comment: '/ls' }] });
+
+    /** What registering every seed entry sends, and what one registration over the same nodes sends, outside any scope. */
+    async function bothPaths(tree: BlockNode[], options: { customId?: string; register?: false } = {}) {
+        const seed = await serverSeed(() => void renderBlock(tree, { category: 'UI', ...options }));
+        for (const block of Object.values(seed.blocks)) registerBlock(block as never);
+        await settle();
+        const fromSeed = sent.map((i) => i.custom_id).sort();
+        // A fresh page: what the seed path registered is cached as known, and would hold the second path back.
+        sent = [];
+        _resetSeededBlocks();
+        pageCatalog({ Prices: 'Preise' }, 'de-de');
+        registerBlock(tree, { category: 'UI', ...options });
+        await settle();
+        return { seed, fromSeed, fromNodes: sent.map((i) => i.custom_id).sort() };
+    }
+
+    it('register: false reaches every nested level: no entry carries content, and none registers; control: without it, all three do', async () => {
+        const deep = [p('Outer one'), p('Outer two'), host([p('Mid one'), p('Mid two'), host([p('Your code is 4417-Bo'), p('Inner two')])])];
+        const off = await bothPaths(deep, { register: false });
+        expect(Object.values(off.seed.blocks).map((b: any) => [b.register, 'content' in b])).toEqual([
+            [false, false],
+            [false, false],
+            [false, false],
+        ]);
+        expect(off.fromSeed).toEqual([]);
+        expect(off.fromNodes).toEqual([]);
+        sent = [];
+        _resetSeededBlocks();
+        pageCatalog({ Prices: 'Preise' }, 'de-de');
+        const on = await bothPaths(deep);
+        expect(on.fromSeed).toHaveLength(3);
+        expect(on.fromSeed).toEqual(on.fromNodes);
+    });
+
+    it('an adopted id registers nothing from the seed, while a block nested in it still registers, as over the nodes', async () => {
+        const nested = generateCustomId('UI', ['Nested one', 'Nested two']);
+        const { seed, fromSeed, fromNodes } = await bothPaths([p('Adopted one'), p('Adopted two'), host([p('Nested one'), p('Nested two')])], { customId: 'adopted-x' });
+        expect(seed.blocks['adopted-x']).toMatchObject({ register: false });
+        expect(seed.blocks['adopted-x']).not.toHaveProperty('content');
+        expect(fromSeed).toEqual([nested]);
+        expect(fromNodes).toEqual([nested]);
+    });
+
+    it('a block inside a resolved scope and a resolved stamp register nothing from the seed, as over the nodes', async () => {
+        const tree = [
+            p('Served one'),
+            p('Served two'),
+            { tag: 'div', attrs: { 'data-ls-resolved': 'it-it' }, children: [host([p('Inside one'), p('Inside two')])] },
+            host([p('Stamp one'), p('Stamp two')], { 'data-ls-contentblock': 'stamped-id', 'data-ls-resolved': 'it-it' }),
+        ] as BlockNode[];
+        const { seed, fromSeed, fromNodes } = await bothPaths(tree);
+        expect(seed.blocks['stamped-id']).toMatchObject({ register: false });
+        expect(seed.blocks[generateCustomId('UI', ['Inside one', 'Inside two'])]).toMatchObject({ register: false });
+        expect(fromSeed).toEqual([generateCustomId('UI', ['Served one', 'Served two'])]);
+        expect(fromNodes).toEqual(fromSeed);
+    });
+
+    it('a block of value markers only registers nothing from the seed, as over the nodes', async () => {
+        const { seed, fromSeed, fromNodes } = await bothPaths([value('total', '42'), value('due', 'Friday')]);
+        expect(Object.values(seed.blocks).map((b: any) => [b.register, 'content' in b])).toEqual([[false, false]]);
+        expect(fromSeed).toEqual([]);
+        expect(fromNodes).toEqual([]);
+    });
+
+    it('a nested unit of value markers only registers nothing from the seed, as over the nodes', async () => {
+        const { seed, fromSeed, fromNodes } = await bothPaths([p('Total due'), p('By the date'), host([value('total', '42'), value('due', 'Friday')])]);
+        expect(Object.values(seed.blocks).filter((b: any) => b.register === false)).toHaveLength(1);
+        expect(fromSeed).toEqual([generateCustomId('UI', ['Total due', 'By the date'])]);
+        expect(fromNodes).toEqual(fromSeed);
+    });
+
+    it('a nested block’s content is its source as written, read before its render fills in a visitor’s params', async () => {
+        const tree = [p('Outer one'), p('Outer two'), host([p('Hello {name}'), p('Welcome back')])];
+        const seed = await serverSeed(() => void renderBlock(tree, { category: 'UI', params: { name: 'Bo' } }));
+        expect(seed.blocks[generateCustomId('UI', ['Hello {name}', 'Welcome back'])].content).toBe('<p>Hello {name}</p><p>Welcome back</p>');
+    });
+
+    it('content rides only where a client registers from the seed: not on a phrase-shaped entry, nor on a block the catalog holds', async () => {
+        const known = generateCustomId('UI', ['Known one', 'Known two']);
+        const unknown = generateCustomId('UI', ['Unknown one', 'Unknown two']);
+        const scope = await createRequestScope({ locale: 'it-it', catalog: { UI: { [known]: { 'Known one': 'Noto uno', 'Known two': 'Noto due' } } } as never });
+        scope.run(() => {
+            renderBlock([p('Lone phrase')], { category: 'UI' });
+            renderBlock([p('Known one'), p('Known two')], { category: 'UI' });
+            renderBlock([p('Unknown one'), p('Unknown two')], { category: 'UI' });
+        });
+        const blocks = scope.seed().blocks;
+        expect(blocks[generateCustomId('UI', ['Lone phrase'])]).not.toHaveProperty('content');
+        expect(blocks[known]).not.toHaveProperty('content');
+        expect(blocks[unknown]!.content).toBe('<p>Unknown one</p><p>Unknown two</p>');
     });
 });

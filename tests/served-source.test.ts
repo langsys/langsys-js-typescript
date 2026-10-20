@@ -347,6 +347,13 @@ describe('a block the server sends itself is never sent by the client (SSR-1, SS
         expect(client.seed.blocks[BLOCK_ID]!.collected).toBeUndefined();
     });
 
+    it('the seed carries the content a client registers a block with, and none for a block the scope sends itself', async () => {
+        const client = await serve('client');
+        expect(client.seed.blocks[BLOCK_ID]!.content).toBe('<p>Server A</p><p>Server B</p>');
+        const server = await serve('server');
+        expect(server.seed.blocks[BLOCK_ID]).not.toHaveProperty('content');
+    });
+
     it('a block the scope rendered from the catalog is not marked: nothing is sent for it', async () => {
         Object.assign(configStore, { ssrTokenStrategy: 'server' });
         const scope = await createRequestScope({ locale: 'it-it', catalog: { UI: { [BLOCK_ID]: { 'Server A': 'Server Ai', 'Server B': 'Server Bi' } } } as never });

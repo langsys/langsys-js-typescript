@@ -135,15 +135,25 @@ export interface SeededBlock {
     tokens: string[];
     shape: 'phrase' | 'block';
     /**
+     * The block's content as `registerBlock` over its nodes would send it, for a
+     * client that registers it from the seed. Absent wherever no client does: a
+     * phrase-shaped entry, a block the scope's catalog holds, a `collected` one and
+     * one marked `register: false`. A seeded block without it registers nothing.
+     */
+    content?: string;
+    /**
      * The server's scope sends this block itself at `close()` (the `server`
      * strategy, or `auto` for a short list), so a client never registers it:
      * not from the seed, and not from the `Translate` over its host.
      */
     collected?: boolean;
     /**
-     * `false` when the block was rendered with `register: false` (VAR-7): its tokens
-     * hold values from variables, carried only so a client can re-render the served
-     * text. `registerBlock(seededBlock)` never registers it.
+     * `false` when a registration over the block's nodes sends nothing, so
+     * `registerBlock(seededBlock)` never registers it: a block rendered with
+     * `register: false` (VAR-7), at any depth, whose tokens hold values from
+     * variables, carried only so a client can re-render the served text; one under
+     * an adopted id; one inside a resolved scope, and the blocks nested in either;
+     * and a unit of value markers only.
      */
     register?: false;
 }
@@ -187,16 +197,18 @@ export function tokenizeTree(nodes: readonly BlockNode[]): { tokens: string[]; s
  */
 export function renderBlock(nodes: readonly BlockNode[], options: BlockOptions = {}): RenderedBlock {
     const root = view(nodes);
-    const tokens = tokenizeNodes(root);
+    const { tokens, vars } = tokenizeUnit(root);
     const rendered = renderView(root, options);
-    // A request scope keeps what it rendered, for its seed (SRV-4).
+    // A request scope keeps what it rendered, for its seed (SRV-4), and whether a
+    // registration over these nodes sends it, as registerView decides.
     if (rendered.customId && rendered.shape !== 'empty') {
+        const registers = options.register !== false && !options.customId && !isMarkerOnlyUnit(tokens, vars);
         activeScope()?.recordRendered({
             customId: rendered.customId,
             category: options.category ?? '',
             tokens,
             shape: rendered.shape,
-            ...(options.register === false ? { register: false as const } : {}),
+            ...(!registers ? { register: false as const } : rendered.shape === 'block' ? { content: contentOf(nodes) } : {}),
         });
     }
     return rendered;
@@ -721,7 +733,14 @@ function renderNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved = 
             // Rendered in place: the nested render works on these same view nodes, so
             // every element keeps its `source` in the enclosing input's numbering.
             const nested = nestedOptions(node, options, resolved);
-            const tokens = tokenizeNodes(node.childNodes);
+            // As registerNestedHosts decides: a nested block under `register: false`, under an
+            // adopted id or inside a resolved scope registers nothing, nor do the blocks in it.
+            const registers = options.register !== false && !nested.customId && !resolvedHere(node as unknown as Element, resolved);
+            if (!registers) nested.register = false;
+            const { tokens, vars } = tokenizeUnit(node.childNodes);
+            const markerOnly = isMarkerOnlyUnit(tokens, vars);
+            // Read before the render replaces its text, as registration reads it from the source.
+            const content = registers && !markerOnly && activeScope() ? contentOf(toBlockNodes(node.childNodes)) : undefined;
             const rendered = renderView(node.childNodes, nested);
             // The nested host is stamped as the outer host is (MARK-1, GATE-10), and a
             // scope keeps it for its seed, so the client recovers its source too.
@@ -736,7 +755,7 @@ function renderNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved = 
                     category: nested.category ?? '',
                     tokens,
                     shape: rendered.shape,
-                    ...(options.register === false ? { register: false as const } : {}),
+                    ...(!registers || markerOnly ? { register: false as const } : rendered.shape === 'block' ? { content } : {}),
                 });
             }
             continue;
@@ -903,8 +922,17 @@ function registerSeeded(block: SeededBlock): void {
         return;
     }
     if (isContentBlockKnown(category, customId)) return;
+    // A block registers with its content, which the API requires: a seeded block
+    // without it registers nothing, and is not marked as sent.
+    if (!block.content) {
+        debugNotice(
+            'register-block\0seeded-without-content',
+            `registerBlock() was given a seeded block with no content ("${customId}"), so it registered nothing from it. A Translate or a registerBlock() over the block's own nodes registers it as it would with no seed; a request scope's seed() carries the content of each block a client may register.`
+        );
+        return;
+    }
     markBlockHandled(customId, 'seed');
-    void registerContentBlock({ custom_id: customId, category, content: '', tokens });
+    void registerContentBlock({ custom_id: customId, category, content: block.content, tokens });
 }
 
 function registerNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved = false): void {

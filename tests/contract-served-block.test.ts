@@ -77,6 +77,7 @@ const TREE: BlockNode[] = [
 const SEED_NEW_OUTER = { ...SEED, projects: [{ ...SEED.projects[0]!, blocks: SEED.projects[0]!.blocks.filter((b) => b.custom_id === INNER) }] };
 
 const heldIds = async () => (await fx.state()).projects.p1.blocks.map((b) => b.custom_id).sort();
+const contentOf = async (id: string) => (await fx.state()).projects.p1.blocks.find((b) => b.custom_id === id)?.content;
 const live: Translate[] = [];
 
 /** The client session, at `locale`, with the store a locale switch goes through. */
@@ -195,7 +196,7 @@ describe('a seeded registration right after init sends nothing the catalog holds
             await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('it-it'), baseLocale: 'en', apiUrl: fx.baseUrl });
             registerBlock({ customId: INNER, category: 'UI', tokens: ['Inner title', 'Inner body'], shape: 'block' });
             registerBlock({ customId: 'pricing-hero', category: 'UI', tokens: ['Pricing plans'], shape: 'phrase' });
-            registerBlock({ customId: 'seeded-new', category: 'UI', tokens: ['New one', 'New two'], shape: 'block' });
+            registerBlock({ customId: 'seeded-new', category: 'UI', tokens: ['New one', 'New two'], shape: 'block', content: '<p>New one</p><p>New two</p>' });
             // Control: the unknown seeded block is sent and held, so the wait would have seen the others.
             await until(async () => (await heldIds()).includes('seeded-new'));
             await sleep(SETTLE_MS);
@@ -204,6 +205,51 @@ describe('a seeded registration right after init sends nothing the catalog holds
         }
         expect(posted.filter((body) => body.includes(INNER) || body.includes('Pricing plans'))).toEqual([]);
         expect((await fx.state()).projects.p1.phrases.map((p) => p.phrase)).not.toContain('Pricing plans');
+        expect(await contentOf('seeded-new')).toBe('<p>New one</p><p>New two</p>');
+    });
+});
+
+describe('a seeded block the catalog does not hold registers with the content the server rendered it from', () => {
+    // The API stores a block only with its content: `content_blocks.content` is NOT NULL, and
+    // an empty string arrives as null. The double stores an empty one, so these read what it held.
+    const NO_BLOCKS = { ...SEED, projects: [{ ...SEED.projects[0]!, blocks: [] }] };
+    const contents = async () => Object.fromEntries((await fx.state()).projects.p1.blocks.map((b) => [b.custom_id, b.content]));
+
+    it('the outer and the nested block, each with the content a registration over their nodes sends', async () => {
+        await fx.seed(NO_BLOCKS);
+        await client('it-it');
+        const { seed } = await serve('it-it');
+        for (const block of Object.values(seed.blocks)) registerBlock(block);
+        await until(async () => (await heldIds()).length === 2);
+        const fromSeed = await contents();
+        // Control: the same tree registered over its nodes, in a project that holds neither block.
+        await fx.seed(NO_BLOCKS);
+        await client('it-it');
+        registerBlock(TREE, { category: 'UI' });
+        await until(async () => (await heldIds()).length === 2);
+        expect(fromSeed).toEqual(await contents());
+        expect(fromSeed[INNER]).toBe('<h2>Inner title</h2><p>Inner body</p>');
+    });
+
+    it('a seeded block with no content registers nothing from the seed; control: with its content, the same block registers', async () => {
+        // The double would hold an empty content, so its absence shows nothing was sent.
+        await fx.seed(NO_BLOCKS);
+        await client('it-it');
+        registerBlock({ customId: 'no-content', category: 'UI', tokens: ['New one', 'New two'], shape: 'block' });
+        registerBlock({ customId: 'with-content', category: 'UI', tokens: ['Other one', 'Other two'], shape: 'block', content: '<p>Other one</p><p>Other two</p>' });
+        await until(async () => (await heldIds()).includes('with-content'));
+        await sleep(SETTLE_MS);
+        expect(await heldIds()).toEqual(['with-content']);
+    });
+
+    it('a seeded block with no content is left to its host: the Translate over the host, served as source, registers it with its own content', async () => {
+        await fx.seed(NO_BLOCKS);
+        await client('it-it');
+        const id = generateCustomId('UI', ['Host one', 'Host two']);
+        registerBlock({ customId: id, category: 'UI', tokens: ['Host one', 'Host two'], shape: 'block' });
+        mount('<div><p>Host one</p><p>Host two</p></div>');
+        await until(async () => (await heldIds()).includes(id));
+        expect(await contentOf(id)).toContain('Host one');
     });
 });
 

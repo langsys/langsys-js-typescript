@@ -241,7 +241,12 @@ class Scope implements RequestScope, ActiveScope {
                 block.shape === 'phrase'
                     ? this.phraseMisses.has(`${block.category}\0${block.tokens[0]}`)
                     : this.blockMisses.has(`${block.category}\0${id}`);
-            blocks[id] = collects && held ? { ...block, collected: true } : { ...block };
+            // A block the scope sends itself, or one its catalog holds, needs no content in the
+            // seed: the client never registers it from there.
+            const { content: _content, ...withoutContent } = block;
+            const entry = this.catalog[block.category || '__uncategorized__']?.[id];
+            const known = typeof entry === 'object' && entry !== null;
+            blocks[id] = collects && held ? { ...withoutContent, collected: true } : known ? withoutContent : { ...block };
         }
         const phrases = [...this.phraseMisses.values()].map(({ category, phrase }) => (collects ? { category, phrase, collected: true } : { category, phrase }));
         return { locale: this.locale, catalog: clone(this.catalog), blocks: clone(blocks), phrases };
