@@ -12,8 +12,9 @@ import { startContractFixture, type ContractFixture } from './helpers/contract-f
 import { resetSdk, until } from './helpers/sdk-session.js';
 
 /**
- * The `content` a block registers with, graded against the contract double (spec CONF-2):
- * every assertion reads what the double stored.
+ * The `content` a block registers with, graded against the API on an SDK test clone (spec
+ * CONF-2): every assertion reads what the API stored, from the fixture's state, since no route
+ * a project key can call returns a block's content.
  *
  * VAR-1, VAR-3: a marked value is its `{NAME}` placeholder in the content as in the tokens, the
  * marker gone.

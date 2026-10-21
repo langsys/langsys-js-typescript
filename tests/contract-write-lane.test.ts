@@ -8,10 +8,10 @@ import { startContractFixture, type ContractFixture } from './helpers/contract-f
 import { installBrowser, resetSdk, session as startSession, sleep, t, until } from './helpers/sdk-session.js';
 
 /**
- * The write lane, graded against the contract double (spec CONF-2, tier `contract`).
+ * The write lane, graded against the API on an SDK test clone (spec CONF-2).
  *
  * The SDK runs its real path — `LangsysApp.init`, the real HTTP client, real `fetch` — against
- * the double, and every assertion reads what the double ACCEPTED, never what the SDK sent.
+ * the API, and every assertion reads what the API ACCEPTED, never what the SDK sent.
  * An absence ("nothing was registered") is only evidence alongside a control that shows the
  * same wait would have observed a registration, so each such case carries one.
  */
@@ -67,8 +67,8 @@ afterEach(() => {
 });
 
 describe('GATE-1: the decision is the server-computed write_enabled, never the key type', () => {
-    // The double refuses a write from a session that may not write, so "did not register"
-    // is only evidence when the double WOULD have accepted the write. Hence the drift: the
+    // The API refuses a write from a session that may not write, so "did not register"
+    // is only evidence when the API WOULD have accepted the write. Hence the drift: the
     // session learns it is read-only, then the server's allow-list admits it. A client that
     // decided by key type would now send and be stored; a conforming one sends nothing.
     it('an ip_write session judged read-only does not register, even once the server would accept it', async () => {
@@ -129,9 +129,9 @@ describe('REG-10: a registration never reports success for work that did not hap
     const block = { custom_id: 'b-reg10', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['A', 'B'] };
     const blockIds = heldBlocks;
 
-    it('from a session the double computes read-only, the skip is a non-success naming "not write-enabled"', async () => {
+    it('from a session the API computes read-only, the skip is a non-success naming "not write-enabled"', async () => {
         await session('k-read');
-        expect(writeEnabled.get(), 'the double computed read-only').toBe(false);
+        expect(writeEnabled.get(), 'the API computed read-only').toBe(false);
         await expect(registerContentBlock(block as never)).resolves.toEqual({ status: false, skipped: true, reason: 'not-write-enabled' });
         expect(await blockIds()).not.toContain('b-reg10');
     });
@@ -171,8 +171,8 @@ describe('One registration request per block in flight', () => {
     const heldAs = async (customId: string) => (await heldBlocks()).filter((id) => id === customId);
 
     /**
-     * How many registration requests carried the block, read at the transport seam. The double
-     * folds a repeat into the block it already holds, so its state cannot tell one request from two.
+     * How many registration requests carried the block, read at the transport seam. The API
+     * folds a repeat into the block it already holds, so what it serves cannot tell one request from two.
      */
     function countSends(customId: string): () => number {
         const real = globalThis.fetch;
@@ -206,7 +206,7 @@ describe('One registration request per block in flight', () => {
         expect(sends()).toBe(1);
     });
 
-    it('control: a request the double refuses is not shared with a later t change, which sends the block again', async () => {
+    it('control: a request the fixture fails is not shared with a later t change, which sends the block again', async () => {
         await fx.seed({ ...SEED, faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
         const sends = countSends(id);
         await pageLoad();
@@ -372,7 +372,7 @@ describe('GATE-9 on the content-block path', () => {
     });
 });
 
-describe('MARK-3 stamps through registerBlock, against the double', () => {
+describe('MARK-3 stamps through registerBlock, against the API', () => {
     const tree = [
         { tag: 'p', children: [{ text: 'Stamped A' }] },
         { tag: 'p', children: [{ text: 'Stamped B' }] },
@@ -391,7 +391,7 @@ describe('MARK-3 stamps through registerBlock, against the double', () => {
         expect(await heldAs('stamp-unresolved')).toHaveLength(1);
     });
 
-    it('a stamp adopted inside a resolved scope never posts, although the double would accept it', async () => {
+    it('a stamp adopted inside a resolved scope never posts, although the API would accept it', async () => {
         await session('k-write');
         registerBlock(tree, { category: 'UI', customId: 'stamp-resolved' });
         await sleep(SETTLE_MS);
@@ -410,7 +410,7 @@ describe('WIRE-3: an uncategorised block is read back under __uncategorized__', 
 });
 
 describe('CACHE-2: a failed catalog fetch is remembered for a bounded window', () => {
-    // One failure, with a catalog behind it: after the fault the double answers normally. What
+    // One failure, with a catalog behind it: after the fault the API answers normally. What
     // the test reads is the page — a refetch inside the window would change what `t()` renders.
     const oneFailure = { ...SEED, faults: [{ method: 'GET', path: '/translations', times: 1, status: 500 }] };
 
@@ -437,7 +437,7 @@ describe('OBS-1: an unusable capability is surfaced once', () => {
     const notices = (warn: ReturnType<typeof vi.spyOn>) =>
         warn.mock.calls.map((c) => c.map(String).join(' ')).filter((s) => s.includes('this session cannot write'));
 
-    it('an ip_write key the double refuses warns once however many misses follow', async () => {
+    it('an ip_write key the API refuses warns once however many misses follow', async () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         await fx.seed(withAllowlist(['10.1.1.1']));
         await session('k-ipw');

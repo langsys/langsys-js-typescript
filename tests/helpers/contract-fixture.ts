@@ -2,10 +2,11 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { join } from 'node:path';
 
 /**
- * Starts the contract double (`contract-fixture/server.mjs`) in its own process and hands
- * back what a test needs: the base URL to point the SDK at, and the setup namespace.
+ * Starts the contract fixture in its own process and hands back what a test needs: the base
+ * URL to point the SDK at, and the setup namespace. The fixture is an SDK test clone, a real
+ * Langsys API, reached through `contract-fixture/forwarder.mjs` (spec CONF-2).
  *
- * There is deliberately no accessor for what the double received. A test reads what was
+ * There is deliberately no accessor for what the fixture received. A test reads what was
  * registered back through the API's catalog (`held`), as a client reads it (CONF-2).
  * `state()` returns accepted state only, for what no route a project key can call reads
  * back: the hints the server stored, and a block's stored content.
@@ -51,18 +52,25 @@ export interface AcceptedState {
 }
 
 /**
- * `env` is added to the double's environment, for a case that needs a host setting such as its locale.
- *
- * With `LANGSYS_CONTRACT_TARGET` set to an SDK test clone's origin, the double runs in its
- * forwarding mode (`contract-fixture/forwarder.mjs`) and the clone answers the API.
- * `LANGSYS_CONTRACT_LOG` names the file the forwarder logs its seeds to.
+ * `LANGSYS_CONTRACT_TARGET` names the clone's origin, and without it this throws: a contract
+ * test never passes by skipping. `LANGSYS_CONTRACT_LOG` names the file the forwarder logs its
+ * seeds to. `double: true` starts the in-process double (`contract-fixture/server.mjs`) instead,
+ * for its own self-tests. `env` is added to the process's environment, for a case that needs a
+ * host setting such as its locale.
  */
-export async function startContractFixture(env: Record<string, string> = {}): Promise<ContractFixture> {
+export async function startContractFixture(env: Record<string, string> = {}, options: { double?: boolean } = {}): Promise<ContractFixture> {
     const target = process.env.LANGSYS_CONTRACT_TARGET;
     const log = process.env.LANGSYS_CONTRACT_LOG;
-    const args = target
-        ? [join(process.cwd(), 'contract-fixture', 'forwarder.mjs'), '--target', target, ...(log ? ['--log', log] : [])]
-        : [join(process.cwd(), 'contract-fixture', 'server.mjs')];
+    if (!target && !options.double) {
+        throw new Error(
+            'The contract tests run against an SDK test clone, a real Langsys API (spec CONF-2), and none is named. ' +
+                'Set LANGSYS_CONTRACT_TARGET to its origin, and NODE_EXTRA_CA_CERTS to the certificate it serves with: ' +
+                'contract-fixture/README.md, "Forwarding to an SDK test clone".'
+        );
+    }
+    const args = options.double
+        ? [join(process.cwd(), 'contract-fixture', 'server.mjs')]
+        : [join(process.cwd(), 'contract-fixture', 'forwarder.mjs'), '--target', target!, ...(log ? ['--log', log] : [])];
     const child: ChildProcess = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, ...env } });
 
     const ready = await new Promise<{ base_url: string; fixture_url: string }>((resolve, reject) => {

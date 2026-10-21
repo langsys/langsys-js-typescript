@@ -9,15 +9,14 @@ import { startContractFixture, type ContractFixture } from './helpers/contract-f
 import { installBrowser, resetSdk, session as startSession, setHref, sleep, t, until } from './helpers/sdk-session.js';
 
 /**
- * The report (hint) lane, graded against the contract double (spec CONF-2, tier `contract`).
+ * The report (hint) lane, graded against the API on an SDK test clone (spec CONF-2).
  *
- * The double applies the backend's own acceptance rules, so it declines a hint from a caller
- * that can write, or from a key not permitted to report — exactly as the real server does.
- * That makes "the SDK did not send" and "the SDK sent and was declined" identical in the
- * double's state. Every "must not report" case is therefore built on CAPABILITY DRIFT: the
- * SDK learns it must not report, then the double's world changes so it WOULD store the hint.
- * A correct SDK still sends nothing and the state stays empty; an SDK that sends has its
- * hint stored. Each such case has a control showing the double stores that very hint when a
+ * The API declines a hint from a caller that can write, or from a key not permitted to
+ * report. That makes "the SDK did not send" and "the SDK sent and was declined" identical in
+ * what it stores. Every "must not report" case is therefore built on CAPABILITY DRIFT: the
+ * SDK learns it must not report, then the fixture is re-seeded so the API WOULD store the
+ * hint. A correct SDK still sends nothing and no hint is stored; an SDK that sends has its
+ * hint stored. Each such case has a control showing the API stores that very hint when a
  * session is permitted to send it.
  *
  * Reports wait 5 to 30 seconds of jitter. Timers are faked with auto-advance, so real network
@@ -80,7 +79,7 @@ afterEach(() => {
 });
 
 describe('HINT-9: report only when the server permits it', () => {
-    it('permitted: a read-only session reports the page, and the double stores it', async () => {
+    it('permitted: a read-only session reports the page, and the API stores it', async () => {
         await session('k-public');
         expect(autoDiscovery.get()).toBe(true);
         await missAndRunOutJitter('New on this page');
@@ -204,7 +203,7 @@ describe('HINT-13: a route change re-enters the SDK, so a persistent layout is r
         unsubscribe();
     });
 
-    it('without the call, the same layout records nothing for page B, although the double would store it', async () => {
+    it('without the call, the same layout records nothing for page B, although the API would store it', async () => {
         await session('k-public');
         setHref('https://site.local/a');
         const unsubscribe = mountPersistentLayout();
@@ -232,7 +231,7 @@ describe('WIRE-2: an empty 204 is a success', () => {
         const failures = [...warn.mock.calls, ...error.mock.calls]
             .map((c) => c.map(text).join(' '))
             .filter((s) => /hint failed|failed to query|API Error|Unexpected end of JSON/i.test(s))
-            // The locale display data the SDK requests at start-up is outside the double's contract.
+            // The locale display data the SDK requests at start-up is not what this case grades.
             .filter((s) => !s.includes('/locales/'));
         expect(failures).toEqual([]);
     });

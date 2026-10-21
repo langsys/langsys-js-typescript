@@ -13,9 +13,9 @@ import { resetSdk, sleep, until } from './helpers/sdk-session.js';
 
 /**
  * A block served translated, then hydrated and switched on the client, graded against the
- * contract double (spec CONF-2): the server renders it in a request scope, the page carries
- * the rendered markup, and the browser `Translate` takes it over. Every assertion reads the
- * double's accepted state or the DOM, never what the SDK sent.
+ * API on an SDK test clone (spec CONF-2): the server renders it in a request scope, the page
+ * carries the rendered markup, and the browser `Translate` takes it over. Every assertion reads
+ * what the API stored or the DOM, never what the SDK sent.
  *
  * GATE-10: a nested host rendered from the catalog is served with its id and resolved marker,
  * so the browser never registers its translated text as source. SRV-4: a locale switch renders
@@ -152,7 +152,7 @@ describe('GATE-10: a translated block nested in one served as source', () => {
         expect(await heldIds()).toEqual([INNER, OUTER].sort());
     });
 
-    it('control: served with a bare declaration, the client registers the Italian text as source, and the double accepts it', async () => {
+    it('control: served with a bare declaration, the client registers the Italian text as source, and the API accepts it', async () => {
         await client('it-it');
         const { html } = await serve('it-it');
         mount(html.replace(`<section data-ls-contentblock="${INNER}" data-ls-resolved="it-it">`, '<section data-ls-contentblock>'));
@@ -179,8 +179,8 @@ describe('SRV-4: a block served in it-it, hydrated, and switched to de-de on the
 });
 
 describe('a seeded registration right after init sends nothing the catalog holds', () => {
-    // Observed at the transport seam: a known block sent again is an upsert the double's
-    // state cannot show. The phrase-shaped case is also visible in state.
+    // Observed at the transport seam: a known block sent again is an upsert the API's
+    // catalog cannot show. The phrase-shaped case is also visible in the catalog.
     it('neither a known block nor a phrase-shaped block whose id holds its token, although the catalog is still loading', async () => {
         await fx.seed({
             ...SEED,
@@ -211,8 +211,8 @@ describe('a seeded registration right after init sends nothing the catalog holds
 });
 
 describe('a seeded block the catalog does not hold registers with the content the server rendered it from', () => {
-    // The API stores a block only with its content: `content_blocks.content` is NOT NULL, and
-    // an empty string arrives as null. The double stores an empty one, so these read what it held.
+    // The API stores a block only with its content, which these read from the fixture's state:
+    // no route a project key can call returns it.
     const NO_BLOCKS = { ...SEED, projects: [{ ...SEED.projects[0]!, blocks: [] }] };
     const contents = async () => Object.fromEntries((await fx.state()).projects.p1.blocks.map((b) => [b.custom_id, b.content]));
 
@@ -233,7 +233,8 @@ describe('a seeded block the catalog does not hold registers with the content th
     });
 
     it('a seeded block with no content registers nothing from the seed; control: with its content, the same block registers', async () => {
-        // The double would hold an empty content, so its absence shows nothing was sent.
+        // The API refuses a whole registration carrying a block without content, and both blocks
+        // go in one flush, so the block with content being held shows the other was not sent.
         await fx.seed(NO_BLOCKS);
         await client('it-it');
         registerBlock({ customId: 'no-content', category: 'UI', tokens: ['New one', 'New two'], shape: 'block' });
@@ -280,7 +281,7 @@ describe('a block mounted before init() decides once the write capability is kno
         await LangsysApp.init({ projectid: 'p1', key: 'k-read', UserLocaleStore: createSignal('it-it'), baseLocale: 'en', apiUrl: fx.baseUrl });
         await sleep(SETTLE_MS);
         expect(await heldIds()).not.toContain(NEW_BLOCK);
-        // Control: the double stores the same block from a session that may write.
+        // Control: the API stores the same block from a session that may write.
         resetSdk();
         document.body.innerHTML = '';
         await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('it-it'), baseLocale: 'en', apiUrl: fx.baseUrl });
@@ -290,7 +291,7 @@ describe('a block mounted before init() decides once the write capability is kno
     });
 });
 
-describe('SRV-5: a Suspense fallback swapped out inside the settle window, against the double', () => {
+describe('SRV-5: a Suspense fallback swapped out inside the settle window, against the API', () => {
     // React's vector: a client-rendered <Translate> holding an intro and a lazy child
     // behind <Suspense fallback={<p>Loading spinner</p>}>, the child resolving shortly after.
     const REAL = generateCustomId('UI', ['Intro one', 'Real content']);

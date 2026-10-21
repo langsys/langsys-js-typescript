@@ -1,13 +1,17 @@
-# Langsys API contract double
+# Langsys API contract fixture
 
-A runnable HTTP double of the Langsys API for conformance tests (spec CONF-2). Every SDK's
-tests start it and point their API base URL at it. It is one implementation for the whole
-fleet: other SDKs vendor this directory and cite it by git blob, the same way they vendor the
-shared vector files.
+The contract fixture of the Langsys SDK fleet (spec CONF-2): a real Langsys API on an SDK test
+clone, seeded per test, which every SDK's contract tests reach through `forwarder.mjs`. It is one
+implementation for the whole fleet: other SDKs vendor this directory and cite it by git tree.
 
 It exists because a test that asserts on what an SDK *sent* cannot fail when the server
-refuses it. This double can say no, and it holds state, so a test asserts on what the server
-*accepted* by reading it back.
+refuses it. The API says no, and it holds state, so a test asserts on what it *accepted* by
+reading it back through its own routes.
+
+`server.mjs` is an in-process double of the same API. The forwarder answers a seed's crafted
+reference lists from it, since a clone's shared tables cannot hold a list per test, and it runs on
+its own for testing by hand (`TESTING.md`). The sections after "Forwarding to an SDK test clone"
+describe the double.
 
 ## Running it
 
@@ -58,8 +62,9 @@ one state, so the forwarder translates:
 At start it sends the clone a seed only a clone refuses with 422 and creates nothing from, and it
 stops there when the target answers anything else.
 
-The tests take this path when `LANGSYS_CONTRACT_TARGET` names the clone's origin, and the vitest
-config then gives each case and hook the time a real clock takes:
+The tests always take this path: `tests/helpers/contract-fixture.ts` throws when
+`LANGSYS_CONTRACT_TARGET` names no clone, so a contract test never passes by skipping. The
+vitest config gives each case and hook the time a real clock takes:
 
 ```sh
 LANGSYS_CONTRACT_TARGET=https://api.langsys5.test \

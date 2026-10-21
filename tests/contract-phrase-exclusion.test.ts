@@ -13,9 +13,9 @@ import { startContractFixture, type ContractFixture } from './helpers/contract-f
 import { resetSdk, until } from './helpers/sdk-session.js';
 
 /**
- * TOK-1 in a rich phrase, graded against the contract double (spec CONF-2): an author's
+ * TOK-1 in a rich phrase, graded against the API on an SDK test clone (spec CONF-2): an author's
  * `translate="no"` or `data-notrans` element, or code, is one markup pair with nothing
- * between, whatever it holds. Registration is read back from what the double stored, on
+ * between, whatever it holds. Registration is read back through the API's catalog, on
  * the DOM path (`Phrase`) and the tree path (`registerBlock` over a phrase host), for every
  * `phrase_cases` row of the shared fixture. Rendering restores the element's source content
  * as given, and a phrase registered under its earlier key renders that translation while
@@ -111,14 +111,14 @@ describe('every phrase_cases row registers its key, or nothing, through Phrase a
         // its own stays silent.
         await new Promise((resolve) => setTimeout(resolve, 50));
         LangsysApp.Translations.notifyNavigation();
-        // The session writes: a control phrase mounted after it lands in the double.
+        // The session writes: a control phrase mounted after it is stored.
         live.push(new Phrase(mount('A control sentence'), { category: 'UI' }));
         await until(async () => (await stored()).includes('A control sentence'));
         if (row.registers) await until(async () => (await stored()).includes(row.expected_phrase));
 
         const phrases = await stored();
         expect(phrases.includes(row.expected_phrase)).toBe(row.registers);
-        // Nothing else reached the double: no earlier key, no second split. Where the element is
+        // Nothing else was stored: no earlier key, no second split. Where the element is
         // excluded, its value and code are in no phrase (the `data-notrans="false"` row is the
         // control, whose text is the phrase's own).
         expect(phrases.filter((p) => p !== 'A control sentence' && p !== row.expected_phrase)).toEqual([]);
@@ -199,7 +199,7 @@ describe('a phrase registered under its earlier key renders that translation and
     it('Phrase: the earlier translation renders with the element restored from source, and only the current key registers', async () => {
         await seedWith([EARLIER]);
         await client();
-        // The double forgets the earlier key, so a registration of it would now be stored.
+        // Re-seeded without the earlier key, so a registration of it would now be stored.
         await seedWith();
         const host = mount(row.html);
         const span = host.querySelector('span')!;

@@ -42,7 +42,7 @@ const SEED = {
         { key: 'key-one', project: 'one', type: 'write' },
         { key: 'key-two', project: 'two', type: 'write' },
         { key: 'key-two-read', project: 'two', type: 'read' },
-        { key: 'key-two-granted', project: 'two', type: 'read', write_grant_secret: 'grant-secret' },
+        { key: 'key-two-granted', project: 'two', type: 'read', write_grant_secret: 'grant-secret-of-at-least-32-bytes' },
     ],
 };
 
@@ -52,7 +52,7 @@ const ONE = { projectid: 'one', key: 'key-one' };
 function grantFor(user: string): string {
     const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
     const unsigned = `${part({ alg: 'HS256', typ: 'JWT' })}.${part({ sub: user, exp: Math.floor(Date.now() / 1000) + 300 })}`;
-    return `${unsigned}.${createHmac('sha256', 'grant-secret').update(unsigned).digest('base64url')}`;
+    return `${unsigned}.${createHmac('sha256', 'grant-secret-of-at-least-32-bytes').update(unsigned).digest('base64url')}`;
 }
 const TWO = { projectid: 'two', key: 'key-two' };
 

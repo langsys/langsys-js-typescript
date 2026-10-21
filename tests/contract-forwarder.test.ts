@@ -411,6 +411,19 @@ describe('the clock, starting and stopping', () => {
         expect(res.status).toBe(400);
     });
 
+    it('with no clone named the fixture refuses to start, naming what to set, so a contract test never passes by skipping; control: the in-process double starts when asked for', async () => {
+        const target = process.env.LANGSYS_CONTRACT_TARGET;
+        delete process.env.LANGSYS_CONTRACT_TARGET;
+        try {
+            await expect(startContractFixture()).rejects.toThrow(/LANGSYS_CONTRACT_TARGET/);
+            const double = await startContractFixture({}, { double: true });
+            expect(double.baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/api$/);
+            await double.stop();
+        } finally {
+            process.env.LANGSYS_CONTRACT_TARGET = target;
+        }
+    });
+
     it('stopping resets the fixture it holds and stops the in-process double; control: the double answers until then', async () => {
         const log = join(mkdtempSync(join(tmpdir(), 'forwarder-log-')), 'forwarder.jsonl');
         process.env.LANGSYS_CONTRACT_LOG = log;

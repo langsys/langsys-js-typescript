@@ -9,7 +9,8 @@ document already covers a step, this page points to it.
 ```sh
 npm install
 npm run build              # dist/: the package build and the browser build
-npm test                   # the whole suite; it builds first
+npm test                   # the whole suite; it builds first, and needs an SDK test clone:
+                           # LANGSYS_CONTRACT_TARGET and NODE_EXTRA_CA_CERTS (contract-fixture/README.md)
 npm run typecheck
 npm run tally:conformance  # CONFORMANCE.md against the spec; prints "verdict: GREEN"
 npm run verify:spec        # needs the sibling ../langsys2 checkout
