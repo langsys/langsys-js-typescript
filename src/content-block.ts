@@ -25,7 +25,7 @@
  *      and render via your framework's templating.
  */
 
-import { LangsysAppAPI } from './api.js';
+import { LangsysAppAPI, type ApiCredentials } from './api.js';
 import { activeCatalog, activeScope } from './scope-context.js';
 import { recordMissForDiscovery } from './discovery.js';
 import { normalizeMarkupPlaceholders } from './interpolate.js';
@@ -321,7 +321,7 @@ function capabilityKnown(): Promise<void> {
     });
 }
 
-/** Each block's registration request while it is unanswered, by category and id. */
+/** Each block's registration request while it is unanswered, by the credentials it went out under, its category and its id. */
 const registrationsInFlight = new Map<string, Promise<RegistrationResult>>();
 
 /**
@@ -329,11 +329,13 @@ const registrationsInFlight = new Map<string, Promise<RegistrationResult>>();
  * translations cache, so later mounts in this session, and later reloads since
  * the cache is persisted, skip the POST.
  *
- * A block has one request in flight at a time. A call for a block whose request
- * has not answered yet resolves with that request's result and sends nothing: a
- * binding calls `registerBlock` on every change `t` goes through, and a page load
- * makes several of those before the first request returns. Once it answers, the
- * block is known, or, refused or failed, may be sent again.
+ * A block has one request in flight at a time under one set of credentials
+ * (REG-7). A call for a block whose request has not answered yet resolves with
+ * that request's result and sends nothing: a binding calls `registerBlock` on
+ * every change `t` goes through, and a page load makes several of those before
+ * the first request returns. Once it answers, the block is known, or, refused or
+ * failed, may be sent again. A request answers only for the project and key it
+ * went out under, so a call under others, after a re-init, sends its own.
  *
  * One behaviour on every path (REG-10): never throws, always logs, and never
  * reports success for work that did not happen. A skipped write returns a
@@ -419,16 +421,17 @@ export async function registerContentBlock(contentBlock: iContentBlock): Promise
         return { status: false, skipped: true, reason: 'not-write-enabled' };
     }
 
-    const key = `${contentBlock.category}\0${contentBlock.custom_id}`;
+    const credentials = LangsysAppAPI.moduleCredentials();
+    const key = [credentials.projectid, credentials.key, contentBlock.category, contentBlock.custom_id].join('\0');
     const inFlight = registrationsInFlight.get(key);
     if (inFlight) return inFlight;
-    const request = sendContentBlock(contentBlock).finally(() => registrationsInFlight.delete(key));
+    const request = sendContentBlock(contentBlock, credentials).finally(() => registrationsInFlight.delete(key));
     registrationsInFlight.set(key, request);
     return request;
 }
 
-/** The registration request itself: success only once the server stored the block. */
-async function sendContentBlock(contentBlock: iContentBlock): Promise<RegistrationResult> {
+/** The registration request itself: success only once the server stored the block, under the credentials it went out under. */
+async function sendContentBlock(contentBlock: iContentBlock, credentials: ApiCredentials): Promise<RegistrationResult> {
     try {
         // The page's lane, under the page's key (SRV-2): a scope holds its blocks for close().
         const response = await LangsysAppAPI.createTranslatableItems(
@@ -442,13 +445,16 @@ async function sendContentBlock(contentBlock: iContentBlock): Promise<Registrati
                     phrases: contentBlock.tokens.map((phrase) => ({ phrase })),
                 },
             ],
-            { credentials: LangsysAppAPI.moduleCredentials() }
+            { credentials }
         );
         if (!response.status) {
             logger.error('Could not save content block', response.errors);
             return { status: false, reason: 'refused', errors: response.errors as unknown[] | undefined };
         }
-        _writeKnownContentBlockToCache(contentBlock.category, contentBlock.custom_id);
+        // The answer is the project's that the request went out under. After a re-init under
+        // others, the catalog held now is theirs, and they do not hold the block.
+        const current = LangsysAppAPI.moduleCredentials();
+        if (current.projectid === credentials.projectid && current.key === credentials.key) _writeKnownContentBlockToCache(contentBlock.category, contentBlock.custom_id);
         return { status: true };
     } catch (err) {
         logger.error('Could not save content block', err);

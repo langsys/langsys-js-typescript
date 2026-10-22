@@ -27,6 +27,8 @@ const ROUND_TRIP_MS = 800;
 // retry backoff a refused send waits out.
 const SETTLE_MS = CLIENT_FLUSH_DEBOUNCE_MS + ROUND_TRIP_MS;
 if (SETTLE_MS >= RETRY_BACKOFF_BASE_MS) throw new Error('the settle window reaches the retry backoff');
+// How long the forwarder holds a request to keep it in flight, well past a re-init against the clone.
+const IN_FLIGHT_MS = 8_000;
 
 let w: World;
 
@@ -223,6 +225,43 @@ describe('One registration request per block in flight', () => {
         expect(results).toEqual([{ status: true }, { status: true }]);
         expect(sends()).toBe(1);
         expect(await heldAs('b-shared')).toHaveLength(1);
+    });
+
+    it('while one is in flight, the same block registered under another project’s credentials sends its own request, and each project then holds the block', async () => {
+        await take('two projects');
+        // The first project's request is held while the app re-initialises under the second's.
+        await fx.update(w, { faults: [{ method: 'POST', path: '/translatable-items', times: 1, delay_ms: IN_FLIGHT_MS }] });
+        const block = { custom_id: 'b-two-projects', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['A', 'B'] };
+        await session('k-write');
+        const sends = countSends('b-two-projects');
+        let firstAnswered = false;
+        const first = registerContentBlock(block as never).finally(() => (firstAnswered = true));
+        await until(() => sends() === 1);
+        await startSession(fx.baseUrl, w.key('k-write-2'), { project: w.project('p2') });
+        const second = registerContentBlock(block as never);
+        expect(firstAnswered, 'the first project’s request was still in flight').toBe(false);
+        expect(await Promise.all([first, second])).toEqual([{ status: true }, { status: true }]);
+        // What the API holds first, then the requests that carried it.
+        const heldBy = async (role: string, key: string) => Object.keys((await fx.held(w.key(key), w.project(role), 'es-es')).blocks.UI ?? {});
+        expect(await heldBy('p1', 'k-write')).toContain('b-two-projects');
+        expect(await heldBy('p2', 'k-write-2')).toContain('b-two-projects');
+        expect(sends()).toBe(2);
+    });
+
+    it('a request answered after a re-init under another project’s credentials marks nothing known there, so the block mounted under that project registers there', async () => {
+        await take('two projects');
+        // The first project's request is held until the app has re-initialised under the second's.
+        await fx.update(w, { faults: [{ method: 'POST', path: '/translatable-items', times: 1, delay_ms: IN_FLIGHT_MS }] });
+        await session('k-write');
+        const sends = countSends(id);
+        const first = registerContentBlock({ custom_id: id, category: 'UI', content: '<p>Once A</p><p>Once B</p>', label: 'x', tokens: ['Once A', 'Once B'] } as never);
+        await until(() => sends() === 1);
+        await startSession(fx.baseUrl, w.key('k-write-2'), { project: w.project('p2') });
+        expect(await first).toEqual({ status: true });
+        const knownAfterAnswer = isContentBlockKnown('UI', id);
+        void registerBlock(tree, { category: 'UI' });
+        await until(async () => Object.keys((await fx.held(w.key('k-write-2'), w.project('p2'), 'es-es')).blocks.UI ?? {}).includes(id));
+        expect(knownAfterAnswer, 'the first project’s answer marked nothing known for the second').toBe(false);
     });
 });
 

@@ -391,3 +391,20 @@ describe('SRV-2: what the scopes of a long-lived process keep', () => {
         expect(warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')).toMatch(/write grant.*degraded to 'client'/s);
     });
 });
+
+describe('REG-7: a block’s registration in flight holds back only one under the same credentials', () => {
+    const blocksOf = async (project: string) => Object.keys((await fx.held(K(READER[project]!), P(project), 'de')).blocks.UI ?? {});
+
+    it('two scopes closing at once with the same block under different projects’ keys each send it, and each project then holds the block', async () => {
+        // The first request is held, so the other scope closes while it is in flight.
+        await fx.update(w, { faults: [{ method: 'POST', path: '/translatable-items', times: 1, delay_ms: 2_000 }] });
+        const block = { custom_id: 'b-two-scopes', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['A', 'B'] };
+        const scopes = await Promise.all([createRequestScope({ locale: 'de', credentials: ONE() }), createRequestScope({ locale: 'de', credentials: TWO() })]);
+        for (const scope of scopes) scope.run(() => void registerContentBlock(block as never));
+        recordRequests();
+        expect(await Promise.all(scopes.map((scope) => scope.close()))).toEqual([{ status: true }, { status: true }]);
+        expect(sent.map((r) => `${r.method} ${r.key} ${r.project}`).sort()).toEqual([`POST ${K('key-one')} ${P('one')}`, `POST ${K('key-two')} ${P('two')}`].sort());
+        expect(await blocksOf('one')).toEqual(['b-two-scopes']);
+        expect(await blocksOf('two')).toEqual(['b-two-scopes']);
+    });
+});
