@@ -5,8 +5,10 @@ import { NON_TRANSLATABLE_ELEMENTS } from '../src/identity.js';
 import * as pure from '../src/pure.js';
 
 /**
- * The CHANGELOG must at least NAME every element we exclude and every symbol
- * `/pure` exports.
+ * The CHANGELOG must at least NAME every element we exclude, and the README every
+ * symbol `/pure` exports: the CHANGELOG is where a consumer learns that ids
+ * moved, and the README's "The `/pure` subpath" section is where they look up
+ * what the subpath holds, since the release notes summarise it in one line.
  *
  * WHY THIS EXISTS, and it is not tidiness. The CHANGELOG is the only one of our
  * documents written for people outside this repo, and it is therefore the one
@@ -37,10 +39,11 @@ import * as pure from '../src/pure.js';
  */
 
 const CHANGELOG = readFileSync(join(process.cwd(), 'CHANGELOG.md'), 'utf8');
+const README = readFileSync(join(process.cwd(), 'README.md'), 'utf8');
 
-/** Names are required in backticks, which is how this file refers to code. */
-function mentions(token: string): boolean {
-    return CHANGELOG.includes('`' + token + '`');
+/** Names are required in backticks, which is how both files refer to code. */
+function mentions(token: string, doc = CHANGELOG): boolean {
+    return doc.includes('`' + token + '`');
 }
 
 describe('the CHANGELOG names every excluded element', () => {
@@ -70,19 +73,20 @@ describe('the CHANGELOG names every excluded element', () => {
     });
 });
 
-describe('the CHANGELOG names every /pure export', () => {
+describe('the README names every /pure export', () => {
     const exported = Object.keys(pure).sort();
 
     it('has something to check', () => {
         expect(exported.length).toBeGreaterThanOrEqual(22);
+        expect(README.length).toBeGreaterThan(5000);
     });
 
     it.each(Object.keys(pure).sort())('`%s` is documented', (name) => {
         expect(
-            mentions(name),
-            `The CHANGELOG never mentions \`${name}\`, which /pure exports. The subpath exists so other ` +
+            mentions(name, README),
+            `The README never mentions \`${name}\`, which /pure exports. The subpath exists so other ` +
                 `SDKs can import these instead of reimplementing them, and they find out what is available ` +
-                `from this file.`
+                `from its "The \`/pure\` subpath" section.`
         ).toBe(true);
     });
 });
@@ -90,9 +94,11 @@ describe('the CHANGELOG names every /pure export', () => {
 describe('the check can actually fail', () => {
     // Without this, every assertion above could be a `mentions()` that always
     // returns true. Both halves: a name that is present, and one that cannot be.
-    it('finds a name that is there and not one that is not', () => {
+    it('finds a name that is there and not one that is not, in either file', () => {
         expect(mentions('generateCustomId')).toBe(true);
         expect(mentions('definitelyNotASymbolInThisProject')).toBe(false);
+        expect(mentions('generateCustomId', README)).toBe(true);
+        expect(mentions('definitelyNotASymbolInThisProject', README)).toBe(false);
     });
 
     it('requires the backticks, so prose coincidence is not a pass', () => {
