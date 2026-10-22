@@ -1,51 +1,38 @@
 import { createHmac } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
+import seeds, { GRANT_SECRET } from './contract-seeds/contract-api.js';
+import type { World } from './contract-seeds/worlds.js';
+import { startContractFixture, type CaseSetup, type ContractFixture } from './helpers/contract-fixture.js';
 
 /**
  * The answers the contract rows rely on, from the API itself: an SDK test clone reached through
  * the forwarder (spec CONF-2). That it can say no, that it holds state, that it computes the
  * write decision rather than being told it, that hints follow its acceptance rules, its error
- * bodies and check order, and the forwarder's seeded faults.
+ * bodies and check order, and the forwarder's faults.
  *
  * Each "says no" case is paired with the same request succeeding under the condition that
  * permits it, so a refusal is never mistaken for a route that refuses everything. A result is
- * read back through the API's routes; `state()` only for the hints the server stored.
+ * read back through the API's routes; the forwarder's state only for the hints the server stored.
+ * Each case takes a world of its own from tests/contract-seeds/contract-api.ts, and names its
+ * projects and keys by their role there.
  */
 
 let fx: ContractFixture;
+let w: World;
 
-const BASE_SEED = {
-    config: { renderer_egress_ips: ['10.9.9.9'], batch_limit: 3, hint_rate_per_minute: 50 },
-    projects: [
-        {
-            id: 'p1',
-            base_locale: 'en-us',
-            target_locales: ['es-es'],
-            website_url: 'https://www.site.local',
-            phrases: [{ category: 'UI', phrase: 'Hello', translations: { 'es-es': 'Hola' } }],
-        },
-        { id: 'p2', target_locales: ['fr-fr'], website_url: 'https://other.local' },
-    ],
-    keys: [
-        { key: 'k-write', project: 'p1', type: 'write' },
-        { key: 'k-read', project: 'p1', type: 'read', report_discovered_content: true },
-        // The canonical public site: read-only here, permitted to report.
-        { key: 'k-public', project: 'p1', type: 'ip_write', report_discovered_content: true },
-        { key: 'k-ipw-local', project: 'p1', type: 'ip_write', ip_allowlist: ['127.0.0.0/8'] },
-        // May report AND may write from here: the only reason to decline its hint is that
-        // the caller can write, which is what isolates that check (GATE-6's server side).
-        { key: 'k-writer-reporter', project: 'p1', type: 'ip_write', ip_allowlist: ['127.0.0.1'], report_discovered_content: true },
-        { key: 'k-grant', project: 'p1', type: 'read', write_grant_secret: 'grant-secret-of-at-least-32-bytes' },
-        { key: 'k-other', project: 'p2', type: 'write' },
-        { key: 'k-orphan', project: null, type: 'write' },
-    ],
-};
+/** A fresh world for the case, named to the forwarder from the world's own address. */
+async function take(name: Parameters<typeof seeds.take>[0], setup: CaseSetup = {}): Promise<World> {
+    w = seeds.take(name);
+    await fx.use(w, setup);
+    return w;
+}
+const P = (role = 'p1') => w.project(role);
+const K = (role: string) => (role === '' ? '' : w.key(role));
 
 type Call = { key?: string; grant?: string; method?: string; body?: unknown; icu?: boolean };
 async function api(path: string, call: Call = {}) {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (call.key) headers['x-authorization'] = call.key;
+    if (call.key) headers['x-authorization'] = K(call.key);
     if (call.grant) headers['x-write-grant'] = call.grant;
     if (call.icu) headers['x-langsys-capabilities'] = 'icu';
     const res = await fetch(fx.baseUrl + path, {
@@ -58,14 +45,14 @@ async function api(path: string, call: Call = {}) {
 }
 
 const catalog = (key: string, project = 'p1', locale = 'es-es') =>
-    api(`/translations?project_id=${project}&locale=${locale}`, { key });
+    api(`/translations?project_id=${P(project)}&locale=${locale}`, { key });
 /** The data route's rows, one per phrase or block, by category: where the catalog's map would hide a duplicate. */
 const rows = async (key = 'k-read', project = 'p1', locale = 'es-es') =>
-    (await api(`/translations/data?project_id=${project}&locale=${locale}`, { key })).body.data as Record<string, Array<Record<string, unknown>>>;
+    (await api(`/translations/data?project_id=${P(project)}&locale=${locale}`, { key })).body.data as Record<string, Array<Record<string, unknown>>>;
 const register = (key: string, items: unknown[], project = 'p1') =>
-    api('/translatable-items', { key, body: { project_id: project, translatable_items: items } });
+    api('/translatable-items', { key, body: { project_id: P(project), translatable_items: items } });
 const phrase = (text: string, category: string | null = 'UI') => ({ type: 'phrase', phrase: text, category });
-const hint = (key: string | undefined, url: string) => api('/discovery/hint', { key, body: { page_url: url } });
+const hint = (key: string, url: string) => api('/discovery/hint', { key, body: { page_url: url } });
 
 function signGrant(secret: string, claims: Record<string, unknown>): string {
     const part = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -82,13 +69,12 @@ beforeAll(async () => {
 afterAll(async () => {
     await fx.stop();
 });
-beforeEach(async () => {
-    await fx.seed(BASE_SEED);
-});
-// A project accepts a hint only while it machine-translates new content.
-const HINT_SEED = { ...BASE_SEED, projects: [{ ...BASE_SEED.projects[0], machine_translate_new_phrases: true }, BASE_SEED.projects[1]] };
 
 describe('it can say no, and says yes under the condition that permits it', () => {
+    beforeEach(async () => {
+        await take('base');
+    });
+
     it('no key is 401; an unknown key, or one with no project, is 403; a real key reads', async () => {
         expect((await catalog('')).status).toBe(401);
         expect((await catalog('nope')).status).toBe(403);
@@ -97,10 +83,10 @@ describe('it can say no, and says yes under the condition that permits it', () =
     });
 
     it('a suspended subscription is 402 for a write key and 403 for any other; an exhausted usage balance is 402', async () => {
-        await fx.seed({ ...BASE_SEED, projects: [{ ...BASE_SEED.projects[0], subscription_suspended: true }, BASE_SEED.projects[1]] });
+        await take('suspended');
         expect((await catalog('k-write')).status).toBe(402);
         expect((await catalog('k-read')).status).toBe(403);
-        await fx.seed({ ...BASE_SEED, keys: [{ key: 'k-broke', project: 'p1', type: 'write', usage_exhausted: true }] });
+        await take('broke');
         expect((await catalog('k-broke')).status).toBe(402);
     });
 
@@ -117,20 +103,24 @@ describe('it can say no, and says yes under the condition that permits it', () =
     });
 
     it('a key used against another project is 403 on every route, and an unknown project is 404', async () => {
-        expect((await api('/authorize-project/p1', { key: 'k-other' })).status).toBe(403);
+        expect((await api(`/authorize-project/${P()}`, { key: 'k-other' })).status).toBe(403);
         expect((await catalog('k-other', 'p1')).status).toBe(403);
         expect((await register('k-other', [phrase('x')], 'p1')).status).toBe(403);
-        expect((await api('/authorize-project/p1', { key: 'k-read' })).status).toBe(200);
-        expect((await api('/authorize-project/nope', { key: 'k-read' })).status).toBe(404);
+        expect((await api(`/authorize-project/${P()}`, { key: 'k-read' })).status).toBe(200);
+        expect((await api(`/authorize-project/${P('p-unknown')}`, { key: 'k-read' })).status).toBe(404);
     });
 
     it('advertises the batch limit it enforces', async () => {
-        const auth = await api('/authorize-project/p1', { key: 'k-read' });
+        const auth = await api(`/authorize-project/${P()}`, { key: 'k-read' });
         expect(auth.body.data.langsys_settings.translatable_items.batch_limit).toBe(3);
     });
 });
 
 describe('it holds state: a second read observes the first write', () => {
+    beforeEach(async () => {
+        await take('base');
+    });
+
     it('a registered phrase reads back as present with a null translation', async () => {
         expect((await catalog('k-read')).body.data.UI).toEqual({ Hello: 'Hola' });
         await register('k-write', [phrase('Brand new')]);
@@ -187,9 +177,13 @@ describe('it holds state: a second read observes the first write', () => {
 });
 
 describe('the catalog serves a phrase at the base locale as the backend does, and an untranslatable one as null', () => {
+    beforeEach(async () => {
+        await take('base');
+    });
+
     // TranslationService::generateTranslationsData, over the translatable flag registration
     // stores (TranslatableItemService, PhraseAnalyzer).
-    const atBase = async (icu = false) => (await api('/translations?project_id=p1&locale=en-us', { key: 'k-read', icu })).body;
+    const atBase = async (icu = false) => (await api(`/translations?project_id=${P()}&locale=en-us`, { key: 'k-read', icu })).body;
     const flagged = (text: string, translatable: boolean) => ({ ...phrase(text), translatable });
 
     it('at the base locale a translatable phrase is its own text; at a target locale it waits for its translation', async () => {
@@ -238,20 +232,7 @@ describe('the catalog serves a phrase at the base locale as the backend does, an
     });
 
     it('a stored ICU message is served at the base locale in place of the phrase, to a client that sends the ICU header; control: without it no ICU is served, and other stored text never replaces the phrase', async () => {
-        await fx.seed({
-            ...BASE_SEED,
-            projects: [
-                {
-                    ...BASE_SEED.projects[0],
-                    phrases: [
-                        { category: 'UI', phrase: '{count} files', translations: { 'en-us': '{count, plural, one {# file} other {# files}}' } },
-                        { category: 'UI', phrase: '{gender} replied', translations: { 'en-us': '{gender, select, female {She replied} other {They replied}}' } },
-                        { category: 'UI', phrase: 'Welcome', translations: { 'en-us': 'Hi there' } },
-                    ],
-                },
-                BASE_SEED.projects[1],
-            ],
-        });
+        await take('stored icu');
         expect((await atBase(true)).data.UI).toEqual({
             '{count} files': '{count, plural, one {# file} other {# files}}',
             '{gender} replied': '{gender, select, female {She replied} other {They replied}}',
@@ -295,17 +276,7 @@ describe('the catalog serves a phrase at the base locale as the backend does, an
     });
 
     it('a seeded phrase is held as registration would hold it', async () => {
-        await fx.seed({
-            ...BASE_SEED,
-            projects: [
-                {
-                    ...BASE_SEED.projects[0],
-                    phrases: [{ category: 'UI', phrase: 'acme.com' }, { category: 'UI', phrase: 'Acme', translatable: false }, { category: 'UI', phrase: 'Plain' }],
-                    blocks: [{ category: 'Home', custom_id: 'b1', phrases: [{ phrase: 'Shown' }, { phrase: 'Kept', translatable: false }] }],
-                },
-                BASE_SEED.projects[1],
-            ],
-        });
+        await take('seeded flags');
         const data = (await atBase()).data;
         expect(data.UI).toEqual({ 'acme.com': null, Acme: null, Plain: 'Plain' });
         expect(data.Home).toEqual({ b1: { Shown: 'Shown', Kept: null } });
@@ -319,11 +290,11 @@ describe('the catalog serves a phrase at the base locale as the backend does, an
 });
 
 describe('translations sent with the phrases are stored as human translations (MIG-9)', () => {
-    // ProvidedTranslationService.
-    const QUOTA_SEED = (used = 0) => ({
-        ...BASE_SEED,
-        projects: [{ ...BASE_SEED.projects[0], target_locales: ['es-es', 'fr-fr'], human_translation_word_limit: 3, human_translation_words_used: used }, BASE_SEED.projects[1]],
+    beforeEach(async () => {
+        await take('base');
     });
+
+    // ProvidedTranslationService.
     /** The import's shape: one `{locale, translation}` entry per target locale. */
     const listOf = (translations: Record<string, string>) => Object.entries(translations).map(([locale, translation]) => ({ locale, translation }));
     const withTranslations = (text: string, translations: Record<string, string>, extra: Record<string, unknown> = {}) => ({
@@ -394,7 +365,7 @@ describe('translations sent with the phrases are stored as human translations (M
     });
 
     it('under a word limit too: `skipped` counts only translations the limit left out, and the phrase spends none of it', async () => {
-        await fx.seed(QUOTA_SEED());
+        await take('quota unspent');
         expect(await savedSkipped('acme.com', { 'es-es': 'acme.es' })).toEqual({ human_translations_saved: 0, human_translations_skipped: 0 });
         // Three words each, three allowed: es-es fits only if nothing was spent, and fr-fr does not.
         expect(await savedSkipped('One two three', { 'es-es': 'Uno dos tres', 'fr-fr': 'Un deux trois' })).toEqual({ human_translations_saved: 1, human_translations_skipped: 1 });
@@ -433,7 +404,7 @@ describe('translations sent with the phrases are stored as human translations (M
     });
 
     it('the quota: a new translation past what is left is skipped, and one within it is saved', async () => {
-        await fx.seed(QUOTA_SEED());
+        await take('quota unspent');
         // Two words each, three allowed: es-es fits, fr-fr would be four.
         expect(await savedSkipped('Hello there', { 'es-es': 'Hola', 'fr-fr': 'Salut' })).toEqual({ human_translations_saved: 1, human_translations_skipped: 1 });
         expect((await catalog('k-read', 'p1', 'es-es')).body.data.UI['Hello there']).toBe('Hola');
@@ -444,11 +415,11 @@ describe('translations sent with the phrases are stored as human translations (M
     });
 
     it('control: replacing a translation the phrase has is an update, and counts nothing even with the quota spent', async () => {
-        await fx.seed(QUOTA_SEED(3));
+        await take('quota spent');
         expect(await savedSkipped('Hello', { 'es-es': 'Buenas' })).toEqual({ human_translations_saved: 1, human_translations_skipped: 0 });
         expect((await catalog('k-read')).body.data.UI.Hello).toBe('Buenas');
         // With one word left, the update leaves it: a new one-word translation still fits.
-        await fx.seed(QUOTA_SEED(2));
+        await take('quota one word left');
         expect(await savedSkipped('Hello', { 'es-es': 'Buenas' })).toEqual({ human_translations_saved: 1, human_translations_skipped: 0 });
         expect(await savedSkipped('Bye', { 'fr-fr': 'Adieu' })).toEqual({ human_translations_saved: 1, human_translations_skipped: 0 });
         expect(await savedSkipped('Ok', { 'fr-fr': 'Bien' })).toEqual({ human_translations_saved: 0, human_translations_skipped: 1 });
@@ -460,27 +431,31 @@ describe('translations sent with the phrases are stored as human translations (M
 });
 
 describe('errors: status, envelope, code, and check order', () => {
+    beforeEach(async () => {
+        await take('base');
+    });
+
     const code = (res: { body: { error: { code: string } } }) => res.body.error.code;
     const E = (c: string, message: string) => ({ status: false, error: { message, code: c, template: message } });
 
     it('every refusal on the API-key path names its case', async () => {
         expect((await catalog('')).body).toEqual(E('unauthenticated', 'Unauthenticated.'));
-        expect((await api('/authorize-project/p1')).body).toEqual(E('unauthenticated', 'Unauthenticated.'));
+        expect((await api(`/authorize-project/${P()}`)).body).toEqual(E('unauthenticated', 'Unauthenticated.'));
         expect((await catalog('nope')).body).toEqual(E('api_key_invalid', 'Invalid API key'));
         expect(code(await catalog('k-orphan'))).toBe('api_key_invalid');
-        expect((await api('/authorize-project/p2', { key: 'k-read' })).body).toEqual(E('api_key_invalid', 'Invalid API key'));
+        expect((await api(`/authorize-project/${P('p2')}`, { key: 'k-read' })).body).toEqual(E('api_key_invalid', 'Invalid API key'));
         expect((await register('k-read', [phrase('Refused')])).body).toEqual(E('api_key_write_not_allowed', 'This API key cannot make write requests.'));
         expect((await catalog('k-read', 'p2')).body).toEqual(E('forbidden', 'Forbidden.'));
     });
 
     it('a suspended project tells a write key why, and any other key only that it is unavailable', async () => {
-        await fx.seed({ ...BASE_SEED, projects: [{ ...BASE_SEED.projects[0], subscription_suspended: true }, BASE_SEED.projects[1]] });
+        await take('suspended');
         expect(code(await catalog('k-write'))).toBe('subscription_suspended');
         expect((await catalog('k-read')).body).toEqual(E('project_unavailable', 'This project is not available. Its owners can see why in Langsys.'));
     });
 
     it('an exhausted balance is api_units_limit_exceeded, and wins over a missing project_id', async () => {
-        await fx.seed({ ...BASE_SEED, keys: [{ key: 'k-broke', project: 'p1', type: 'write', usage_exhausted: true }] });
+        await take('broke');
         const res = await api('/translatable-items', { key: 'k-broke', body: { translatable_items: [] } });
         expect(res.status).toBe(402);
         expect(code(res)).toBe('api_units_limit_exceeded');
@@ -488,12 +463,12 @@ describe('errors: status, envelope, code, and check order', () => {
 
     it('an unknown project is 404 before the key is checked, on every route; no key at all is 401 first on the catalog', async () => {
         expect((await catalog('nope', 'p-unknown')).body).toEqual(E('not_found', 'Resource not found'));
-        expect((await api('/authorize-project/p-unknown', { key: 'nope' })).status).toBe(404);
+        expect((await api(`/authorize-project/${P('p-unknown')}`, { key: 'nope' })).status).toBe(404);
         expect((await catalog('', 'p-unknown')).status).toBe(401);
     });
 
     it('validation failures carry one entry per failed rule', async () => {
-        const noLocale = await api('/translations?project_id=p1', { key: 'k-read' });
+        const noLocale = await api(`/translations?project_id=${P()}`, { key: 'k-read' });
         expect(noLocale.status).toBe(422);
         expect(noLocale.body.error).toMatchObject({ code: 'validation_failed', errors: [{ field: 'locale', code: 'invalid_option', message: 'The locale is not valid.' }] });
         const both = await api('/translatable-items', { key: 'k-write', body: { translatable_items: 'x' } });
@@ -501,9 +476,9 @@ describe('errors: status, envelope, code, and check order', () => {
             { field: 'project_id', code: 'required', message: 'The project is required.', template: 'The project is required.' },
             { field: 'translatable_items', code: 'invalid_type', message: 'The translatable items must be a list.', template: 'The translatable items must be a list.' },
         ]);
-        const noUrl = await api('/discovery/hint', { body: {} });
+        const noUrl = await api('/discovery/hint', { key: 'k-public', body: {} });
         expect(noUrl.body.error.errors).toEqual([{ field: 'page_url', code: 'required', message: 'The page URL is required.', template: 'The page URL is required.' }]);
-        const long = await api('/discovery/hint', { body: { page_url: 'not a url ' + 'x'.repeat(2050) } });
+        const long = await api('/discovery/hint', { key: 'k-public', body: { page_url: 'not a url ' + 'x'.repeat(2050) } });
         expect(long.body.error.errors.map((e: { code: string }) => e.code)).toEqual(['invalid_format', 'too_long']);
         expect(long.body.error.errors[1]).toMatchObject({ template: 'The page URL must not be longer than {max} characters.', params: { max: 2048 } });
     });
@@ -522,7 +497,7 @@ describe('errors: status, envelope, code, and check order', () => {
     });
 
     it('a body that is not JSON reads as empty, and the route’s own validation answers', async () => {
-        const res = await fetch(fx.baseUrl + '/discovery/hint', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{not json' });
+        const res = await fetch(fx.baseUrl + '/discovery/hint', { method: 'POST', headers: { 'content-type': 'application/json', 'x-authorization': K('k-public') }, body: '{not json' });
         expect(res.status).toBe(422);
         expect((await res.json()).error.errors[0]).toMatchObject({ field: 'page_url', code: 'required' });
     });
@@ -533,16 +508,15 @@ describe('errors: status, envelope, code, and check order', () => {
     });
 
     it('the duplicate guard and the hint throttle name their cases', async () => {
-        await fx.seed({ ...BASE_SEED, keys: [...BASE_SEED.keys, { key: 'k-dup', project: 'p1', type: 'read', duplicate_guard: { max_attempts: 1, window_seconds: 60 } }] });
         await catalog('k-dup');
         expect(code(await catalog('k-dup'))).toBe('duplicate_request');
-        await fx.seed({ ...HINT_SEED, config: { ...BASE_SEED.config, hint_rate_per_minute: 1 } });
-        await hint(undefined, 'https://www.site.local/a');
-        expect((await hint(undefined, 'https://www.site.local/b')).body).toEqual(E('too_many_requests', 'Too many requests. Please try again later.'));
+        // The clone takes five hints a minute from one address.
+        for (let i = 0; i < 5; i++) await hint('k-public', `https://www.site.local/${i}`);
+        expect((await hint('k-public', 'https://www.site.local/over')).body).toEqual(E('too_many_requests', 'Too many requests. Please try again later.'));
     });
 
     it('an injected status renders as the case the backend maps it to, and any other as internal_error', async () => {
-        await fx.seed({ ...BASE_SEED, faults: [{ method: 'GET', path: '/translations', status: 503 }, { method: 'GET', path: '/translations', status: 418 }] });
+        await fx.update(w, { faults: [{ method: 'GET', path: '/translations', status: 503 }, { method: 'GET', path: '/translations', status: 418 }] });
         const unavailable = await catalog('k-read');
         expect([unavailable.status, code(unavailable)]).toEqual([503, 'service_unavailable']);
         const teapot = await catalog('k-read');
@@ -551,7 +525,11 @@ describe('errors: status, envelope, code, and check order', () => {
 });
 
 describe('write_enabled is computed from key, address and grant', () => {
-    const writeEnabled = async (key: string, grant?: string) => (await api('/authorize-project/p1', { key, grant })).body.data.write_enabled;
+    beforeEach(async () => {
+        await take('base');
+    });
+
+    const writeEnabled = async (key: string, grant?: string) => (await api(`/authorize-project/${P()}`, { key, grant })).body.data.write_enabled;
 
     it('by key type', async () => {
         expect(await writeEnabled('k-write')).toBe(true);
@@ -566,22 +544,22 @@ describe('write_enabled is computed from key, address and grant', () => {
     });
 
     it('a valid grant makes a read key write-enabled, on authorize, on the catalog envelope and for a write', async () => {
-        const grant = signGrant('grant-secret-of-at-least-32-bytes', { sub: 'user-1', exp: nowSeconds() + 300 });
+        const grant = signGrant(GRANT_SECRET, { sub: 'user-1', exp: nowSeconds() + 300 });
         expect(await writeEnabled('k-grant', grant)).toBe(true);
-        expect((await api('/translations?project_id=p1&locale=es-es', { key: 'k-grant', grant })).body.write_enabled).toBe(true);
-        expect((await api('/translatable-items', { key: 'k-grant', grant, body: { project_id: 'p1', translatable_items: [phrase('Granted')] } })).status).toBe(200);
+        expect((await api(`/translations?project_id=${P()}&locale=es-es`, { key: 'k-grant', grant })).body.write_enabled).toBe(true);
+        expect((await api('/translatable-items', { key: 'k-grant', grant, body: { project_id: P(), translatable_items: [phrase('Granted')] } })).status).toBe(200);
     });
 
     it('an invalid grant does not: wrong secret, no exp, no sub, on a key with no secret', async () => {
         const exp = nowSeconds() + 300;
         expect(await writeEnabled('k-grant', signGrant('wrong', { sub: 'u', exp }))).toBe(false);
-        expect(await writeEnabled('k-grant', signGrant('grant-secret-of-at-least-32-bytes', { sub: 'u' }))).toBe(false);
-        expect(await writeEnabled('k-grant', signGrant('grant-secret-of-at-least-32-bytes', { exp }))).toBe(false);
-        expect(await writeEnabled('k-read', signGrant('grant-secret-of-at-least-32-bytes', { sub: 'u', exp }))).toBe(false);
+        expect(await writeEnabled('k-grant', signGrant(GRANT_SECRET, { sub: 'u' }))).toBe(false);
+        expect(await writeEnabled('k-grant', signGrant(GRANT_SECRET, { exp }))).toBe(false);
+        expect(await writeEnabled('k-read', signGrant(GRANT_SECRET, { sub: 'u', exp }))).toBe(false);
     });
 
     it('a grant expires, with 60 seconds of leeway', async () => {
-        const grant = signGrant('grant-secret-of-at-least-32-bytes', { sub: 'u', exp: nowSeconds() + 30 });
+        const grant = signGrant(GRANT_SECRET, { sub: 'u', exp: nowSeconds() + 30 });
         expect(await writeEnabled('k-grant', grant)).toBe(true);
         await fx.advanceClock(60);
         expect(await writeEnabled('k-grant', grant), 'inside the leeway').toBe(true);
@@ -590,12 +568,11 @@ describe('write_enabled is computed from key, address and grant', () => {
     });
 
     it('serves discovery_base_locale_only inside authorize data and beside data on both catalog routes, default false', async () => {
-        expect((await api('/authorize-project/p1', { key: 'k-read' })).body.data.discovery_base_locale_only).toBe(false);
-        const projects = [{ ...BASE_SEED.projects[0], discovery_base_locale_only: true }, BASE_SEED.projects[1]];
-        await fx.seed({ ...BASE_SEED, projects });
-        expect((await api('/authorize-project/p1', { key: 'k-read' })).body.data.discovery_base_locale_only).toBe(true);
+        expect((await api(`/authorize-project/${P()}`, { key: 'k-read' })).body.data.discovery_base_locale_only).toBe(false);
+        await take('base locale only');
+        expect((await api(`/authorize-project/${P()}`, { key: 'k-read' })).body.data.discovery_base_locale_only).toBe(true);
         for (const route of ['/translations', '/translations/data']) {
-            const body = (await api(`${route}?project_id=p1&locale=es-es`, { key: 'k-read' })).body;
+            const body = (await api(`${route}?project_id=${P()}&locale=es-es`, { key: 'k-read' })).body;
             expect(body.discovery_base_locale_only, route).toBe(true);
             expect(body.data, `${route}: never inside the cached map`).not.toHaveProperty('discovery_base_locale_only');
         }
@@ -603,15 +580,15 @@ describe('write_enabled is computed from key, address and grant', () => {
 });
 
 describe('hints follow the backend acceptance rules, and only an accepted hint is stored', () => {
-    const stored = async () => (await fx.state()).hints;
+    const stored = () => fx.hints(w);
     beforeEach(async () => {
-        await fx.seed(HINT_SEED);
+        await take('hint');
     });
 
     it('the canonical public site reports, normalised as the backend normalises', async () => {
         const res = await hint('k-public', 'https://site.local/pricing?utm_source=x&b=2&a=1#features');
         expect(res.status).toBe(204);
-        expect(await stored()).toEqual([{ project_id: 'p1', url: 'https://site.local/pricing?a=1&b=2' }]);
+        expect(await stored()).toEqual([{ project_id: P(), url: 'https://site.local/pricing?a=1&b=2' }]);
     });
 
     it('answers 204 and stores nothing for an unknown key, a writer, a key not permitted to report, and a foreign host', async () => {
@@ -625,7 +602,9 @@ describe('hints follow the backend acceptance rules, and only an accepted hint i
             expect((await hint(key, url)).status, `${key} ${url}`).toBe(204);
         }
         expect(await stored()).toEqual([]);
-        // Control: the same session, on its own host, is stored.
+        // Control: the same session, on its own host, is stored. It calls from the case's second
+        // address, since the five hints above spent the first one's rate.
+        await fx.update(w, { caller: w.moved });
         await hint('k-public', 'https://shop.site.local/f');
         expect(await stored()).toHaveLength(1);
     });
@@ -633,10 +612,10 @@ describe('hints follow the backend acceptance rules, and only an accepted hint i
     it('a caller that can write is not stored even when it may report; the same key reports once it cannot write', async () => {
         await hint('k-writer-reporter', 'https://site.local/writer');
         expect(await stored()).toEqual([]);
-        const keys = BASE_SEED.keys.map((k) => (k.key === 'k-writer-reporter' ? { ...k, ip_allowlist: [] } : k));
-        await fx.seed({ ...HINT_SEED, keys });
+        // From the case's second address, which the key's allow-list does not hold.
+        await fx.update(w, { caller: w.moved });
         await hint('k-writer-reporter', 'https://site.local/writer');
-        expect(await stored()).toEqual([{ project_id: 'p1', url: 'https://site.local/writer' }]);
+        expect(await stored()).toEqual([{ project_id: P(), url: 'https://site.local/writer' }]);
     });
 
     it('dedups the same key and URL within the TTL, folding #!/ into #/, and accepts again after it', async () => {
@@ -649,16 +628,16 @@ describe('hints follow the backend acceptance rules, and only an accepted hint i
     });
 
     it('a project that does not translate new content, or has no credits, stores nothing', async () => {
-        const projects = [{ ...HINT_SEED.projects[0], machine_translate_new_phrases: false }, BASE_SEED.projects[1]];
-        await fx.seed({ ...HINT_SEED, projects });
+        const noMachineTranslation = await take('base');
         await hint('k-public', 'https://site.local/g');
-        await fx.seed({ ...HINT_SEED, projects: [{ ...HINT_SEED.projects[0], credits_exhausted: true }, BASE_SEED.projects[1]] });
+        const noCredits = await take('hint no credits');
         await hint('k-public', 'https://site.local/h');
-        expect(await stored()).toEqual([]);
+        expect(await fx.hints(noMachineTranslation)).toEqual([]);
+        expect(await fx.hints(noCredits)).toEqual([]);
     });
 
     it('limits per source address with 429, and a rate-limited hint is not stored', async () => {
-        await fx.seed({ ...HINT_SEED, config: { ...BASE_SEED.config, hint_rate_per_minute: 5 } });
+        // The clone takes five hints a minute from one address.
         const statuses: number[] = [];
         for (let i = 0; i < 6; i++) statuses.push((await hint('k-public', `https://site.local/p${i}`)).status);
         expect(statuses).toEqual([204, 204, 204, 204, 204, 429]);
@@ -671,8 +650,12 @@ describe('hints follow the backend acceptance rules, and only an accepted hint i
 });
 
 describe('faults are deterministic and consumed in order', () => {
+    beforeEach(async () => {
+        await take('base');
+    });
+
     it('a status fault answers once, then the route behaves normally', async () => {
-        await fx.seed({ ...BASE_SEED, faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
+        await fx.update(w, { faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
         expect((await register('k-write', [phrase('Retry me')])).status).toBe(500);
         expect((await catalog('k-read')).body.data.UI).not.toHaveProperty('Retry me');
         expect((await register('k-write', [phrase('Retry me')])).status).toBe(200);
@@ -680,8 +663,8 @@ describe('faults are deterministic and consumed in order', () => {
     });
 
     it('a body fault answers that raw body once, as something in front of the API would, then the route answers', async () => {
-        await fx.seed({ ...BASE_SEED, faults: [{ method: 'GET', path: '/translations', body: '<html>gateway</html>', content_type: 'text/html', status: 502 }] });
-        const proxied = await fetch(fx.baseUrl + '/translations?project_id=p1&locale=es-es', { headers: { 'x-authorization': 'k-read' } });
+        await fx.update(w, { faults: [{ method: 'GET', path: '/translations', body: '<html>gateway</html>', content_type: 'text/html', status: 502 }] });
+        const proxied = await fetch(`${fx.baseUrl}/translations?project_id=${P()}&locale=es-es`, { headers: { 'x-authorization': K('k-read') } });
         expect(proxied.status).toBe(502);
         expect(proxied.headers.get('content-type')).toBe('text/html');
         expect(await proxied.text()).toBe('<html>gateway</html>');
@@ -689,15 +672,18 @@ describe('faults are deterministic and consumed in order', () => {
     });
 
     it('a drop fault closes the connection without a response', async () => {
-        await fx.seed({ ...BASE_SEED, faults: [{ method: 'GET', path: '/translations', drop: true }] });
+        await fx.update(w, { faults: [{ method: 'GET', path: '/translations', drop: true }] });
         await expect(catalog('k-read')).rejects.toThrow();
         expect((await catalog('k-read')).status).toBe(200);
     });
 });
 
 describe('the duplicate-request guard applies only to keys configured for it', () => {
+    beforeEach(async () => {
+        await take('base');
+    });
+
     it('the fourth identical request inside the window is 429', async () => {
-        await fx.seed({ ...BASE_SEED, keys: [...BASE_SEED.keys, { key: 'k-guarded', project: 'p1', type: 'read', duplicate_guard: { max_attempts: 3, window_seconds: 1 } }] });
         const statuses: number[] = [];
         for (let i = 0; i < 4; i++) statuses.push((await catalog('k-guarded')).status);
         expect(statuses).toEqual([200, 200, 200, 429]);

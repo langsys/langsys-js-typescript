@@ -6,13 +6,17 @@ import { t as topLevelT } from '../src/index.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { clearSharedCatalogs, createRequestScope, currentRequestScope } from '../src/request-scope.js';
 import { setRequestScopeStorage } from '../src/scope-context.js';
+import { CLIENT_FLUSH_DEBOUNCE_MS } from '../src/translations.js';
 import { createSignal } from '../src/signal.js';
 import { currentlyLoadedLocale, sTranslations } from '../src/stores.js';
-import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
+import seeds from './contract-seeds/request-scope.js';
+import type { World } from './contract-seeds/worlds.js';
+import { anyBlock, anyPhrase, startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
 import { resetSdk, sleep, until } from './helpers/sdk-session.js';
 
 /**
- * SRV-7: the core's request scope, graded against the contract double.
+ * SRV-7: the core's request scope, graded against the API on an SDK test clone (spec CONF-2),
+ * each case in a world of its own from tests/contract-seeds/request-scope.ts.
  *
  * No `window` here: this is a server process, rendering for many visitors. Each scope has
  * its own locale, catalog view, miss collection (sent only by `close()`, after the response)
@@ -22,32 +26,19 @@ import { resetSdk, sleep, until } from './helpers/sdk-session.js';
 
 let fx: ContractFixture;
 
-const SEED = {
-    projects: [
-        {
-            id: 'p1',
-            base_locale: 'en',
-            target_locales: ['de', 'it'],
-            website_url: 'https://site.local',
-            phrases: [
-                { category: 'UI', phrase: 'Hello', translations: { de: 'Hallo', it: 'Ciao' } },
-                { category: 'UI', phrase: 'Goodbye', translations: { de: 'Tschüss', it: 'Arrivederci' } },
-            ],
-        },
-    ],
-    keys: [
-        { key: 'k-write', project: 'p1', type: 'write' },
-        { key: 'k-read', project: 'p1', type: 'read' },
-    ],
-};
+let w: World;
 
 const GERMAN = ['Hallo', 'Tschüss'];
-const registered = async () => (await fx.held('k-write', 'p1', 'de')).phrases;
+const catalog = () => fx.held(w.key('k-write'), w.project(), 'de');
+/** The phrases held under UI, where this file's phrases register. */
+const registered = async () => (await catalog()).phrases.UI ?? [];
+/** Every phrase held, under any category: what an absence is checked against. */
+const registeredAnywhere = async () => anyPhrase(await catalog());
 const page = (tr: (p: string, c: string) => string) => `<h1>${tr('Hello', 'UI')}</h1><p>${tr('Goodbye', 'UI')}</p>`;
 
 async function init(key = 'k-write', ssrTokenStrategy: 'client' | 'server' | 'auto' = 'server') {
     resetSdk();
-    await LangsysApp.init({ projectid: 'p1', key, UserLocaleStore: createSignal('en'), baseLocale: 'en', apiUrl: fx.baseUrl, ssrTokenStrategy });
+    await LangsysApp.init({ projectid: w.project(), key: w.key(key), UserLocaleStore: createSignal('en'), baseLocale: 'en', apiUrl: fx.baseUrl, ssrTokenStrategy });
     // The page's own catalog lands asynchronously; let it, so it cannot move under a test.
     await until(() => currentlyLoadedLocale.get() === 'en');
 }
@@ -63,7 +54,8 @@ beforeEach(async () => {
     for (const m of ['log', 'info', 'warn', 'group', 'groupCollapsed', 'groupEnd', 'error'] as const) {
         vi.spyOn(console, m).mockImplementation(() => {});
     }
-    await fx.seed(SEED);
+    w = seeds.take('base');
+    await fx.use(w);
     clearSharedCatalogs();
     setRequestScopeStorage(null);
     await init();
@@ -263,7 +255,7 @@ describe('SRV-7: a catalog is fetched at most once, and shared read-only', () =>
     });
 
     it('a failed fetch renders source text, records nothing, and is not shared', async () => {
-        await fx.seed({ ...SEED, faults: [{ method: 'GET', path: '/translations', times: 1, status: 500 }] });
+        await fx.update(w, { faults: [{ method: 'GET', path: '/translations', times: 1, status: 500 }] });
         const down = await createRequestScope({ locale: 'de' });
         expect(down.t('Hello', 'UI' as never)).toBe('Hello');
         down.t('Only while down', 'UI' as never);
@@ -284,11 +276,12 @@ describe('SRV-7 with SRV-3: misses are the scope’s own, and sent only by close
         expect((LangsysApp.Translations as unknown as { missingTokens: unknown[] }).missingTokens).toEqual([]);
     });
 
-    it('nothing is sent during the render; close() sends it, and the double holds it', async () => {
+    it('nothing is sent during the render; close() sends it, and the API holds it', async () => {
         const de = await createRequestScope({ locale: 'de' });
         de.run(() => topLevelT('New on the server', 'UI' as never));
-        await sleep(600);
-        expect(await registered()).not.toContain('New on the server');
+        // Past the page's flush, which a miss sent during the render would have gone out with.
+        await sleep(CLIENT_FLUSH_DEBOUNCE_MS + 200);
+        expect(await registeredAnywhere()).not.toContain('New on the server');
         await expect(de.close()).resolves.toEqual({ status: true });
         expect(await registered()).toContain('New on the server');
         await expect(de.close(), 'a second close resolves the first result').resolves.toEqual({ status: true });
@@ -298,9 +291,9 @@ describe('SRV-7 with SRV-3: misses are the scope’s own, and sent only by close
         const de = await createRequestScope({ locale: 'de' });
         const block = { custom_id: 'b-scope', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['Block A', 'Block B'] };
         await expect(de.run(() => registerContentBlock(block as never))).resolves.toEqual({ status: false, skipped: true, reason: 'deferred' });
-        expect(Object.keys((await fx.held('k-write', 'p1', 'de')).blocks)).not.toContain('b-scope');
+        expect(anyBlock(await catalog())).not.toContain('b-scope');
         await de.close();
-        expect(Object.keys((await fx.held('k-write', 'p1', 'de')).blocks)).toContain('b-scope');
+        expect(Object.keys((await catalog()).blocks.UI ?? {})).toContain('b-scope');
     });
 
     it('a read-only key sends nothing on close; the write key on the same render is the control', async () => {
@@ -308,7 +301,7 @@ describe('SRV-7 with SRV-3: misses are the scope’s own, and sent only by close
         const read = await createRequestScope({ locale: 'de' });
         read.run(() => topLevelT('Same render', 'UI' as never));
         await expect(read.close()).resolves.toEqual({ status: false, skipped: true, reason: 'not-write-enabled' });
-        expect(await registered()).not.toContain('Same render');
+        expect(await registeredAnywhere()).not.toContain('Same render');
 
         await init('k-write');
         clearSharedCatalogs();
@@ -323,6 +316,6 @@ describe('SRV-7 with SRV-3: misses are the scope’s own, and sent only by close
         const de = await createRequestScope({ locale: 'de' });
         de.t('Left to the client', 'UI' as never);
         await expect(de.close()).resolves.toEqual({ status: false, skipped: true, reason: 'client-strategy' });
-        expect(await registered()).not.toContain('Left to the client');
+        expect(await registeredAnywhere()).not.toContain('Left to the client');
     });
 });

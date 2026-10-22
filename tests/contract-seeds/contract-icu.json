@@ -1,0 +1,62 @@
+{
+    "projects": [
+        {
+            "id": "75000700-0001-4000-8000-000000000000",
+            "title": "ts icu plural#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "103001|3cbe42a09f948e477eae7b21d6a58c4cb71d3596",
+                "device_id": "ts-icu-1"
+            }
+        },
+        {
+            "id": "75000700-0002-4000-8000-000000000000",
+            "title": "ts icu plural#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "103002|838dd421d6099fb67330e297d8eacf19bdba2d29",
+                "device_id": "ts-icu-2"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "75000701-0001-4000-8000-000000000000",
+            "key": "ts-icu-1-k-read",
+            "project": "75000700-0001-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000701-0002-4000-8000-000000000000",
+            "key": "ts-icu-2-k-read",
+            "project": "75000700-0002-4000-8000-000000000000",
+            "type": "read"
+        }
+    ]
+}

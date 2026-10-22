@@ -4,7 +4,10 @@ import { generateCustomId, isContentBlockKnown, registerContentBlock } from '../
 import { LangsysApp } from '../src/langsys-app.js';
 import { createSignal } from '../src/signal.js';
 import { batchLimit, catalogUnavailable, currentlyLoadedLocale, discoveryBaseLocaleOnly, writeEnabled } from '../src/stores.js';
-import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
+import { CLIENT_FLUSH_DEBOUNCE_MS, failureWindowMs, RETRY_BACKOFF_BASE_MS } from '../src/translations.js';
+import seeds from './contract-seeds/contract-write-lane.js';
+import type { World } from './contract-seeds/worlds.js';
+import { anyBlock, anyPhrase, startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
 import { installBrowser, resetSdk, session as startSession, sleep, t, until } from './helpers/sdk-session.js';
 
 /**
@@ -13,39 +16,37 @@ import { installBrowser, resetSdk, session as startSession, sleep, t, until } fr
  * The SDK runs its real path â€” `LangsysApp.init`, the real HTTP client, real `fetch` â€” against
  * the API, and every assertion reads what the API ACCEPTED, never what the SDK sent.
  * An absence ("nothing was registered") is only evidence alongside a control that shows the
- * same wait would have observed a registration, so each such case carries one.
+ * same wait would have observed a registration, so each such case carries one. Each case takes a
+ * world of its own from tests/contract-seeds/contract-write-lane.ts.
  */
 
 let fx: ContractFixture;
-const SETTLE_MS = 1200; // past the 400ms flush debounce, short of the 3s backoff
+// The clone's answer to a registration, and its catalog serving it, measured well inside this.
+const ROUND_TRIP_MS = 800;
+// An absence is read once the SDK's flush would have sent and the clone answered, short of the
+// retry backoff a refused send waits out.
+const SETTLE_MS = CLIENT_FLUSH_DEBOUNCE_MS + ROUND_TRIP_MS;
+if (SETTLE_MS >= RETRY_BACKOFF_BASE_MS) throw new Error('the settle window reaches the retry backoff');
 
-const SEED = {
-    projects: [
-        {
-            id: 'p1',
-            base_locale: 'en',
-            target_locales: ['es-es'],
-            website_url: 'https://site.local',
-            phrases: [{ category: 'UI', phrase: 'Known', translations: { 'es-es': 'Conocido' } }],
-        },
-    ],
-    keys: [
-        { key: 'k-write', project: 'p1', type: 'write' },
-        { key: 'k-read', project: 'p1', type: 'read' },
-        { key: 'k-ipw', project: 'p1', type: 'ip_write', ip_allowlist: ['127.0.0.1'] },
-    ],
-};
-const withConfig = (config: Record<string, unknown>) => ({ ...SEED, config });
-const withAllowlist = (list: string[]) => ({
-    ...SEED,
-    keys: SEED.keys.map((k) => (k.key === 'k-ipw' ? { ...k, ip_allowlist: list } : k)),
-});
+let w: World;
 
-// What was registered, as the API's catalog serves it.
-const registered = async () => (await fx.held('k-write', 'p1', 'es-es')).phrases;
-const heldBlocks = async () => Object.keys((await fx.held('k-write', 'p1', 'es-es')).blocks);
+/** A fresh world for the case, named to the forwarder from the world's own address. */
+async function take(name: Parameters<typeof seeds.take>[0]): Promise<World> {
+    w = seeds.take(name);
+    await fx.use(w);
+    return w;
+}
 
-const session = (key: string, opts: { awaitCatalog?: boolean; locale?: string } = {}) => startSession(fx.baseUrl, key, opts);
+// What was registered, as the API's catalog serves it: a presence under the category it was
+// registered with, an absence under any.
+const catalog = () => fx.held(w.key('k-write'), w.project(), 'es-es');
+const registered = async (category = 'UI') => (await catalog()).phrases[category] ?? [];
+const heldBlocks = async (category = 'UI') => Object.keys((await catalog()).blocks[category] ?? {});
+const registeredAnywhere = async () => anyPhrase(await catalog());
+const heldAnywhere = async () => anyBlock(await catalog());
+
+const session = (key: string, opts: { awaitCatalog?: boolean; locale?: string } = {}) => startSession(fx.baseUrl, w.key(key), { ...opts, project: w.project() });
+const init = (locale: string) => LangsysApp.init({ projectid: w.project(), key: w.key('k-write'), UserLocaleStore: createSignal(locale), baseLocale: 'en', apiUrl: fx.baseUrl });
 
 beforeAll(async () => {
     fx = await startContractFixture();
@@ -59,7 +60,7 @@ beforeEach(async () => {
     for (const m of ['log', 'info', 'group', 'groupCollapsed', 'groupEnd', 'error'] as const) {
         vi.spyOn(console, m).mockImplementation(() => {});
     }
-    await fx.seed(SEED);
+    await take('base');
 });
 afterEach(() => {
     resetSdk();
@@ -69,16 +70,16 @@ afterEach(() => {
 describe('GATE-1: the decision is the server-computed write_enabled, never the key type', () => {
     // The API refuses a write from a session that may not write, so "did not register"
     // is only evidence when the API WOULD have accepted the write. Hence the drift: the
-    // session learns it is read-only, then the server's allow-list admits it. A client that
-    // decided by key type would now send and be stored; a conforming one sends nothing.
+    // session learns it is read-only, then moves to an address the key's allow-list holds. A
+    // client that decided by key type would now send and be stored; a conforming one sends nothing.
     it('an ip_write session judged read-only does not register, even once the server would accept it', async () => {
-        await fx.seed(withAllowlist(['10.1.1.1']));
+        await take('ipw elsewhere');
         await session('k-ipw');
         expect(writeEnabled.get(), 'the server computed read-only').toBe(false);
-        await fx.seed(withAllowlist(['127.0.0.1']));
+        await fx.update(w, { caller: w.moved });
         t('Not while read-only');
         await sleep(SETTLE_MS);
-        expect(await registered()).not.toContain('Not while read-only');
+        expect(await registeredAnywhere()).not.toContain('Not while read-only');
     });
 
     it('control: the same ip_write key, allow-listed, registers', async () => {
@@ -92,28 +93,28 @@ describe('GATE-1: the decision is the server-computed write_enabled, never the k
 describe('GATE-2: a phrase seen before the decision is available is sent once it resolves', () => {
     it('a miss recorded before authorization is held, then registered', async () => {
         resetSdk();
-        const init = LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        const started = init('es-es');
         t('Seen before the decision');
         expect(writeEnabled.get(), 'the decision is not known yet').toBeUndefined();
-        await init;
+        await started;
         await until(async () => (await registered()).includes('Seen before the decision'));
     });
 });
 
 describe('GATE-5 and REG-8: acceptance, not the attempt, is what counts as seen', () => {
     it('a send the server refuses stays queued, backs off, and lands on a later attempt', async () => {
-        await fx.seed({ ...SEED, faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
+        await fx.update(w, { faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
         await session('k-write');
         t('Refused once');
         await sleep(SETTLE_MS);
-        expect(await registered(), 'the first attempt was refused').not.toContain('Refused once');
+        expect(await registeredAnywhere(), 'the first attempt was refused').not.toContain('Refused once');
         await until(async () => (await registered()).includes('Refused once'), 10_000);
     }, 15_000);
 });
 
 describe('REG-9: batches follow the limit the server advertises', () => {
     it('seven misses against a limit of three all land, where one unchunked batch would be refused', async () => {
-        await fx.seed(withConfig({ batch_limit: 3 }));
+        // The clone advertises a batch limit of three.
         await session('k-write');
         const phrases = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'];
         for (const p of phrases) t(p);
@@ -133,24 +134,24 @@ describe('REG-10: a registration never reports success for work that did not hap
         await session('k-read');
         expect(writeEnabled.get(), 'the API computed read-only').toBe(false);
         await expect(registerContentBlock(block as never)).resolves.toEqual({ status: false, skipped: true, reason: 'not-write-enabled' });
-        expect(await blockIds()).not.toContain('b-reg10');
+        expect(await heldAnywhere()).not.toContain('b-reg10');
     });
 
     it('while the first catalog fetch has failed, the skip names the unavailable catalog', async () => {
-        await fx.seed({ ...SEED, faults: [{ method: 'GET', path: '/translations', times: 1, drop: true }] });
+        await fx.update(w, { faults: [{ method: 'GET', path: '/translations', times: 1, drop: true }] });
         await session('k-write', { awaitCatalog: false });
         await until(() => catalogUnavailable.get() === true);
         await expect(registerContentBlock(block as never)).resolves.toEqual({ status: false, skipped: true, reason: 'catalog-unavailable' });
-        expect(await blockIds()).not.toContain('b-reg10');
+        expect(await heldAnywhere()).not.toContain('b-reg10');
     });
 
     it('a refusal on the registration route is a failure distinct from both skips', async () => {
-        await fx.seed({ ...SEED, faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
+        await fx.update(w, { faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
         await session('k-write');
         const result = await registerContentBlock(block as never);
         expect(result).toMatchObject({ status: false, reason: 'refused' });
         expect(result).not.toHaveProperty('skipped', true);
-        expect(await blockIds()).not.toContain('b-reg10');
+        expect(await heldAnywhere()).not.toContain('b-reg10');
     });
 
     it('a write-enabled registration returns success, and the block is in the next catalog read', async () => {
@@ -187,9 +188,9 @@ describe('One registration request per block in flight', () => {
     /** A page whose binding renders the block through the tree path: `registerBlock` on mount and on every change `t` goes through. */
     async function pageLoad() {
         resetSdk();
-        const init = LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        const started = init('es-es');
         const unmount = LangsysApp.Translations.tSignal.subscribe(() => void registerBlock(tree, { category: 'UI' }));
-        await init;
+        await started;
         await until(() => currentlyLoadedLocale.get() === 'es-es');
         await sleep(SETTLE_MS);
         unmount();
@@ -207,7 +208,7 @@ describe('One registration request per block in flight', () => {
     });
 
     it('control: a request the fixture fails is not shared with a later t change, which sends the block again', async () => {
-        await fx.seed({ ...SEED, faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
+        await fx.update(w, { faults: [{ method: 'POST', path: '/translatable-items', times: 1, status: 500 }] });
         const sends = countSends(id);
         await pageLoad();
         expect(await heldAs(id)).toHaveLength(1);
@@ -231,26 +232,25 @@ describe('A registration answered after the catalog changed keeps that catalogâ€
         { tag: 'p', children: [{ text: 'A caption' }] },
     ];
     const id = generateCustomId('VAR', ['Picture of {name}', 'A caption']);
-    // The content as a translator has left it by the time the visitor switches language.
-    const TRANSLATED = {
-        ...SEED,
-        projects: [
+    const es = (translation: string) => [{ locale: 'es-es', translation }];
+    /** The content as a translator leaves it before the visitor switches language, imported through the API. */
+    async function translatorFinishes() {
+        const items = [
+            { type: 'phrase', category: 'UI', phrase: 'Welcome back', translations: es('Bienvenido de nuevo') },
             {
-                ...SEED.projects[0]!,
-                phrases: [...SEED.projects[0]!.phrases, { category: 'UI', phrase: 'Welcome back', translations: { 'es-es': 'Bienvenido de nuevo' } }],
-                blocks: [
-                    {
-                        category: 'VAR',
-                        custom_id: id,
-                        phrases: [
-                            { phrase: 'Picture of {name}', translations: { 'es-es': 'Imagen de {name}' } },
-                            { phrase: 'A caption', translations: { 'es-es': 'Un pie de foto' } },
-                        ],
-                    },
+                type: 'content_block',
+                category: 'VAR',
+                custom_id: id,
+                content: '<img alt="Picture of {name}" src="/a.png"><p>A caption</p>',
+                phrases: [
+                    { phrase: 'Picture of {name}', translations: es('Imagen de {name}') },
+                    { phrase: 'A caption', translations: es('Un pie de foto') },
                 ],
             },
-        ],
-    };
+        ];
+        const res = await fx.api('/translatable-items', { key: w.key('k-write'), body: { project_id: w.project(), translatable_items: items } });
+        expect(res.status, 'the import was accepted').toBe(200);
+    }
 
     afterEach(() => {
         vi.unstubAllGlobals();
@@ -264,7 +264,7 @@ describe('A registration answered after the catalog changed keeps that catalogâ€
     async function registerThenSwitch(register: () => void) {
         resetSdk();
         const locale = createSignal('en');
-        await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: locale, baseLocale: 'en', apiUrl: fx.baseUrl });
+        await LangsysApp.init({ projectid: w.project(), key: w.key('k-write'), UserLocaleStore: locale, baseLocale: 'en', apiUrl: fx.baseUrl });
         await until(() => currentlyLoadedLocale.get() === 'en');
         const real = globalThis.fetch;
         vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
@@ -273,7 +273,7 @@ describe('A registration answered after the catalog changed keeps that catalogâ€
         });
         register();
         await sleep(500);
-        await fx.seed(TRANSLATED);
+        await translatorFinishes();
         locale.set('es-es');
         await until(() => currentlyLoadedLocale.get() === 'es-es');
         await sleep(SETTLE_MS);
@@ -281,7 +281,7 @@ describe('A registration answered after the catalog changed keeps that catalogâ€
 
     it('a block: the switched catalogâ€™s translation renders, and the registration was answered', async () => {
         await registerThenSwitch(() => void registerBlock(tree, { category: 'VAR', params: { name: 'Ana' } }));
-        expect(await heldBlocks()).toContain(id);
+        expect(await heldBlocks('VAR')).toContain(id);
         expect(LangsysApp.Translations.lookupContent('VAR', id, 'A caption')).toBe('Un pie de foto');
         expect(serializeTree(renderBlock(tree, { category: 'VAR', params: { name: 'Ana' } }).nodes)).toBe('<img alt="Imagen de Ana" src="/a.png"><p>Un pie de foto</p>');
     });
@@ -295,32 +295,30 @@ describe('A registration answered after the catalog changed keeps that catalogâ€
 
 describe('WIRE-4: an unreachable catalog degrades, and registers nothing', () => {
     it('with the catalog fetch dropped, t() returns source text and no miss is registered', async () => {
-        await fx.seed({ ...SEED, faults: [{ method: 'GET', path: '/translations', times: 1, drop: true }] });
+        await fx.update(w, { faults: [{ method: 'GET', path: '/translations', times: 1, drop: true }] });
         await session('k-write', { awaitCatalog: false });
         await until(() => catalogUnavailable.get() === true);
         expect(() => t('Known')).not.toThrow();
         expect(t('Known')).toBe('Known');
         t('During the outage');
         await sleep(SETTLE_MS);
-        expect(await registered()).not.toContain('During the outage');
+        expect(await registeredAnywhere()).not.toContain('During the outage');
         expect(await registered(), 'control: the catalog phrase is still held server-side').toContain('Known');
     });
 });
 
 describe('GATE-9: the base-locale gate the handshake sends', () => {
-    const gated = { ...SEED, projects: [{ ...SEED.projects[0], discovery_base_locale_only: true }] };
-
     it('on: a miss in a non-base locale is not registered, although the server would accept it', async () => {
-        await fx.seed(gated);
+        await take('gated');
         await session('k-write');
         expect(discoveryBaseLocaleOnly.get(), 'read from the handshake').toBe(true);
         t('Gated away');
         await sleep(SETTLE_MS);
-        expect(await registered()).not.toContain('Gated away');
+        expect(await registeredAnywhere()).not.toContain('Gated away');
     });
 
     it('on: the same miss at the base locale registers', async () => {
-        await fx.seed(gated);
+        await take('gated');
         await session('k-write', { locale: 'en' });
         t('At the base locale');
         await until(async () => (await registered()).includes('At the base locale'));
@@ -330,17 +328,18 @@ describe('GATE-9: the base-locale gate the handshake sends', () => {
     // the only source during the gap before the catalog lands. A miss in that gap must already
     // be gated; a client reading only the envelope would record it and register it later.
     it('on: a miss before the catalog arrives is already gated by the authorize response', async () => {
-        await fx.seed({ ...gated, faults: [{ method: 'GET', path: '/translations', times: 1, delay_ms: 1500 }] });
+        await take('gated');
+        await fx.update(w, { faults: [{ method: 'GET', path: '/translations', times: 1, delay_ms: 1500 }] });
         await session('k-write', { awaitCatalog: false });
         expect(discoveryBaseLocaleOnly.get(), 'known from authorize alone').toBe(true);
         t('Before the catalog');
         await until(() => currentlyLoadedLocale.get() === 'es-es');
         await sleep(SETTLE_MS);
-        expect(await registered()).not.toContain('Before the catalog');
+        expect(await registeredAnywhere()).not.toContain('Before the catalog');
     });
 
     it('control: off, a miss before the catalog arrives is registered once it lands', async () => {
-        await fx.seed({ ...SEED, faults: [{ method: 'GET', path: '/translations', times: 1, delay_ms: 1500 }] });
+        await fx.update(w, { faults: [{ method: 'GET', path: '/translations', times: 1, delay_ms: 1500 }] });
         await session('k-write', { awaitCatalog: false });
         t('Before the catalog');
         await until(async () => (await registered()).includes('Before the catalog'));
@@ -356,12 +355,12 @@ describe('GATE-9: the base-locale gate the handshake sends', () => {
 
 describe('GATE-9 on the content-block path', () => {
     it('on: a block in a non-base locale is not registered, although the server would accept it', async () => {
-        await fx.seed({ ...SEED, projects: [{ ...SEED.projects[0], discovery_base_locale_only: true }] });
+        await take('gated');
         await session('k-write');
         const block = { custom_id: 'b-gated', category: 'UI', content: '<p>A</p><p>B</p>', label: 'x', tokens: ['Gated A', 'Gated B'] };
+        // The skip is awaited: a registration that was sent would have been answered by now.
         await expect(registerContentBlock(block as never)).resolves.toEqual({ status: false, skipped: true, reason: 'base-locale-gate' });
-        await sleep(300);
-        expect(await heldBlocks()).not.toContain('b-gated');
+        expect(await heldAnywhere()).not.toContain('b-gated');
     });
 
     it('control: off, the same block is registered', async () => {
@@ -377,14 +376,15 @@ describe('MARK-3 stamps through registerBlock, against the API', () => {
         { tag: 'p', children: [{ text: 'Stamped A' }] },
         { tag: 'p', children: [{ text: 'Stamped B' }] },
     ];
-    const heldAs = async (id: string) => (await fx.state()).projects.p1.blocks.filter((b) => b.custom_id === id);
+    // The blocks the project holds under an id, each with the content it stored, as the owner reads them.
+    const heldAs = async (id: string) => (await fx.storedBlocks(w, w.key('k-write'), 'es-es')).filter((b) => b.custom_id === id);
 
     it('a stamp outside a resolved scope registers once, under its id, with the hostâ€™s content', async () => {
         await session('k-write');
         registerBlock(tree, { category: 'UI', id: 'stamp-unresolved' });
         await until(async () => (await heldAs('stamp-unresolved')).length === 1);
         const [held] = await heldAs('stamp-unresolved');
-        expect(held!.phrases.map((p) => p.phrase)).toEqual(['Stamped A', 'Stamped B']);
+        expect((await catalog()).blocks.UI?.['stamp-unresolved']).toEqual(['Stamped A', 'Stamped B']);
         expect(held!.content).toBe('<p>Stamped A</p><p>Stamped B</p>');
         registerBlock(tree, { category: 'UI', id: 'stamp-unresolved' });
         await sleep(300);
@@ -395,7 +395,7 @@ describe('MARK-3 stamps through registerBlock, against the API', () => {
         await session('k-write');
         registerBlock(tree, { category: 'UI', customId: 'stamp-resolved' });
         await sleep(SETTLE_MS);
-        expect(await heldAs('stamp-resolved')).toEqual([]);
+        expect(await heldAnywhere()).not.toContain('stamp-resolved');
     });
 });
 
@@ -412,22 +412,22 @@ describe('WIRE-3: an uncategorised block is read back under __uncategorized__', 
 describe('CACHE-2: a failed catalog fetch is remembered for a bounded window', () => {
     // One failure, with a catalog behind it: after the fault the API answers normally. What
     // the test reads is the page â€” a refetch inside the window would change what `t()` renders.
-    const oneFailure = { ...SEED, faults: [{ method: 'GET', path: '/translations', times: 1, status: 500 }] };
+    const oneFailure = { faults: [{ method: 'GET', path: '/translations', times: 1, status: 500 }] };
 
     it('inside the window a lookup renders source text, although the server would now answer', async () => {
-        await fx.seed(oneFailure);
+        await fx.update(w, oneFailure);
         await session('k-write', { awaitCatalog: false });
         await until(() => catalogUnavailable.get() === true);
         await LangsysApp.Translations.change('es-es');
-        await sleep(300);
+        await sleep(ROUND_TRIP_MS);
         expect(t('Known')).toBe('Known');
     });
 
     it('after the window the next lookup fetches again, and the translation renders', async () => {
-        await fx.seed(oneFailure);
+        await fx.update(w, oneFailure);
         await session('k-write', { awaitCatalog: false });
         await until(() => catalogUnavailable.get() === true);
-        await sleep(3200);
+        await sleep(failureWindowMs(1) + 200);
         await LangsysApp.Translations.change('es-es');
         await until(() => t('Known') === 'Conocido');
     }, 15_000);
@@ -439,7 +439,7 @@ describe('OBS-1: an unusable capability is surfaced once', () => {
 
     it('an ip_write key the API refuses warns once however many misses follow', async () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-        await fx.seed(withAllowlist(['10.1.1.1']));
+        await take('ipw elsewhere');
         await session('k-ipw');
         for (const p of ['m1', 'm2', 'm3']) t(p);
         await sleep(SETTLE_MS);

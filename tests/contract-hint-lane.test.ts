@@ -1,11 +1,14 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerContentBlock } from '../src/content-block.js';
+import { HINT_MAX_DELAY_MS } from '../src/discovery.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { createRequestScope } from '../src/request-scope.js';
 import { setRequestScopeStorage } from '../src/scope-context.js';
 import { autoDiscovery, discoveryBaseLocaleOnly, writeEnabled } from '../src/stores.js';
-import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
+import seeds from './contract-seeds/contract-hint-lane.js';
+import type { World } from './contract-seeds/worlds.js';
+import { anyBlock, startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
 import { installBrowser, resetSdk, session as startSession, setHref, sleep, t, until } from './helpers/sdk-session.js';
 
 /**
@@ -13,11 +16,14 @@ import { installBrowser, resetSdk, session as startSession, setHref, sleep, t, u
  *
  * The API declines a hint from a caller that can write, or from a key not permitted to
  * report. That makes "the SDK did not send" and "the SDK sent and was declined" identical in
- * what it stores. Every "must not report" case is therefore built on CAPABILITY DRIFT: the
- * SDK learns it must not report, then the fixture is re-seeded so the API WOULD store the
- * hint. A correct SDK still sends nothing and no hint is stored; an SDK that sends has its
- * hint stored. Each such case has a control showing the API stores that very hint when a
- * session is permitted to send it.
+ * what it stores. A "must not report" case is therefore built on CAPABILITY DRIFT where the API
+ * can be made to accept: the SDK learns it must not report, then moves to an address the key's
+ * allow-list does not hold, where the API WOULD store the hint. A correct SDK still sends nothing
+ * and no hint is stored; an SDK that sends has its hint stored. Each such case has a control
+ * showing the API stores that very hint when a session is permitted to send it. No route grants
+ * a key the permission to report, so HINT-9's "not permitted" is observed where the client would
+ * send, at `fetch`, beside its permitted cell on the clone. Each case takes a world of its own
+ * from tests/contract-seeds/contract-hint-lane.ts.
  *
  * Reports wait 5 to 30 seconds of jitter. Timers are faked with auto-advance, so real network
  * I/O proceeds while a test jumps the jitter.
@@ -26,36 +32,52 @@ import { installBrowser, resetSdk, session as startSession, setHref, sleep, t, u
 let fx: ContractFixture;
 const PAGE = 'https://site.local/page';
 
-// A project accepts a hint only while it machine-translates new content.
-const SEED = {
-    config: { renderer_egress_ips: ['10.9.9.9'] },
-    projects: [{ id: 'p1', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local', machine_translate_new_phrases: true }],
-    keys: [
-        // Read-only from here, and permitted to report: the canonical public site.
-        { key: 'k-public', project: 'p1', type: 'ip_write', report_discovered_content: true },
-        // Read-only from here, and NOT permitted to report.
-        { key: 'k-private', project: 'p1', type: 'ip_write', report_discovered_content: false },
-        // May write from here (allow-listed), and permitted to report.
-        { key: 'k-writer', project: 'p1', type: 'ip_write', ip_allowlist: ['127.0.0.1'], report_discovered_content: true },
-    ],
-};
-/** The same project, with one key's server-side policy changed. */
-function drift(key: string, change: Record<string, unknown>) {
-    return { ...SEED, keys: SEED.keys.map((k) => (k.key === key ? { ...k, ...change } : k)) };
+let w: World;
+
+/** A fresh world for the case, named to the forwarder from the world's own address. */
+async function take(name: Parameters<typeof seeds.take>[0]): Promise<World> {
+    w = seeds.take(name);
+    await fx.use(w);
+    return w;
 }
 
-const session = (key: string) => startSession(fx.baseUrl, key);
-const gated = () => ({ ...SEED, projects: [{ ...SEED.projects[0], discovery_base_locale_only: true }] });
-const hints = async () => (await fx.state()).hints.map((h) => h.url);
-const blocks = async () => Object.keys((await fx.held('k-public', 'p1', 'es-es')).blocks);
+const session = (key: string) => startSession(fx.baseUrl, w.key(key), { project: w.project() });
+const hints = async () => (await fx.hints(w)).map((h) => h.url);
+const catalog = () => fx.held(w.key('k-public'), w.project(), 'es-es');
+const blocks = async () => Object.keys((await catalog()).blocks.UI ?? {});
+const blocksAnywhere = async () => anyBlock(await catalog());
+
+/** The hint requests the SDK sends from here on, counted at the transport seam. */
+function hintRequests(): () => string[] {
+    const sent: string[] = [];
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+        if (String(input).includes('/discovery/hint')) sent.push(String(init?.body ?? ''));
+        return real(input as string, init);
+    });
+    return () => sent;
+}
+
+/** The registration requests the SDK sends from here on, counted at the transport seam. */
+function registrationRequests(): () => string[] {
+    const sent: string[] = [];
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+        if (String(input).includes('/translatable-items') && init?.method === 'POST') sent.push(String(init.body ?? ''));
+        return real(input as string, init);
+    });
+    return () => sent;
+}
 
 /** Record misses on the current page and run out the jitter, so the report goes out now. */
 async function missAndRunOutJitter(...phrases: string[]): Promise<void> {
     for (const p of phrases) t(p);
-    await vi.advanceTimersByTimeAsync(31_000);
+    await vi.advanceTimersByTimeAsync(HINT_MAX_DELAY_MS + 1_000);
 }
-/** Long enough for a sent report to have been stored. */
-const settle = () => sleep(600);
+/** The clone's answer to a report, and its storing it, measured well inside this. */
+const ROUND_TRIP_MS = 600;
+/** A report sent once the jitter ran out has been stored by now. */
+const settle = () => sleep(ROUND_TRIP_MS);
 
 beforeAll(async () => {
     fx = await startContractFixture();
@@ -70,7 +92,7 @@ beforeEach(async () => {
     for (const m of ['log', 'info', 'group', 'groupCollapsed', 'groupEnd', 'error'] as const) {
         vi.spyOn(console, m).mockImplementation(() => {});
     }
-    await fx.seed(SEED);
+    await take('base');
 });
 afterEach(() => {
     resetSdk();
@@ -86,13 +108,15 @@ describe('HINT-9: report only when the server permits it', () => {
         await until(async () => (await hints()).includes(PAGE));
     });
 
-    it('not permitted: the session reports nothing, even once the server would accept its hint', async () => {
+    // The API declines this key's hint whether or not it is sent, so the absence is read at `fetch`:
+    // a key of the same type, read-only from the same address, whose only difference is the permission.
+    it('not permitted: the session sends no hint at all', async () => {
+        const sent = hintRequests();
         await session('k-private');
         expect(autoDiscovery.get(), 'the SDK learned it may not report').toBe(false);
-        await fx.seed(drift('k-private', { report_discovered_content: true }));
         await missAndRunOutJitter('New on this page');
         await settle();
-        expect(await hints()).toEqual([]);
+        expect(sent()).toEqual([]);
     });
 });
 
@@ -100,14 +124,15 @@ describe('GATE-6: a write-enabled session never reports', () => {
     it('a writer sends no hint, even once the server would accept one from it', async () => {
         await session('k-writer');
         expect(writeEnabled.get(), 'the SDK learned it may write').toBe(true);
-        await fx.seed(drift('k-writer', { ip_allowlist: [] }));
+        // To an address the key's allow-list does not hold, where the API stores its hints.
+        await fx.update(w, { caller: w.moved });
         await missAndRunOutJitter('New on this page');
         await settle();
         expect(await hints()).toEqual([]);
     });
 
     it('control: in that same server state, a session that learns it is read-only does report', async () => {
-        await fx.seed(drift('k-writer', { ip_allowlist: [] }));
+        await fx.update(w, { caller: w.moved });
         await session('k-writer');
         expect(writeEnabled.get()).toBe(false);
         await missAndRunOutJitter('New on this page');
@@ -120,10 +145,14 @@ describe('GATE-7: an unknown block feeds exactly one lane, in both directions', 
 
     it('read-only: the page is reported (and the block is not registered)', async () => {
         await session('k-public');
-        await registerContentBlock(block as never);
-        await vi.advanceTimersByTimeAsync(31_000);
+        // The API refuses this session's write itself, so the registration's absence is the skip
+        // and no request at the transport seam.
+        const sent = registrationRequests();
+        await expect(registerContentBlock(block as never)).resolves.toMatchObject({ status: false, skipped: true, reason: 'not-write-enabled' });
+        await vi.advanceTimersByTimeAsync(HINT_MAX_DELAY_MS + 1_000);
         await until(async () => (await hints()).includes(PAGE));
-        expect(await blocks()).not.toContain('b-gate7');
+        expect(sent()).toEqual([]);
+        expect(await blocksAnywhere()).not.toContain('b-gate7');
     });
 
     it('write-enabled: the block is registered (and, per GATE-6, the page is not reported)', async () => {
@@ -135,25 +164,28 @@ describe('GATE-7: an unknown block feeds exactly one lane, in both directions', 
 
 describe('HINT-7: the report lane carries no reliability machinery', () => {
     it('a rate-limit response ends reporting for the session, even after the server would take reports again', async () => {
-        await fx.seed({ ...SEED, config: { ...SEED.config, hint_rate_per_minute: 1 } });
+        // The clone takes five hints a minute from one address: pages a to e.
+        const accepted = ['a', 'b', 'c', 'd', 'e'].map((page) => `https://site.local/${page}`);
         await session('k-public');
-        setHref('https://site.local/a');
-        await missAndRunOutJitter('Page A phrase');
-        await until(async () => (await hints()).includes('https://site.local/a'));
+        for (const page of accepted) {
+            setHref(page);
+            await missAndRunOutJitter(`Phrase on ${page}`);
+            await until(async () => (await hints()).includes(page));
+        }
 
-        setHref('https://site.local/b');
-        await missAndRunOutJitter('Page B phrase');
-        await settle(); // B is answered 429, which ends reporting for this session
+        setHref('https://site.local/f');
+        await missAndRunOutJitter('Page F phrase');
+        await settle(); // F is answered 429, which ends reporting for this session
 
         await fx.advanceClock(61); // the server's per-minute window has reset
-        setHref('https://site.local/c');
-        await missAndRunOutJitter('Page C phrase');
+        setHref('https://site.local/g');
+        await missAndRunOutJitter('Page G phrase');
         await settle();
-        expect(await hints()).toEqual(['https://site.local/a']);
+        expect(await hints()).toEqual(accepted);
     });
 
     it('a failed report is never retried, however long the session runs', async () => {
-        await fx.seed({ ...SEED, faults: [{ method: 'POST', path: '/discovery/hint', times: 1, status: 500 }] });
+        await fx.update(w, { faults: [{ method: 'POST', path: '/discovery/hint', times: 1, status: 500 }] });
         await session('k-public');
         await missAndRunOutJitter('New on this page');
         await settle();
@@ -165,7 +197,7 @@ describe('HINT-7: the report lane carries no reliability machinery', () => {
 
 describe('GATE-9: the base-locale gate covers the report lane too', () => {
     it('on: a read-only session in a non-base locale reports nothing, although the server would store it', async () => {
-        await fx.seed(gated());
+        await take('gated');
         await session('k-public');
         expect(discoveryBaseLocaleOnly.get()).toBe(true);
         await missAndRunOutJitter('New on this page');
@@ -241,21 +273,17 @@ describe('SRV-2: a page’s report goes out under the page’s key', () => {
     it('a miss recorded inside a request scope with a key of its own reports under the page’s key', async () => {
         // Real timers: a timer the page sets inside a scope's async context runs in that context.
         vi.useRealTimers();
-        await fx.seed({
-            ...SEED,
-            projects: [...SEED.projects, { id: 'other', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local', machine_translate_new_phrases: true }],
-            keys: [...SEED.keys, { key: 'k-other', project: 'other', type: 'ip_write', report_discovered_content: true }],
-        });
+        await take('two projects');
         await session('k-public');
         vi.spyOn(Math, 'random').mockReturnValue(0);
         setRequestScopeStorage(new AsyncLocalStorage());
         try {
-            const scope = await createRequestScope({ locale: 'en', credentials: { projectid: 'other', key: 'k-other' } });
+            const scope = await createRequestScope({ locale: 'en', credentials: { projectid: w.project('other'), key: w.key('k-other') } });
             scope.run(() => LangsysApp.Translations.recordPageMiss('', 'Recorded inside a scope'));
-            await until(async () => (await fx.state()).hints.length > 0, 12_000);
+            await until(async () => (await fx.hints(w)).length > 0, 12_000);
         } finally {
             setRequestScopeStorage(null);
         }
-        expect((await fx.state()).hints).toEqual([{ project_id: 'p1', url: PAGE }]);
+        expect(await fx.hints(w)).toEqual([{ project_id: w.project(), url: PAGE }]);
     }, 20_000);
 });

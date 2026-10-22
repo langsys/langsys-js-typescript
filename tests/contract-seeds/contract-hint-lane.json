@@ -1,0 +1,636 @@
+{
+    "projects": [
+        {
+            "id": "75000300-0001-4000-8000-000000000000",
+            "title": "ts hint base#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101001|a17c16fbb75841411e34dca596ea039e0261bd10",
+                "device_id": "ts-hint-1"
+            }
+        },
+        {
+            "id": "75000300-0002-4000-8000-000000000000",
+            "title": "ts hint base#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101002|41275a877cbb719c4c9b14a279485ccfd75cd040",
+                "device_id": "ts-hint-2"
+            }
+        },
+        {
+            "id": "75000300-0003-4000-8000-000000000000",
+            "title": "ts hint base#3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101003|dfaaff549c5fdad750578148392880ba16ef4bf8",
+                "device_id": "ts-hint-3"
+            }
+        },
+        {
+            "id": "75000300-0004-4000-8000-000000000000",
+            "title": "ts hint base#4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101004|bfae9a47ff4a5b1af36a9afa9e633e2889f72751",
+                "device_id": "ts-hint-4"
+            }
+        },
+        {
+            "id": "75000300-0005-4000-8000-000000000000",
+            "title": "ts hint base#5 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101005|1d943660427a8997bd981293424bf81188be01ba",
+                "device_id": "ts-hint-5"
+            }
+        },
+        {
+            "id": "75000300-0006-4000-8000-000000000000",
+            "title": "ts hint base#6 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101006|b9a42f842126cef529ce17971bdb092a61a46a9e",
+                "device_id": "ts-hint-6"
+            }
+        },
+        {
+            "id": "75000300-0007-4000-8000-000000000000",
+            "title": "ts hint base#7 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101007|4c9ed3e406c95b35dc6f7355827d17c7058b09ce",
+                "device_id": "ts-hint-7"
+            }
+        },
+        {
+            "id": "75000300-0008-4000-8000-000000000000",
+            "title": "ts hint base#8 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101008|6ae0f3e5ae47648c6d705d0fc1fca37aaffe8118",
+                "device_id": "ts-hint-8"
+            }
+        },
+        {
+            "id": "75000300-0009-4000-8000-000000000000",
+            "title": "ts hint base#9 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101009|167f420ec5ae2e8cbaf5cc1b17fd3fbde2f5efec",
+                "device_id": "ts-hint-9"
+            }
+        },
+        {
+            "id": "75000300-000a-4000-8000-000000000000",
+            "title": "ts hint base#10 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101010|cfa0272b746559553007b7898d696e2cec9f0935",
+                "device_id": "ts-hint-10"
+            }
+        },
+        {
+            "id": "75000300-000b-4000-8000-000000000000",
+            "title": "ts hint base#11 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101011|66e979a59aa64c6b2598a71013c0d75a4fba262c",
+                "device_id": "ts-hint-11"
+            }
+        },
+        {
+            "id": "75000300-000c-4000-8000-000000000000",
+            "title": "ts hint base#12 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101012|a632aa50e078bfc40038cc3446090b57408421ec",
+                "device_id": "ts-hint-12"
+            }
+        },
+        {
+            "id": "75000300-000d-4000-8000-000000000000",
+            "title": "ts hint base#13 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101013|494a0fa9f81fee7dd89c8309eb0b1951b8b95ad9",
+                "device_id": "ts-hint-13"
+            }
+        },
+        {
+            "id": "75000300-000e-4000-8000-000000000000",
+            "title": "ts hint base#14 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101014|ec3ed189a4b9234aa58239f3f088aa46fe9d290c",
+                "device_id": "ts-hint-14"
+            }
+        },
+        {
+            "id": "75000300-000f-4000-8000-000000000000",
+            "title": "ts hint gated#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "discovery_base_locale_only": true,
+            "user": {
+                "token": "101015|b63d3e7362d77db6e496994ba39c9361db341a35",
+                "device_id": "ts-hint-15"
+            }
+        },
+        {
+            "id": "75000300-0010-4000-8000-000000000000",
+            "title": "ts hint two projects#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101016|8f2a376443de5c441803f85bf8e6570d1b0d0f8b",
+                "device_id": "ts-hint-16"
+            }
+        },
+        {
+            "id": "75000300-0011-4000-8000-000000000000",
+            "title": "ts hint two projects#1 other",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "101017|0b737c72a8c6cb8ce908811dcf0ab7efe4c61d76",
+                "device_id": "ts-hint-17"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "75000301-0001-4000-8000-000000000000",
+            "key": "ts-hint-1-k-public",
+            "project": "75000300-0001-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-0002-4000-8000-000000000000",
+            "key": "ts-hint-1-k-private",
+            "project": "75000300-0001-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-0003-4000-8000-000000000000",
+            "key": "ts-hint-1-k-writer",
+            "project": "75000300-0001-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.1"
+            ]
+        },
+        {
+            "id": "75000301-0004-4000-8000-000000000000",
+            "key": "ts-hint-2-k-public",
+            "project": "75000300-0002-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-0005-4000-8000-000000000000",
+            "key": "ts-hint-2-k-private",
+            "project": "75000300-0002-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-0006-4000-8000-000000000000",
+            "key": "ts-hint-2-k-writer",
+            "project": "75000300-0002-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.2"
+            ]
+        },
+        {
+            "id": "75000301-0007-4000-8000-000000000000",
+            "key": "ts-hint-3-k-public",
+            "project": "75000300-0003-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-0008-4000-8000-000000000000",
+            "key": "ts-hint-3-k-private",
+            "project": "75000300-0003-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-0009-4000-8000-000000000000",
+            "key": "ts-hint-3-k-writer",
+            "project": "75000300-0003-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.3"
+            ]
+        },
+        {
+            "id": "75000301-000a-4000-8000-000000000000",
+            "key": "ts-hint-4-k-public",
+            "project": "75000300-0004-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-000b-4000-8000-000000000000",
+            "key": "ts-hint-4-k-private",
+            "project": "75000300-0004-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-000c-4000-8000-000000000000",
+            "key": "ts-hint-4-k-writer",
+            "project": "75000300-0004-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.4"
+            ]
+        },
+        {
+            "id": "75000301-000d-4000-8000-000000000000",
+            "key": "ts-hint-5-k-public",
+            "project": "75000300-0005-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-000e-4000-8000-000000000000",
+            "key": "ts-hint-5-k-private",
+            "project": "75000300-0005-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-000f-4000-8000-000000000000",
+            "key": "ts-hint-5-k-writer",
+            "project": "75000300-0005-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.5"
+            ]
+        },
+        {
+            "id": "75000301-0010-4000-8000-000000000000",
+            "key": "ts-hint-6-k-public",
+            "project": "75000300-0006-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-0011-4000-8000-000000000000",
+            "key": "ts-hint-6-k-private",
+            "project": "75000300-0006-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-0012-4000-8000-000000000000",
+            "key": "ts-hint-6-k-writer",
+            "project": "75000300-0006-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.6"
+            ]
+        },
+        {
+            "id": "75000301-0013-4000-8000-000000000000",
+            "key": "ts-hint-7-k-public",
+            "project": "75000300-0007-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-0014-4000-8000-000000000000",
+            "key": "ts-hint-7-k-private",
+            "project": "75000300-0007-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-0015-4000-8000-000000000000",
+            "key": "ts-hint-7-k-writer",
+            "project": "75000300-0007-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.7"
+            ]
+        },
+        {
+            "id": "75000301-0016-4000-8000-000000000000",
+            "key": "ts-hint-8-k-public",
+            "project": "75000300-0008-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-0017-4000-8000-000000000000",
+            "key": "ts-hint-8-k-private",
+            "project": "75000300-0008-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-0018-4000-8000-000000000000",
+            "key": "ts-hint-8-k-writer",
+            "project": "75000300-0008-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.8"
+            ]
+        },
+        {
+            "id": "75000301-0019-4000-8000-000000000000",
+            "key": "ts-hint-9-k-public",
+            "project": "75000300-0009-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-001a-4000-8000-000000000000",
+            "key": "ts-hint-9-k-private",
+            "project": "75000300-0009-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-001b-4000-8000-000000000000",
+            "key": "ts-hint-9-k-writer",
+            "project": "75000300-0009-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.9"
+            ]
+        },
+        {
+            "id": "75000301-001c-4000-8000-000000000000",
+            "key": "ts-hint-10-k-public",
+            "project": "75000300-000a-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-001d-4000-8000-000000000000",
+            "key": "ts-hint-10-k-private",
+            "project": "75000300-000a-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-001e-4000-8000-000000000000",
+            "key": "ts-hint-10-k-writer",
+            "project": "75000300-000a-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.10"
+            ]
+        },
+        {
+            "id": "75000301-001f-4000-8000-000000000000",
+            "key": "ts-hint-11-k-public",
+            "project": "75000300-000b-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-0020-4000-8000-000000000000",
+            "key": "ts-hint-11-k-private",
+            "project": "75000300-000b-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-0021-4000-8000-000000000000",
+            "key": "ts-hint-11-k-writer",
+            "project": "75000300-000b-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.11"
+            ]
+        },
+        {
+            "id": "75000301-0022-4000-8000-000000000000",
+            "key": "ts-hint-12-k-public",
+            "project": "75000300-000c-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-0023-4000-8000-000000000000",
+            "key": "ts-hint-12-k-private",
+            "project": "75000300-000c-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-0024-4000-8000-000000000000",
+            "key": "ts-hint-12-k-writer",
+            "project": "75000300-000c-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.12"
+            ]
+        },
+        {
+            "id": "75000301-0025-4000-8000-000000000000",
+            "key": "ts-hint-13-k-public",
+            "project": "75000300-000d-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-0026-4000-8000-000000000000",
+            "key": "ts-hint-13-k-private",
+            "project": "75000300-000d-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-0027-4000-8000-000000000000",
+            "key": "ts-hint-13-k-writer",
+            "project": "75000300-000d-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.13"
+            ]
+        },
+        {
+            "id": "75000301-0028-4000-8000-000000000000",
+            "key": "ts-hint-14-k-public",
+            "project": "75000300-000e-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-0029-4000-8000-000000000000",
+            "key": "ts-hint-14-k-private",
+            "project": "75000300-000e-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-002a-4000-8000-000000000000",
+            "key": "ts-hint-14-k-writer",
+            "project": "75000300-000e-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.14"
+            ]
+        },
+        {
+            "id": "75000301-002b-4000-8000-000000000000",
+            "key": "ts-hint-15-k-public",
+            "project": "75000300-000f-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-002c-4000-8000-000000000000",
+            "key": "ts-hint-15-k-private",
+            "project": "75000300-000f-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-002d-4000-8000-000000000000",
+            "key": "ts-hint-15-k-writer",
+            "project": "75000300-000f-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.15"
+            ]
+        },
+        {
+            "id": "75000301-002e-4000-8000-000000000000",
+            "key": "ts-hint-16-k-public",
+            "project": "75000300-0010-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        },
+        {
+            "id": "75000301-002f-4000-8000-000000000000",
+            "key": "ts-hint-16-k-private",
+            "project": "75000300-0010-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": false
+        },
+        {
+            "id": "75000301-0030-4000-8000-000000000000",
+            "key": "ts-hint-16-k-writer",
+            "project": "75000300-0010-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "ip_allowlist": [
+                "10.75.6.16"
+            ]
+        },
+        {
+            "id": "75000301-0031-4000-8000-000000000000",
+            "key": "ts-hint-16-k-other",
+            "project": "75000300-0011-4000-8000-000000000000",
+            "type": "ip_write",
+            "report_discovered_content": true
+        }
+    ]
+}

@@ -8,13 +8,15 @@ import { createSignal } from '../src/signal.js';
 import { currentlyLoadedLocale } from '../src/stores.js';
 import { Translate } from '../src/translate.js';
 import canonicalization from './fixtures/canonicalization-reference.json';
+import seeds from './contract-seeds/contract-block-content.js';
+import type { World } from './contract-seeds/worlds.js';
 import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
 import { resetSdk, until } from './helpers/sdk-session.js';
 
 /**
  * The `content` a block registers with, graded against the API on an SDK test clone (spec
- * CONF-2): every assertion reads what the API stored, from the fixture's state, since no route
- * a project key can call returns a block's content.
+ * CONF-2): every assertion reads what the API stored, as the project's owner reads a block.
+ * Each client session starts in a world of its own from tests/contract-seeds/contract-block-content.ts.
  *
  * VAR-1, VAR-3: a marked value is its `{NAME}` placeholder in the content as in the tokens, the
  * marker gone.
@@ -28,18 +30,20 @@ let fx: ContractFixture;
 const live: Translate[] = [];
 const VALUES = /Ana|A-1042/;
 
-const SEED = {
-    projects: [{ id: 'p1', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local', phrases: [] }],
-    keys: [{ key: 'k-write', project: 'p1', type: 'write' }],
-};
+let w: World;
 
 const OUTER = generateCustomId('UI', ['Hello {name}, welcome back', 'Order {order} has shipped']);
-const heldAs = async (id: string) => (await fx.state()).projects.p1.blocks.filter((b) => b.custom_id === id);
-const stored = async () => JSON.stringify(await fx.state());
+const storedBlocks = () => fx.storedBlocks(w, w.key('k-write'), 'es-es');
+const heldAs = async (id: string) => (await storedBlocks()).filter((b) => b.custom_id === id);
+/** Everything the API stored: the phrases and blocks its catalog serves, and each block's content. */
+const stored = async () => JSON.stringify([await fx.held(w.key('k-write'), w.project(), 'es-es'), await storedBlocks()]);
 
+/** A client session in a fresh world. */
 async function client() {
+    w = seeds.take('empty');
+    await fx.use(w);
     resetSdk();
-    await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+    await LangsysApp.init({ projectid: w.project(), key: w.key('k-write'), UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
     await until(() => currentlyLoadedLocale.get() === 'es-es');
 }
 
@@ -61,7 +65,6 @@ beforeEach(async () => {
     for (const m of ['log', 'info', 'warn', 'group', 'groupCollapsed', 'groupEnd', 'error'] as const) {
         vi.spyOn(console, m).mockImplementation(() => {});
     }
-    await fx.seed(SEED);
 });
 afterEach(() => {
     for (const t of live) t.destroy();
@@ -168,8 +171,8 @@ function toTree(nodes: ArrayLike<ChildNode>): BlockNode[] {
 }
 
 const onlyBlock = async () => {
-    await until(async () => (await fx.state()).projects.p1.blocks.length === 1);
-    return (await fx.state()).projects.p1.blocks[0]!;
+    await until(async () => (await storedBlocks()).length === 1);
+    return (await storedBlocks())[0]!;
 };
 
 describe('one block registers one content string through the DOM class and the tree path', () => {
@@ -188,7 +191,6 @@ describe('one block registers one content string through the DOM class and the t
         live.push(new Translate(host, { category: 'UI' }));
         const fromDom = await onlyBlock();
 
-        await fx.seed(SEED);
         await client();
         const parsed = document.createElement('div');
         parsed.innerHTML = html;
@@ -209,7 +211,6 @@ describe('one block registers one content string through the DOM class and the t
         live.push(new Translate(host, { category: 'UI' }));
         const fromDom = await onlyBlock();
 
-        await fx.seed(SEED);
         await client();
         const parsed = document.createElement('div');
         parsed.innerHTML = html;

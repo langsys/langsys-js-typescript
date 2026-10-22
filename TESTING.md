@@ -1,7 +1,8 @@
 # Testing this branch locally
 
 How to try the core by hand before a release: build it, link it into a binding or a plain page,
-run it against the contract double, and see each feature of this branch work. Where another
+run it against the SDK test clone through the contract fixture, and see each feature of this branch
+work. Where another
 document already covers a step, this page points to it.
 
 ## 1. Build and run the checks
@@ -9,8 +10,9 @@ document already covers a step, this page points to it.
 ```sh
 npm install
 npm run build              # dist/: the package build and the browser build
-npm test                   # the whole suite; it builds first, and needs an SDK test clone:
-                           # LANGSYS_CONTRACT_TARGET and NODE_EXTRA_CA_CERTS (contract-fixture/README.md)
+npm test                   # the whole suite; it builds first, and needs a freshly reseeded SDK test clone:
+                           # LANGSYS_CONTRACT_TARGET, LANGSYS_CONTRACT_CLONE_ROOT and NODE_EXTRA_CA_CERTS
+                           # (contract-fixture/README.md)
 npm run typecheck
 npm run tally:conformance  # CONFORMANCE.md against the spec; prints "verdict: GREEN"
 npm run verify:spec        # needs the sibling ../langsys2 checkout
@@ -37,48 +39,47 @@ trust what a binding shows.
 **A plain page:** `example/index.html` loads the browser build (`dist/langsys.browser.mjs`). Serve
 the repository root (`npx serve .` or any static server) and open `/example/`. Set `projectid`
 and `key`, and point it at an API with `apiUrl` (see the README, "Pointing at a different API
-host"). A browser cannot call the contract double, which sends no CORS headers, so a page runs
-against a real API: your local backend (for example `http://langsys2.test/api`) or the live one.
+host"). A browser cannot call the contract fixture's forwarder, which sends no CORS headers, so a
+page runs against an API that does: your local backend (for example `http://langsys2.test/api`) or
+the live one.
 
-## 3. The contract double
+## 3. The contract fixture
 
-`contract-fixture/README.md` is its manual: the routes, what it enforces and in which order, the
-seed document, the error codes, and what it does not model. In short:
+`contract-fixture/README.md` is its manual: the SDK test clone and its seed files, the forwarder,
+test cases, faults and crafted reference lists. In short, start the forwarder against the clone:
 
 ```sh
-node contract-fixture/server.mjs     # prints {"ready":true,"base_url":"http://127.0.0.1:PORT/api",...}
+NODE_EXTRA_CA_CERTS=~/.config/valet/CA/LaravelValetCASelfSigned.pem \
+  node contract-fixture/forwarder.mjs --target https://api.langsys5.test --clone-root ~/Documents/dev/langsys5
+# prints {"ready":true,"base_url":"http://127.0.0.1:PORT/api",...}
 ```
 
-Start it **without** `--port`, and take the URL from the line it prints. Other lanes run their
-own doubles on fixed ports, and a seed you send to one of theirs replaces its whole state.
-
-Seed it with a document matching `contract-fixture/seed.schema.json`:
+Start it **without** `--port`, and take the URL from the line it prints. A request reaches the clone
+only for a case the forwarder has been told about, so name one of the seeded worlds first. Each
+world's ids, keys and address are in its seed file; this is the first world of
+`tests/contract-seeds/request-scope.json`, a project based in `en` that translates `Hello` into
+`de` and `it`:
 
 ```sh
 FX=http://127.0.0.1:PORT/__fixture
-curl -s -X POST $FX/seed -H 'content-type: application/json' -d '{
-  "projects": [{ "id": "p1", "base_locale": "en", "target_locales": ["es-es", "de-de"],
-                 "website_url": "https://site.local",
-                 "phrases": [{ "category": "UI", "phrase": "Hello",
-                               "translations": { "es-es": "Hola", "de-de": "Hallo" } }] }],
-  "keys": [{ "key": "k-write", "project": "p1", "type": "write" },
-           { "key": "k-read",  "project": "p1", "type": "read" }]
-}'
-curl -s $FX/state     # what the double accepted: phrases, blocks, hints
+curl -s -X POST $FX/setup -H 'content-type: application/json' -d '{
+  "keys": ["ts-scope-1-k-write", "ts-scope-1-k-read"],
+  "projects": ["75000a00-0001-4000-8000-000000000000"], "caller": "10.75.20.1" }'
 ```
 
-Point the SDK at the double with `apiUrl: 'http://127.0.0.1:PORT/api'` in `LangsysApp.init`.
-From Node that works directly; a quick session:
+What a session writes stays in that world until the next reseed, which every suite run starts
+with; a test that takes a world a session has written to fails, naming what it found there. Point the SDK at the forwarder with `apiUrl: 'http://127.0.0.1:PORT/api'` in
+`LangsysApp.init`. From Node that works directly; a quick session:
 
 ```js
 // node --input-type=module, from this repository's root
 import { LangsysApp, createSignal, createRequestScope, t, tokenizeTree, localeHeaders } from './dist/index.mjs';
 
-const locale = createSignal('es-es');
-await LangsysApp.init({ projectid: 'p1', key: 'k-read', UserLocaleStore: locale, baseLocale: 'en',
-                        apiUrl: 'http://127.0.0.1:PORT/api' });
+const locale = createSignal('it');
+await LangsysApp.init({ projectid: '75000a00-0001-4000-8000-000000000000', key: 'ts-scope-1-k-read',
+                        UserLocaleStore: locale, baseLocale: 'en', apiUrl: 'http://127.0.0.1:PORT/api' });
 await LangsysApp.Translations.ready();
-console.log(t('Hello', 'UI'));                                   // Hola
+console.log(t('Hello', 'UI'));                                   // Ciao
 ```
 
 ## 4. One check per feature
@@ -86,8 +87,9 @@ console.log(t('Hello', 'UI'));                                   // Hola
 Each check says what you should see, and which suite proves it.
 
 **Write-key gating.** Whether a session may register is the server's `write_enabled`, never the
-key's type. In a browser with a write key, new text on the page appears in `GET $FX/state`, or in
-the Translation Manager on a real backend, a moment after it renders. With a read key, the page
+key's type. With a write key, new text on the page appears in the project's catalog
+(`GET /api/translations` with the session's key), and in the Translation Manager on a real backend,
+a moment after it renders. With a read key, the page
 renders the same translations and nothing new is registered. With `debug: true` the console says
 why ("Skipping content block save (session is not write-enabled)"). README: "API key
 permissions". Suites: `contract-write-lane`, `write-lane`, `never-attempt`.
@@ -115,8 +117,8 @@ README: "Variables in registered text". Suites: `var-markers`, `var-naming`.
 and the page's state is untouched:
 
 ```js
-const de = await createRequestScope({ locale: 'de-de' });
-console.log(de.run(() => t('Hello', 'UI')), t('Hello', 'UI'));   // Hallo Hola
+const de = await createRequestScope({ locale: 'de' });
+console.log(de.run(() => t('Hello', 'UI')), t('Hello', 'UI'));   // Hallo Ciao
 ```
 
 `de.seed()` is what the page hands the browser. README: "Rendering on a server: request scopes".
@@ -134,16 +136,16 @@ registered and the one the block re-keyed to. README: "The `Translate` class". S
 
 **Hints.** A read-only session that misses text reports the page's URL so the renderer can visit
 it. That needs a key allowed to report (`report_discovered_content`), a page on the project's
-`website_url`, and the other acceptance rules listed in `contract-fixture/README.md`, "What it
-enforces". On a real backend the hint shows up as a visit from the renderer. In the double,
-accepted hints are in `GET $FX/state`, under `hints`. Suites: `contract-hint-lane`, `discovery`,
+`website_url`, a project that machine-translates new content, and the backend's other acceptance
+rules. On a real backend the hint shows up as a visit from the renderer. On the clone, which runs
+no renderer, the hints it accepted are in `GET $FX/state?project=<id>`, under `hints`. Suites: `contract-hint-lane`, `discovery`,
 `navigation`.
 
 **The locale header helper.** `localeHeaders()` names the user's current locale:
 
 ```js
-locale.set('de-de');
-console.log(localeHeaders());    // { 'Accept-Language': 'de-de' }
+locale.set('de');
+console.log(localeHeaders());    // { 'Accept-Language': 'de' }
 ```
 
 README: "Asking your own API for the user's language". Suite: `locale-headers`.

@@ -16,7 +16,7 @@ import { _resetCapabilityNotice } from '../../src/translations.js';
 
 /**
  * Drives the SDK's real path — `LangsysApp.init`, the real HTTP client, real `fetch` — as a
- * browser session, for tests graded against the contract double.
+ * browser session, for the contract tests against an SDK test clone.
  *
  * The core is a singleton, so each session starts by clearing what a previous session left:
  * the registration queue, capability, the catalog and the discovery lane.
@@ -26,15 +26,15 @@ const g = globalThis as unknown as Record<string, unknown>;
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// Against an SDK test clone a check is a real read, often the catalog, which the backend
-// builds per request: polled every 25ms from several files at once, the reads alone saturate it.
+// Against an SDK test clone a check is a real read, often the catalog, from the case's own address,
+// where the API allows 120 requests a minute: once a second leaves the rest to the SDK under test.
 const againstClone = Boolean(process.env.LANGSYS_CONTRACT_TARGET);
 
 export async function until(check: () => boolean | Promise<boolean>, timeoutMs = againstClone ? 30_000 : 8000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         if (await check()) return;
-        await sleep(againstClone ? 250 : 25);
+        await sleep(againstClone ? 1000 : 25);
     }
     throw new Error(`condition not met within ${timeoutMs}ms`);
 }

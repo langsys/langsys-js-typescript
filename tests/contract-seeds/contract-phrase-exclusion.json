@@ -1,0 +1,1061 @@
+{
+    "projects": [
+        {
+            "id": "75000600-0001-4000-8000-000000000000",
+            "title": "ts exclusion empty#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102501|d04fa6bcfde928beefeda2055afe7961fedf2f29",
+                "device_id": "ts-exclusion-1"
+            }
+        },
+        {
+            "id": "75000600-0002-4000-8000-000000000000",
+            "title": "ts exclusion empty#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102502|942f51acc625b53c4043ebb337aafa826443c37f",
+                "device_id": "ts-exclusion-2"
+            }
+        },
+        {
+            "id": "75000600-0003-4000-8000-000000000000",
+            "title": "ts exclusion empty#3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102503|129f9e733273b3b93562bf63c7ced8ab40522215",
+                "device_id": "ts-exclusion-3"
+            }
+        },
+        {
+            "id": "75000600-0004-4000-8000-000000000000",
+            "title": "ts exclusion empty#4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102504|8bd868559554155b69c445709a785276c654aad2",
+                "device_id": "ts-exclusion-4"
+            }
+        },
+        {
+            "id": "75000600-0005-4000-8000-000000000000",
+            "title": "ts exclusion empty#5 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102505|7a04bd4c9b0c610dd624f133b29f190f0571f512",
+                "device_id": "ts-exclusion-5"
+            }
+        },
+        {
+            "id": "75000600-0006-4000-8000-000000000000",
+            "title": "ts exclusion empty#6 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102506|930b251a9f64793d6e5486a17b159eebf675bc82",
+                "device_id": "ts-exclusion-6"
+            }
+        },
+        {
+            "id": "75000600-0007-4000-8000-000000000000",
+            "title": "ts exclusion empty#7 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102507|799ce28eea41045b112465e2bb4257aa4bf654db",
+                "device_id": "ts-exclusion-7"
+            }
+        },
+        {
+            "id": "75000600-0008-4000-8000-000000000000",
+            "title": "ts exclusion empty#8 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102508|bdfd2dd0eba46d1ca66fbc44eee13f8d7b848c33",
+                "device_id": "ts-exclusion-8"
+            }
+        },
+        {
+            "id": "75000600-0009-4000-8000-000000000000",
+            "title": "ts exclusion empty#9 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102509|a234d0fdb78b5425e5c409c1f44d57d60e58a4a3",
+                "device_id": "ts-exclusion-9"
+            }
+        },
+        {
+            "id": "75000600-000a-4000-8000-000000000000",
+            "title": "ts exclusion empty#10 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102510|633b6d2086bd0f6dbcbabf7bda19f10bbd3b5a7c",
+                "device_id": "ts-exclusion-10"
+            }
+        },
+        {
+            "id": "75000600-000b-4000-8000-000000000000",
+            "title": "ts exclusion empty#11 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102511|1426f1a416bfb03fcfe3baa9ead2abbb0d474fa4",
+                "device_id": "ts-exclusion-11"
+            }
+        },
+        {
+            "id": "75000600-000c-4000-8000-000000000000",
+            "title": "ts exclusion empty#12 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102512|5bb2e2361f940a00ae425aa86c35d6323945aa4d",
+                "device_id": "ts-exclusion-12"
+            }
+        },
+        {
+            "id": "75000600-000d-4000-8000-000000000000",
+            "title": "ts exclusion empty#13 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102513|37dfae6c9060ef5c0f563af282693e7300c178d1",
+                "device_id": "ts-exclusion-13"
+            }
+        },
+        {
+            "id": "75000600-000e-4000-8000-000000000000",
+            "title": "ts exclusion empty#14 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102514|312edb5a942a2169c65aece573dc448cfe34aef5",
+                "device_id": "ts-exclusion-14"
+            }
+        },
+        {
+            "id": "75000600-000f-4000-8000-000000000000",
+            "title": "ts exclusion empty#15 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102515|4bc7e3a06217d0ce17c456d3ef60bb4011a7569d",
+                "device_id": "ts-exclusion-15"
+            }
+        },
+        {
+            "id": "75000600-0010-4000-8000-000000000000",
+            "title": "ts exclusion empty#16 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102516|f5af281f7567c967b374ea448f9a80a5647d6e7c",
+                "device_id": "ts-exclusion-16"
+            }
+        },
+        {
+            "id": "75000600-0011-4000-8000-000000000000",
+            "title": "ts exclusion empty#17 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102517|22b286be2fdc9bd7637f00c7682b463321d61b77",
+                "device_id": "ts-exclusion-17"
+            }
+        },
+        {
+            "id": "75000600-0012-4000-8000-000000000000",
+            "title": "ts exclusion empty#18 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102518|4f4f85753b713b697cd55bbb08e727e85b76a4a3",
+                "device_id": "ts-exclusion-18"
+            }
+        },
+        {
+            "id": "75000600-0013-4000-8000-000000000000",
+            "title": "ts exclusion empty#19 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102519|f3ab030bf13d681f99ef8843fcd659a9896f62b8",
+                "device_id": "ts-exclusion-19"
+            }
+        },
+        {
+            "id": "75000600-0014-4000-8000-000000000000",
+            "title": "ts exclusion empty#20 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102520|9ee0dff1ae5080c5f46f9bb3c5fe92bcaa90af6f",
+                "device_id": "ts-exclusion-20"
+            }
+        },
+        {
+            "id": "75000600-0015-4000-8000-000000000000",
+            "title": "ts exclusion empty#21 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102521|00ab7b0ae46f30c26a02923bbf08da8474651082",
+                "device_id": "ts-exclusion-21"
+            }
+        },
+        {
+            "id": "75000600-0016-4000-8000-000000000000",
+            "title": "ts exclusion empty#22 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102522|6be61599216a4a58ebaec175a8f0885abe383db1",
+                "device_id": "ts-exclusion-22"
+            }
+        },
+        {
+            "id": "75000600-0017-4000-8000-000000000000",
+            "title": "ts exclusion empty#23 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102523|7415cdcd111b49a007d750f1102594d960d3ee56",
+                "device_id": "ts-exclusion-23"
+            }
+        },
+        {
+            "id": "75000600-0018-4000-8000-000000000000",
+            "title": "ts exclusion empty#24 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102524|c7f56e9f15e7b5113699bd64af38979743e2faae",
+                "device_id": "ts-exclusion-24"
+            }
+        },
+        {
+            "id": "75000600-0019-4000-8000-000000000000",
+            "title": "ts exclusion empty#25 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102525|1b84db78076c4d42eb9e17ffda1f6b04af15ab98",
+                "device_id": "ts-exclusion-25"
+            }
+        },
+        {
+            "id": "75000600-001a-4000-8000-000000000000",
+            "title": "ts exclusion empty#26 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102526|6e40eb5a79a47f5de7b529d0861d58ab02bc9ad7",
+                "device_id": "ts-exclusion-26"
+            }
+        },
+        {
+            "id": "75000600-001b-4000-8000-000000000000",
+            "title": "ts exclusion empty#27 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102527|7663fb0d141c5432622acc19c6b08980b13e25cd",
+                "device_id": "ts-exclusion-27"
+            }
+        },
+        {
+            "id": "75000600-001c-4000-8000-000000000000",
+            "title": "ts exclusion empty#28 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102528|0043be25d8f2917e0d997207aa66e19c43c9a2e1",
+                "device_id": "ts-exclusion-28"
+            }
+        },
+        {
+            "id": "75000600-001d-4000-8000-000000000000",
+            "title": "ts exclusion empty#29 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102529|19f2fc0a87b455b39a2f9d58b7984a02faeac3f9",
+                "device_id": "ts-exclusion-29"
+            }
+        },
+        {
+            "id": "75000600-001e-4000-8000-000000000000",
+            "title": "ts exclusion empty#30 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102530|b3bc70a3078ee60bc294986efd72aebcf763ca1f",
+                "device_id": "ts-exclusion-30"
+            }
+        },
+        {
+            "id": "75000600-001f-4000-8000-000000000000",
+            "title": "ts exclusion empty#31 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102531|4123b7a60a0f06c918bd3536d6a5e9aa5a1dc94e",
+                "device_id": "ts-exclusion-31"
+            }
+        },
+        {
+            "id": "75000600-0020-4000-8000-000000000000",
+            "title": "ts exclusion empty#32 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102532|ab7213730297ea24a4912138f1d8ca492822217b",
+                "device_id": "ts-exclusion-32"
+            }
+        },
+        {
+            "id": "75000600-0021-4000-8000-000000000000",
+            "title": "ts exclusion empty#33 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [],
+            "user": {
+                "token": "102533|216e08953425f9c364b781850635fabe5e752c88",
+                "device_id": "ts-exclusion-33"
+            }
+        },
+        {
+            "id": "75000600-0022-4000-8000-000000000000",
+            "title": "ts exclusion signed in#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "phrase": "Signed in as {m0o}{m0c} today",
+                    "category": "UI",
+                    "translations": {
+                        "es-es": "Conectado como {m0o}{m0c} hoy"
+                    }
+                }
+            ],
+            "blocks": [],
+            "user": {
+                "token": "102534|06436483564834bbc13ab4ca42a88470c247d082",
+                "device_id": "ts-exclusion-34"
+            }
+        },
+        {
+            "id": "75000600-0023-4000-8000-000000000000",
+            "title": "ts exclusion signed in, word inside#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "phrase": "Signed in as {m0o}{m0c} today",
+                    "category": "UI",
+                    "translations": {
+                        "es-es": "Conectado como {m0o}correo{m0c} hoy"
+                    }
+                }
+            ],
+            "blocks": [],
+            "user": {
+                "token": "102535|473ba6c6ade3a62cf6b9a95ade4b60aeaaa3a1c0",
+                "device_id": "ts-exclusion-35"
+            }
+        },
+        {
+            "id": "75000600-0024-4000-8000-000000000000",
+            "title": "ts exclusion signed in, word inside#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "phrase": "Signed in as {m0o}{m0c} today",
+                    "category": "UI",
+                    "translations": {
+                        "es-es": "Conectado como {m0o}correo{m0c} hoy"
+                    }
+                }
+            ],
+            "blocks": [],
+            "user": {
+                "token": "102536|3ac6d571341156fcac1a44531d5fa1a3096dba01",
+                "device_id": "ts-exclusion-36"
+            }
+        },
+        {
+            "id": "75000600-0025-4000-8000-000000000000",
+            "title": "ts exclusion nested opaque#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "phrase": "{m0o}{m0c} and {m1o}y{m1c}",
+                    "category": "UI",
+                    "translations": {
+                        "es-es": "{m0o}{m0c} e {m1o}y{m1c}"
+                    }
+                }
+            ],
+            "blocks": [],
+            "user": {
+                "token": "102537|68723194e894a992ba170c16f585894a70241625",
+                "device_id": "ts-exclusion-37"
+            }
+        },
+        {
+            "id": "75000600-0026-4000-8000-000000000000",
+            "title": "ts exclusion earlier key#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "phrase": "Welcome to {m0o}Langsys{m0c}, {m1o}friend{m1c}",
+                    "category": "UI",
+                    "translations": {
+                        "es-es": "Bienvenido a {m0o}Langsys{m0c}, {m1o}amigo{m1c}"
+                    }
+                }
+            ],
+            "blocks": [],
+            "user": {
+                "token": "102538|471cc36f33d2630db22248b474895b5b1a9dfb37",
+                "device_id": "ts-exclusion-38"
+            }
+        },
+        {
+            "id": "75000600-0027-4000-8000-000000000000",
+            "title": "ts exclusion earlier key#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "phrase": "Welcome to {m0o}Langsys{m0c}, {m1o}friend{m1c}",
+                    "category": "UI",
+                    "translations": {
+                        "es-es": "Bienvenido a {m0o}Langsys{m0c}, {m1o}amigo{m1c}"
+                    }
+                }
+            ],
+            "blocks": [],
+            "user": {
+                "token": "102539|f96973087edc5c090182760ace664c0798569c3d",
+                "device_id": "ts-exclusion-39"
+            }
+        },
+        {
+            "id": "75000600-0028-4000-8000-000000000000",
+            "title": "ts exclusion earlier and current#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "phrase": "Welcome to {m0o}Langsys{m0c}, {m1o}friend{m1c}",
+                    "category": "UI",
+                    "translations": {
+                        "es-es": "Bienvenido a {m0o}Langsys{m0c}, {m1o}amigo{m1c}"
+                    }
+                },
+                {
+                    "phrase": "Welcome to {m0o}{m0c}, {m1o}friend{m1c}",
+                    "category": "UI",
+                    "translations": {
+                        "es-es": "Hola, {m0o}{m0c}, {m1o}amigo{m1c}"
+                    }
+                }
+            ],
+            "blocks": [],
+            "user": {
+                "token": "102540|3b4c66d60bcdbd4052f00da2437f91dc6e607b62",
+                "device_id": "ts-exclusion-40"
+            }
+        },
+        {
+            "id": "75000600-0029-4000-8000-000000000000",
+            "title": "ts exclusion excluded param#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "phrase": "Write to {m0o}{m0c} for help",
+                    "category": "UI",
+                    "translations": {
+                        "es-es": "Escribe a {m0o}{m0c} para ayuda"
+                    }
+                }
+            ],
+            "blocks": [],
+            "user": {
+                "token": "102541|fd6f47ce460943597c79d678efcab6aed1752c84",
+                "device_id": "ts-exclusion-41"
+            }
+        },
+        {
+            "id": "75000600-002a-4000-8000-000000000000",
+            "title": "ts exclusion excluded param#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "phrase": "Write to {m0o}{m0c} for help",
+                    "category": "UI",
+                    "translations": {
+                        "es-es": "Escribe a {m0o}{m0c} para ayuda"
+                    }
+                }
+            ],
+            "blocks": [],
+            "user": {
+                "token": "102542|68c183e0a97d40741e8d79d9ebe06520f9a92246",
+                "device_id": "ts-exclusion-42"
+            }
+        },
+        {
+            "id": "75000600-002b-4000-8000-000000000000",
+            "title": "ts exclusion block with code#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "5d98fc99494a32516b3f7ea10c32efd4",
+                    "content": "<p>Use <code translate=\"no\">{name}</code> in templates</p><p>Write it as shown</p>",
+                    "phrases": [
+                        {
+                            "phrase": "Use",
+                            "translations": {
+                                "es-es": "Usa"
+                            }
+                        },
+                        {
+                            "phrase": "in templates",
+                            "translations": {
+                                "es-es": "en plantillas"
+                            }
+                        },
+                        {
+                            "phrase": "Write it as shown",
+                            "translations": {
+                                "es-es": "Escríbelo como se muestra"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "102543|ade3c1c9e5d02259780c423c9bdb5ecc32949976",
+                "device_id": "ts-exclusion-43"
+            }
+        },
+        {
+            "id": "75000600-002c-4000-8000-000000000000",
+            "title": "ts exclusion block with code#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [],
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "5d98fc99494a32516b3f7ea10c32efd4",
+                    "content": "<p>Use <code translate=\"no\">{name}</code> in templates</p><p>Write it as shown</p>",
+                    "phrases": [
+                        {
+                            "phrase": "Use",
+                            "translations": {
+                                "es-es": "Usa"
+                            }
+                        },
+                        {
+                            "phrase": "in templates",
+                            "translations": {
+                                "es-es": "en plantillas"
+                            }
+                        },
+                        {
+                            "phrase": "Write it as shown",
+                            "translations": {
+                                "es-es": "Escríbelo como se muestra"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "102544|fe26f780d49ec239859a0a4ba88c9b27ad30df7b",
+                "device_id": "ts-exclusion-44"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "75000601-0001-4000-8000-000000000000",
+            "key": "ts-exclusion-1-k-write",
+            "project": "75000600-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0002-4000-8000-000000000000",
+            "key": "ts-exclusion-2-k-write",
+            "project": "75000600-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0003-4000-8000-000000000000",
+            "key": "ts-exclusion-3-k-write",
+            "project": "75000600-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0004-4000-8000-000000000000",
+            "key": "ts-exclusion-4-k-write",
+            "project": "75000600-0004-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0005-4000-8000-000000000000",
+            "key": "ts-exclusion-5-k-write",
+            "project": "75000600-0005-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0006-4000-8000-000000000000",
+            "key": "ts-exclusion-6-k-write",
+            "project": "75000600-0006-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0007-4000-8000-000000000000",
+            "key": "ts-exclusion-7-k-write",
+            "project": "75000600-0007-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0008-4000-8000-000000000000",
+            "key": "ts-exclusion-8-k-write",
+            "project": "75000600-0008-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0009-4000-8000-000000000000",
+            "key": "ts-exclusion-9-k-write",
+            "project": "75000600-0009-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-000a-4000-8000-000000000000",
+            "key": "ts-exclusion-10-k-write",
+            "project": "75000600-000a-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-000b-4000-8000-000000000000",
+            "key": "ts-exclusion-11-k-write",
+            "project": "75000600-000b-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-000c-4000-8000-000000000000",
+            "key": "ts-exclusion-12-k-write",
+            "project": "75000600-000c-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-000d-4000-8000-000000000000",
+            "key": "ts-exclusion-13-k-write",
+            "project": "75000600-000d-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-000e-4000-8000-000000000000",
+            "key": "ts-exclusion-14-k-write",
+            "project": "75000600-000e-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-000f-4000-8000-000000000000",
+            "key": "ts-exclusion-15-k-write",
+            "project": "75000600-000f-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0010-4000-8000-000000000000",
+            "key": "ts-exclusion-16-k-write",
+            "project": "75000600-0010-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0011-4000-8000-000000000000",
+            "key": "ts-exclusion-17-k-write",
+            "project": "75000600-0011-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0012-4000-8000-000000000000",
+            "key": "ts-exclusion-18-k-write",
+            "project": "75000600-0012-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0013-4000-8000-000000000000",
+            "key": "ts-exclusion-19-k-write",
+            "project": "75000600-0013-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0014-4000-8000-000000000000",
+            "key": "ts-exclusion-20-k-write",
+            "project": "75000600-0014-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0015-4000-8000-000000000000",
+            "key": "ts-exclusion-21-k-write",
+            "project": "75000600-0015-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0016-4000-8000-000000000000",
+            "key": "ts-exclusion-22-k-write",
+            "project": "75000600-0016-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0017-4000-8000-000000000000",
+            "key": "ts-exclusion-23-k-write",
+            "project": "75000600-0017-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0018-4000-8000-000000000000",
+            "key": "ts-exclusion-24-k-write",
+            "project": "75000600-0018-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0019-4000-8000-000000000000",
+            "key": "ts-exclusion-25-k-write",
+            "project": "75000600-0019-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-001a-4000-8000-000000000000",
+            "key": "ts-exclusion-26-k-write",
+            "project": "75000600-001a-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-001b-4000-8000-000000000000",
+            "key": "ts-exclusion-27-k-write",
+            "project": "75000600-001b-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-001c-4000-8000-000000000000",
+            "key": "ts-exclusion-28-k-write",
+            "project": "75000600-001c-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-001d-4000-8000-000000000000",
+            "key": "ts-exclusion-29-k-write",
+            "project": "75000600-001d-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-001e-4000-8000-000000000000",
+            "key": "ts-exclusion-30-k-write",
+            "project": "75000600-001e-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-001f-4000-8000-000000000000",
+            "key": "ts-exclusion-31-k-write",
+            "project": "75000600-001f-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0020-4000-8000-000000000000",
+            "key": "ts-exclusion-32-k-write",
+            "project": "75000600-0020-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0021-4000-8000-000000000000",
+            "key": "ts-exclusion-33-k-write",
+            "project": "75000600-0021-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0022-4000-8000-000000000000",
+            "key": "ts-exclusion-34-k-write",
+            "project": "75000600-0022-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0023-4000-8000-000000000000",
+            "key": "ts-exclusion-35-k-write",
+            "project": "75000600-0023-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0024-4000-8000-000000000000",
+            "key": "ts-exclusion-36-k-write",
+            "project": "75000600-0024-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0025-4000-8000-000000000000",
+            "key": "ts-exclusion-37-k-write",
+            "project": "75000600-0025-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0026-4000-8000-000000000000",
+            "key": "ts-exclusion-38-k-write",
+            "project": "75000600-0026-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0027-4000-8000-000000000000",
+            "key": "ts-exclusion-39-k-write",
+            "project": "75000600-0027-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0028-4000-8000-000000000000",
+            "key": "ts-exclusion-40-k-write",
+            "project": "75000600-0028-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-0029-4000-8000-000000000000",
+            "key": "ts-exclusion-41-k-write",
+            "project": "75000600-0029-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-002a-4000-8000-000000000000",
+            "key": "ts-exclusion-42-k-write",
+            "project": "75000600-002a-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-002b-4000-8000-000000000000",
+            "key": "ts-exclusion-43-k-write",
+            "project": "75000600-002b-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000601-002c-4000-8000-000000000000",
+            "key": "ts-exclusion-44-k-write",
+            "project": "75000600-002c-4000-8000-000000000000",
+            "type": "write"
+        }
+    ]
+}

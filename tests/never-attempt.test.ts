@@ -10,7 +10,7 @@ import { Translations } from '../src/translations.js';
  * "Never attempt to register when write_enabled is false" (REG-1, and GATE-6's second
  * sentence), proven at the transport seam — `n/a (pure)`.
  *
- * The contract double cannot grade this, by design: a write it refuses and a write that was
+ * The API cannot grade this, by design: a write it refuses and a write that was
  * never sent leave the same accepted state. The property is the client's own decision not to
  * transmit, so it is observed where the client would transmit: the API client's registration
  * call. Proven on every path that can detect unregistered content — a `t()` miss and a content

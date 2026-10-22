@@ -36,7 +36,7 @@ export const AUTO_SSR_FLUSH_THRESHOLD = 5;
  * render coalesces into a single POST, short enough that late-arriving content
  * is still registered inside the discovery renderer's post-scroll grace window.
  */
-const CLIENT_FLUSH_DEBOUNCE_MS = 400;
+export const CLIENT_FLUSH_DEBOUNCE_MS = 400;
 
 /** Backstop period. Only runs while something is queued — see `ensureBackstop`. */
 const BACKSTOP_INTERVAL_MS = 3000;
@@ -51,7 +51,7 @@ const BACKSTOP_INTERVAL_MS = 3000;
  * misses accumulate. That is the same client-side amplification this feature's
  * hint lane goes to some length to prevent, on the lane that never got it.
  */
-const RETRY_BACKOFF_BASE_MS = 3_000;
+export const RETRY_BACKOFF_BASE_MS = 3_000;
 const RETRY_BACKOFF_MAX_MS = 300_000;
 
 /**

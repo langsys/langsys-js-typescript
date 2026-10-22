@@ -26,7 +26,7 @@ import { autoDiscovery, sTranslations, writeEnabled } from './stores.js';
 
 /** Jitter bounds. Spreads arrival in time so a hot page can't spike the rate limiter. */
 const HINT_MIN_DELAY_MS = 5_000;
-const HINT_MAX_DELAY_MS = 30_000;
+export const HINT_MAX_DELAY_MS = 30_000;
 
 /**
  * Per-URL cap on remembered misses. These are only ever read locally, for the

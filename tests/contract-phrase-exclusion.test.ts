@@ -2,14 +2,15 @@
 // @vitest-environment-options {"settings":{"fetch":{"disableSameOriginPolicy":true}}}
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerBlock, renderBlock, serializeTree, type BlockNode } from '../src/block-tree.js';
-import { generateCustomId } from '../src/content-block.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { Phrase } from '../src/phrase.js';
 import { Translate } from '../src/translate.js';
 import { createSignal } from '../src/signal.js';
 import { currentlyLoadedLocale, sTranslations } from '../src/stores.js';
 import canonicalization from './fixtures/canonicalization-reference.json';
-import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
+import seeds from './contract-seeds/contract-phrase-exclusion.js';
+import type { World } from './contract-seeds/worlds.js';
+import { anyPhrase, startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
 import { resetSdk, until } from './helpers/sdk-session.js';
 
 /**
@@ -19,7 +20,8 @@ import { resetSdk, until } from './helpers/sdk-session.js';
  * the DOM path (`Phrase`) and the tree path (`registerBlock` over a phrase host), for every
  * `phrase_cases` row of the shared fixture. Rendering restores the element's source content
  * as given, and a phrase registered under its earlier key renders that translation while
- * registering only its current key.
+ * registering only its current key. Each client session starts in a world of its own from
+ * tests/contract-seeds/contract-phrase-exclusion.ts.
  */
 
 interface PhraseCase {
@@ -35,18 +37,33 @@ const ROWS = (canonicalization as unknown as { phrase_cases: PhraseCase[] }).phr
 let fx: ContractFixture;
 const live: { destroy(): void }[] = [];
 
-const PROJECT = { id: 'p1', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local' };
-type Seeded = { phrase: string; category?: string; translations?: Record<string, string> };
-const seedWith = (phrases: Seeded[] = [], blocks: { category: string; custom_id: string; phrases: Seeded[] }[] = []) =>
-    fx.seed({ projects: [{ ...PROJECT, phrases, blocks }], keys: [{ key: 'k-write', project: 'p1', type: 'write' }] });
-const stored = async () => (await fx.held('k-write', 'p1', 'es-es')).phrases;
+let w: World;
+const catalog = () => fx.held(w.key('k-write'), w.project(), 'es-es');
+/** The phrases held under UI, where this file's phrases register. */
+const stored = async () => (await catalog()).phrases.UI ?? [];
+/** Every phrase held, under any category: what an absence or "nothing else" is checked against. */
+const storedAnywhere = async () => anyPhrase(await catalog());
 /** Whether this session's catalog holds the phrase: its registration has flushed. */
 const heldLocally = (phrase: string) => Object.prototype.hasOwnProperty.call(sTranslations.get().UI ?? {}, phrase);
 
-async function client() {
+/** A client session in a fresh world. */
+async function client(world: Parameters<typeof seeds.take>[0] = 'empty') {
+    w = seeds.take(world);
+    await fx.use(w);
     resetSdk();
-    await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+    await LangsysApp.init({ projectid: w.project(), key: w.key('k-write'), UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
     await until(() => currentlyLoadedLocale.get() === 'es-es');
+}
+
+/** The registration bodies the SDK sends from here on, read at the transport seam. */
+function registrations(): () => string[] {
+    const posted: string[] = [];
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+        if (init?.method === 'POST' && String(input).includes('/translatable-items')) posted.push(String(init.body));
+        return real(input as RequestInfo, init);
+    });
+    return () => posted;
 }
 
 function mount(html: string): HTMLElement {
@@ -85,7 +102,6 @@ beforeEach(async () => {
     for (const m of ['log', 'info', 'warn', 'group', 'groupCollapsed', 'groupEnd', 'error'] as const) {
         vi.spyOn(console, m).mockImplementation(() => {});
     }
-    await seedWith();
 });
 afterEach(() => {
     for (const p of live) p.destroy();
@@ -116,8 +132,9 @@ describe('every phrase_cases row registers its key, or nothing, through Phrase a
         await until(async () => (await stored()).includes('A control sentence'));
         if (row.registers) await until(async () => (await stored()).includes(row.expected_phrase));
 
-        const phrases = await stored();
+        const phrases = await storedAnywhere();
         expect(phrases.includes(row.expected_phrase)).toBe(row.registers);
+        if (row.registers) expect(await stored()).toContain(row.expected_phrase);
         // Nothing else was stored: no earlier key, no second split. Where the element is
         // excluded, its value and code are in no phrase (the `data-notrans="false"` row is the
         // control, whose text is the phrase's own).
@@ -133,15 +150,14 @@ it('a phrase made only of value markers stays silent on a navigation, as on moun
     LangsysApp.Translations.notifyNavigation();
     live.push(new Phrase(mount('A control sentence'), { category: 'UI' }));
     await until(async () => (await stored()).includes('A control sentence'));
-    expect(await stored()).toEqual(['A control sentence']);
+    expect(await storedAnywhere()).toEqual(['A control sentence']);
 });
 
 describe('an opaque element renders its source content as given', () => {
     const MARKED = 'Signed in as <span translate="no"><!--ls:email-->a@b.c<!--/ls--></span> today';
 
     it('in place: the element is the one the page rendered, and its content is untouched', async () => {
-        await seedWith([{ phrase: 'Signed in as {m0o}{m0c} today', category: 'UI', translations: { 'es-es': 'Conectado como {m0o}{m0c} hoy' } }]);
-        await client();
+        await client('signed in');
         const host = mount(MARKED);
         const span = host.querySelector('span')!;
         live.push(new Phrase(host, { category: 'UI' }));
@@ -152,8 +168,7 @@ describe('an opaque element renders its source content as given', () => {
     });
 
     it('rebuilt: text a translation put inside the pair is dropped, and the element is still the page’s', async () => {
-        await seedWith([{ phrase: 'Signed in as {m0o}{m0c} today', category: 'UI', translations: { 'es-es': 'Conectado como {m0o}correo{m0c} hoy' } }]);
-        await client();
+        await client('signed in, word inside');
         const host = mount(MARKED);
         const span = host.querySelector('span')!;
         live.push(new Phrase(host, { category: 'UI' }));
@@ -164,8 +179,7 @@ describe('an opaque element renders its source content as given', () => {
     });
 
     it('an element inside an opaque one takes no slot, so the next element renders in place', async () => {
-        await seedWith([{ phrase: '{m0o}{m0c} and {m1o}y{m1c}', category: 'UI', translations: { 'es-es': '{m0o}{m0c} e {m1o}y{m1c}' } }]);
-        await client();
+        await client('nested opaque');
         const host = mount('<span translate="no"><b>x</b></span> and <i>y</i>');
         const italic = host.querySelector('i')!;
         live.push(new Phrase(host, { category: 'UI' }));
@@ -176,8 +190,7 @@ describe('an opaque element renders its source content as given', () => {
     });
 
     it('on the tree path, the rendered element holds its source nodes', async () => {
-        await seedWith([{ phrase: 'Signed in as {m0o}{m0c} today', category: 'UI', translations: { 'es-es': 'Conectado como {m0o}correo{m0c} hoy' } }]);
-        await client();
+        await client('signed in, word inside');
         const { nodes } = renderBlock(phraseHost(MARKED), { category: 'UI' });
         expect(serializeTree(nodes)).toBe(
             '<span data-ls-phrase data-ls-resolved="es-es">Conectado como <span translate="no"><!--ls:email-->a@b.c<!--/ls--></span> hoy</span>'
@@ -188,7 +201,9 @@ describe('an opaque element renders its source content as given', () => {
 describe('a phrase registered under its earlier key renders that translation and registers only its current key', () => {
     const row = ROWS.find((r) => r.id === 'tok1-rich-earlier-key')!;
     const control = ROWS.find((r) => r.id === 'tok1-rich-earlier-key-control')!;
-    const EARLIER = { phrase: row.earlier_phrase!, category: 'UI', translations: { 'es-es': 'Bienvenido a {m0o}Langsys{m0c}, {m1o}amigo{m1c}' } };
+    // The API holds the earlier key, so a registration of it would change nothing it serves: that
+    // absence is read where the SDK would send it.
+    const sentEarlier = (posted: string[]) => posted.filter((body) => body.includes(row.earlier_phrase!));
 
     it('the fixture gives the earlier key beside the current one, and the control’s key does not move', () => {
         expect(row.earlier_phrase).toBe('Welcome to {m0o}Langsys{m0c}, {m1o}friend{m1c}');
@@ -197,10 +212,8 @@ describe('a phrase registered under its earlier key renders that translation and
     });
 
     it('Phrase: the earlier translation renders with the element restored from source, and only the current key registers', async () => {
-        await seedWith([EARLIER]);
-        await client();
-        // Re-seeded without the earlier key, so a registration of it would now be stored.
-        await seedWith();
+        const posted = registrations();
+        await client('earlier key');
         const host = mount(row.html);
         const span = host.querySelector('span')!;
         live.push(new Phrase(host, { category: 'UI' }));
@@ -209,23 +222,22 @@ describe('a phrase registered under its earlier key renders that translation and
         expect(host.innerHTML).toBe('Bienvenido a <span translate="no">Langsys</span>, <b>amigo</b>');
         expect(host.querySelector('span')).toBe(span);
         await until(async () => (await stored()).includes(row.expected_phrase));
-        expect(await stored()).not.toContain(row.earlier_phrase);
+        expect(sentEarlier(posted())).toEqual([]);
         // Its registration flushed, the current key is known with no translation, so the earlier one still renders.
         await until(() => heldLocally(row.expected_phrase));
         expect(host.innerHTML).toBe('Bienvenido a <span translate="no">Langsys</span>, <b>amigo</b>');
     });
 
     it('tree path: the earlier translation renders with the element restored from source, and only the current key registers', async () => {
-        await seedWith([EARLIER]);
-        await client();
-        await seedWith();
+        const posted = registrations();
+        await client('earlier key');
         const tree = phraseHost(row.html);
         const { nodes } = renderBlock(tree, { category: 'UI' });
         expect(serializeTree(nodes)).toBe('<span data-ls-phrase data-ls-resolved="es-es">Bienvenido a <span translate="no">Langsys</span>, <b>amigo</b></span>');
 
         void registerBlock(tree, { category: 'UI' });
         await until(async () => (await stored()).includes(row.expected_phrase));
-        expect(await stored()).not.toContain(row.earlier_phrase);
+        expect(sentEarlier(posted())).toEqual([]);
         await until(() => heldLocally(row.expected_phrase));
         expect(serializeTree(renderBlock(phraseHost(row.html), { category: 'UI' }).nodes)).toBe(
             '<span data-ls-phrase data-ls-resolved="es-es">Bienvenido a <span translate="no">Langsys</span>, <b>amigo</b></span>'
@@ -242,8 +254,7 @@ describe('a phrase registered under its earlier key renders that translation and
     });
 
     it('control: with the current key translated, the earlier one is not consulted', async () => {
-        await seedWith([EARLIER, { phrase: row.expected_phrase, category: 'UI', translations: { 'es-es': 'Hola, {m0o}{m0c}, {m1o}amigo{m1c}' } }]);
-        await client();
+        await client('earlier and current');
         const host = mount(row.html);
         live.push(new Phrase(host, { category: 'UI' }));
 
@@ -265,12 +276,11 @@ describe('a caller’s param inside an author’s exclusion is filled as plain t
         await until(() => host.innerHTML.includes('help@site.test'));
         expect(host.innerHTML).toBe('Write to <b translate="no">help@site.test</b> for help');
         await until(async () => (await stored()).includes(KEY));
-        expect((await stored()).join('\n')).not.toMatch(/help@site|email/);
+        expect((await storedAnywhere()).join('\n')).not.toMatch(/help@site|email/);
     });
 
     it('Phrase, a hit: the address shows in the translation, and a changed param is filled from the source again', async () => {
-        await seedWith([{ phrase: KEY, category: 'UI', translations: { 'es-es': 'Escribe a {m0o}{m0c} para ayuda' } }]);
-        await client();
+        await client('excluded param');
         const host = mount(HTML);
         const phrase = new Phrase(host, { category: 'UI', params });
         live.push(phrase);
@@ -286,8 +296,7 @@ describe('a caller’s param inside an author’s exclusion is filled as plain t
         expect(serializeTree(renderBlock(phraseHost(HTML), { category: 'UI', params }).nodes)).toBe(
             '<span data-ls-phrase>Write to <b translate="no">help@site.test</b> for help</span>'
         );
-        await seedWith([{ phrase: KEY, category: 'UI', translations: { 'es-es': 'Escribe a {m0o}{m0c} para ayuda' } }]);
-        await client();
+        await client('excluded param');
         expect(serializeTree(renderBlock(phraseHost(HTML), { category: 'UI', params }).nodes)).toBe(
             '<span data-ls-phrase data-ls-resolved="es-es">Escribe a <b translate="no">help@site.test</b> para ayuda</span>'
         );
@@ -335,23 +344,9 @@ describe('a caller’s param inside an author’s exclusion is filled as plain t
 
     describe('control: a block keeps an excluded element’s text exactly as written, params or not', () => {
         const BLOCK = '<p>Use <code translate="no">{name}</code> in templates</p><p>Write it as shown</p>';
-        const TOKENS = ['Use', 'in templates', 'Write it as shown'];
-        const seedBlock = () =>
-            seedWith([], [
-                {
-                    category: 'UI',
-                    custom_id: generateCustomId('UI', TOKENS),
-                    phrases: [
-                        { phrase: 'Use', translations: { 'es-es': 'Usa' } },
-                        { phrase: 'in templates', translations: { 'es-es': 'en plantillas' } },
-                        { phrase: 'Write it as shown', translations: { 'es-es': 'Escríbelo como se muestra' } },
-                    ],
-                },
-            ]);
 
         it('Translate', async () => {
-            await seedBlock();
-            await client();
+            await client('block with code');
             const host = document.createElement('div');
             host.innerHTML = BLOCK;
             document.body.appendChild(host);
@@ -362,8 +357,7 @@ describe('a caller’s param inside an author’s exclusion is filled as plain t
         });
 
         it('the tree path', async () => {
-            await seedBlock();
-            await client();
+            await client('block with code');
             const parsed = document.createElement('div');
             parsed.innerHTML = BLOCK;
             expect(serializeTree(renderBlock(toTree(parsed.childNodes), { category: 'UI', params: { name: 'Ana' } }).nodes)).toBe(

@@ -3,20 +3,24 @@ import { LangsysConfigurationError } from '../src/api.js';
 import { LangsysApp } from '../src/langsys-app.js';
 import { createRequestScope } from '../src/request-scope.js';
 import { createSignal } from '../src/signal.js';
+import seeds from './contract-seeds/contract-reference-reads.js';
+import type { World } from './contract-seeds/worlds.js';
 import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
 import { resetSdk, session as startSession, sleep } from './helpers/sdk-session.js';
 
 /**
- * REF-1, graded against the contract double (spec CONF-2, tier `contract`): the core serves
+ * REF-1, graded against the contract fixture (spec CONF-2, tier `contract`): the core serves
  * the API's reference lists on `LangsysApp`, one call per list, each in a display locale that
  * defaults to the current one.
  *
- * The double names every list in the display locale through ICU, as the backend does, so each
- * display locale answers a distinct list, and every assertion is on which list came back. A
- * call that must not send is shown by capability drift: the double is reseeded so that a read
- * would answer a different list, and the call still answers the one it held. Where the double
- * cannot see the request at all (a refused display locale, an unconfigured core), the absence
- * is counted at the transport seam, `fetch`.
+ * The API answers each request, and a case's crafted lists answer the ones it accepts, each list
+ * named in the display locale through ICU, as the backend names its own, so each display locale
+ * answers a distinct list, and every assertion is on which list came back. A
+ * call that must not send is shown by the case's lists changing, so that a read would answer a
+ * different list, and the call still answering the one it held. Where nothing can see the
+ * request at all (a refused display locale, an unconfigured core), the absence is counted at the
+ * transport seam, `fetch`. Each case takes a world of its own from
+ * tests/contract-seeds/contract-reference-reads.ts.
  */
 
 let fx: ContractFixture;
@@ -37,12 +41,15 @@ const RESEEDED = {
     currencies: [{ code: 'CHF', name: 'Swiss Franc', symbol: 'CHF' }],
 };
 
-const seed = (reference: unknown = REFERENCE, extra: { format?: string; faults?: unknown[]; keys?: unknown[]; projects?: unknown[] } = {}) => ({
-    projects: [{ id: 'p1', base_locale: 'en-us', target_locales: ['fr-fr'], locale_code_format: extra.format ?? 'lowercase-hyphen' }, ...(extra.projects ?? [])],
-    keys: [{ key: 'k1', project: 'p1', type: 'read' }, ...(extra.keys ?? [])],
-    reference,
-    faults: extra.faults ?? [],
-});
+let w: World;
+/** A fresh world for the case, named to the forwarder with its lists, which take its organisation's code format. */
+async function take(name: Parameters<typeof seeds.take>[0]): Promise<World> {
+    w = seeds.take(name);
+    await fx.use(w, { reference: REFERENCE });
+    return w;
+}
+const P = (role = 'p1') => w.project(role);
+const K = (role: string) => w.key(role);
 
 type Call = (locale?: string) => Promise<unknown>;
 const LISTS: { name: string; route: string; call: Call; empty: unknown }[] = [
@@ -62,18 +69,18 @@ function wire3Codes(list: unknown): unknown {
     return Object.fromEntries(Object.entries(list as Record<string, unknown>).map(([group, rows]) => [group, wire3Codes(rows)]));
 }
 
-/** The list the double answers for `locale` right now, read from it directly under the session's key. */
-async function doubleList(route: string, locale: string, key = 'k1'): Promise<unknown> {
+/** The list the fixture answers for `locale` right now, read from it directly under the session's key. */
+async function fixtureList(route: string, locale: string, key = 'k1'): Promise<unknown> {
     const byLocale = route.startsWith('locales');
-    const url = byLocale ? `${fx.baseUrl}/${route}?locales%5B%5D=${locale}&append_target_locales=0` : `${fx.baseUrl}/${route}/${locale}`;
-    const body = await (await fetch(url, { headers: { 'x-authorization': key } })).json();
+    const url = byLocale ? `/${route}?locales%5B%5D=${locale}&append_target_locales=0` : `/${route}/${locale}`;
+    const { body } = await fx.api(url, { key: K(key) });
     if (!byLocale) return body.data;
     const [, entry] = Object.entries(body.data).find(([k]) => wire3(k) === locale) ?? [];
     return entry === undefined ? undefined : wire3Codes(entry);
 }
 
 /** A configured core whose current locale is es-es. */
-const configured = (key = 'k1') => startSession(fx.baseUrl, key, { locale: 'es-es' });
+const configured = (key = 'k1') => startSession(fx.baseUrl, K(key), { locale: 'es-es', project: P() });
 
 /** Every request the core sends from here on, at the transport seam. */
 function countRequests(): string[] {
@@ -102,40 +109,40 @@ afterAll(async () => {
 beforeEach(async () => {
     for (const m of ['log', 'info', 'group', 'groupCollapsed', 'groupEnd', 'warn'] as const) vi.spyOn(console, m).mockImplementation(() => {});
     errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await fx.seed(seed());
+    await take('lists');
 });
 afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
 });
 
-describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route, call, empty }) => {
-    it('control: a configured core answers the double’s list for the display locale, and each locale’s list is its own', async () => {
+describe.each(LISTS)('REF-1 against the contract fixture: $name', ({ name, route, call, empty }) => {
+    it('control: a configured core answers the fixture’s list for the display locale, and each locale’s list is its own', async () => {
         await configured();
         const es = await call('es-es');
-        expect(es).toEqual(await doubleList(route, 'es-es'));
+        expect(es).toEqual(await fixtureList(route, 'es-es'));
         expect(es).not.toEqual(empty);
-        expect(es).not.toEqual(await doubleList(route, 'en-us'));
+        expect(es).not.toEqual(await fixtureList(route, 'en-us'));
     });
 
     it('with no locale it answers the current locale’s list, and with one that locale’s, canonical', async () => {
         await configured();
-        expect(await call()).toEqual(await doubleList(route, 'es-es'));
-        expect(await call('en_US')).toEqual(await doubleList(route, 'en-us'));
+        expect(await call()).toEqual(await fixtureList(route, 'es-es'));
+        expect(await call('en_US')).toEqual(await fixtureList(route, 'en-us'));
     });
 
     it('with no locale it answers the locale the core serves, as t() does, on both profiles: a store or scope holding iw-IL answers he-il', async () => {
         resetSdk();
-        await LangsysApp.init({ projectid: 'p1', key: 'k1', UserLocaleStore: createSignal('iw-IL'), baseLocale: 'en', apiUrl: fx.baseUrl });
-        expect(await call()).toEqual(await doubleList(route, 'he-il'));
+        await LangsysApp.init({ projectid: P(), key: K('k1'), UserLocaleStore: createSignal('iw-IL'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        expect(await call()).toEqual(await fixtureList(route, 'he-il'));
         const scope = await createRequestScope({ locale: 'iw_IL' });
-        expect(await scope.run(() => call())).toEqual(await doubleList(route, 'he-il'));
+        expect(await scope.run(() => call())).toEqual(await fixtureList(route, 'he-il'));
     });
 
     it('with no locale, a store or scope holding en-US-POSIX answers en-us-posix, the code the API holds', async () => {
         resetSdk();
-        await LangsysApp.init({ projectid: 'p1', key: 'k1', UserLocaleStore: createSignal('en-US-POSIX'), baseLocale: 'en', apiUrl: fx.baseUrl });
-        const posix = await doubleList(route, 'en-us-posix');
+        await LangsysApp.init({ projectid: P(), key: K('k1'), UserLocaleStore: createSignal('en-US-POSIX'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        const posix = await fixtureList(route, 'en-us-posix');
         expect(posix).not.toEqual(empty);
         expect(await call()).toEqual(posix);
         const scope = await createRequestScope({ locale: 'en_US_POSIX' });
@@ -144,14 +151,14 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
 
     it.each(['iw-IL', ' fr-FR '])('a given display locale is normalised as the current one: a given %j answers the list a store holding it answers', async (given) => {
         resetSdk();
-        await LangsysApp.init({ projectid: 'p1', key: 'k1', UserLocaleStore: createSignal(given), baseLocale: 'en', apiUrl: fx.baseUrl });
+        await LangsysApp.init({ projectid: P(), key: K('k1'), UserLocaleStore: createSignal(given), baseLocale: 'en', apiUrl: fx.baseUrl });
         const served = await call();
         expect(served).not.toEqual(empty);
         // Asked for as written, it would answer nothing: the table holds he-il and not iw-il,
         // iw-il's path is failing, and a locale with spaces is not shaped as one. The current
         // locale, es-es, answers another list.
         await configured();
-        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path: `/${route}/iw-il`, status: 503 }] }));
+        await fx.update(w, { faults: [{ method: 'GET', path: `/${route}/iw-il`, status: 503 }] });
         expect(await call()).not.toEqual(served);
         expect(await call(given)).toEqual(served);
     });
@@ -163,19 +170,19 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
             if (Array.isArray(answered)) answered.length = 0;
             else for (const group of Object.keys(answered)) delete answered[group];
         }
-        expect(await call('fr-fr')).toEqual(await doubleList(route, 'fr-fr'));
+        expect(await call('fr-fr')).toEqual(await fixtureList(route, 'fr-fr'));
     });
 
     it('a list is held per display locale: the same locale again sends nothing, another locale reads, and the first is still held', async () => {
         await configured();
         const first = await call('es-es');
-        await fx.seed(seed(RESEEDED));
-        const now = await doubleList(route, 'es-es');
+        await fx.update(w, { reference: RESEEDED });
+        const now = await fixtureList(route, 'es-es');
         expect(now).not.toEqual(first);
         expect(await call('es-es')).toEqual(first);
-        expect(await call('en-us')).toEqual(await doubleList(route, 'en-us'));
+        expect(await call('en-us')).toEqual(await fixtureList(route, 'en-us'));
         expect(await call('es-es')).toEqual(first);
-        expect(await call('en-us')).toEqual(await doubleList(route, 'en-us'));
+        expect(await call('en-us')).toEqual(await fixtureList(route, 'en-us'));
     });
 
     it.each(['../projects', 'es/es', 'es?x=1', 'es-es#x', '%2e%2e', 'es es'])('a display locale shaped as %j sends nothing, answers the empty value and warns', async (bad) => {
@@ -195,7 +202,7 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         const path = route.startsWith('locales') ? `/${route}` : `/${route}/fr-fr`;
         // After init(), whose own read of the current locale's data would take the fault.
         await configured();
-        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path, ...fault }] }));
+        await fx.update(w, { faults: [{ method: 'GET', path, ...fault }] });
         vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
         expect(await call('fr-fr')).toEqual(empty);
         // The core's own line names the call, the list, the display locale and the cause.
@@ -206,13 +213,13 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         // The fault is spent, so a read now would answer the list: the window sends none.
         expect(await call('fr-fr')).toEqual(empty);
         vi.setSystemTime(Date.now() + 3_001);
-        expect(await call('fr-fr')).toEqual(await doubleList(route, 'fr-fr'));
+        expect(await call('fr-fr')).toEqual(await fixtureList(route, 'fr-fr'));
     });
 
     it('a failure is never held as a list: a second failure widens the window, and the read after it answers', async () => {
         const path = route.startsWith('locales') ? `/${route}` : `/${route}/fr-fr`;
         await configured();
-        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path, status: 503, times: 2 }] }));
+        await fx.update(w, { faults: [{ method: 'GET', path, status: 503, times: 2 }] });
         vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
         expect(await call('fr-fr')).toEqual(empty);
         vi.setSystemTime(Date.now() + 3_001);
@@ -220,29 +227,30 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
         vi.setSystemTime(Date.now() + 3_001);
         expect(await call('fr-fr')).toEqual(empty);
         vi.setSystemTime(Date.now() + 3_000);
-        expect(await call('fr-fr')).toEqual(await doubleList(route, 'fr-fr'));
+        expect(await call('fr-fr')).toEqual(await fixtureList(route, 'fr-fr'));
     });
 
     it('the failure window is the credentials’ own: inside it, a read under the same credentials sends nothing, and one under other credentials sends and answers', async () => {
         const path = route.startsWith('locales') ? `/${route}` : `/${route}/fr-fr`;
+        await take('two projects');
         await configured();
-        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path, status: 503, times: 1 }], projects: [{ id: 'p2', base_locale: 'en-us', target_locales: ['fr-fr'] }], keys: [{ key: 'k2', project: 'p2', type: 'read' }] }));
+        await fx.update(w, { faults: [{ method: 'GET', path, status: 503, times: 1 }] });
         vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
         expect(await call('fr-fr')).toEqual(empty);
         // The fault is spent, so any read now would answer the list.
-        const same = await createRequestScope({ locale: 'es-es', credentials: { projectid: 'p1', key: 'k1' } });
+        const same = await createRequestScope({ locale: 'es-es', credentials: { projectid: P(), key: K('k1') } });
         expect(await same.run(() => call('fr-fr'))).toEqual(empty);
         // A refusal under a third key is that key's own, and leaves the module's window as it was.
-        const refused = await createRequestScope({ locale: 'es-es', credentials: { projectid: 'p1', key: 'k-unknown' } });
+        const refused = await createRequestScope({ locale: 'es-es', credentials: { projectid: P(), key: K('k-unknown') } });
         expect(await refused.run(() => call('fr-fr'))).toEqual(empty);
         expect(await call('fr-fr')).toEqual(empty);
-        const other = await createRequestScope({ locale: 'es-es', credentials: { projectid: 'p2', key: 'k2' } });
-        expect(await other.run(() => call('fr-fr'))).toEqual(await doubleList(route, 'fr-fr'));
+        const other = await createRequestScope({ locale: 'es-es', credentials: { projectid: P('p2'), key: K('k2') } });
+        expect(await other.run(() => call('fr-fr'))).toEqual(await fixtureList(route, 'fr-fr'));
     });
 
     it('unconfigured, it sends nothing, answers the empty value, and logs nothing of its own', async () => {
         resetSdk();
-        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        await LangsysApp.init({ projectid: P(), key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
         const sent = countRequests();
         const said = vi.mocked(console.warn).mock.calls.length + errors.mock.calls.length;
         expect(await call()).toEqual(empty);
@@ -253,7 +261,7 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
 
     it('unconfigured with requireCredentials, it throws the configuration error, as any first use does', async () => {
         resetSdk();
-        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
+        await LangsysApp.init({ projectid: P(), key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
         const sent = countRequests();
         await expect(call('es-es')).rejects.toBeInstanceOf(LangsysConfigurationError);
         expect(sent).toEqual([]);
@@ -269,103 +277,103 @@ describe.each(LISTS)('REF-1 against the contract double: $name', ({ name, route,
             first.Placeholder = [];
             Object.values(first)[0]!.length = 0;
         }
-        expect(await call('es-es')).toEqual(await doubleList(route, 'es-es'));
+        expect(await call('es-es')).toEqual(await fixtureList(route, 'es-es'));
     });
 
     it('unconfigured, a list a configured session held is not answered: the empty value, or the configuration error under requireCredentials', async () => {
         await configured();
-        expect(await call('es-es')).toEqual(await doubleList(route, 'es-es'));
-        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        expect(await call('es-es')).toEqual(await fixtureList(route, 'es-es'));
+        await LangsysApp.init({ projectid: P(), key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
         expect(await call('es-es')).toEqual(empty);
-        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
+        await LangsysApp.init({ projectid: P(), key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
         await expect(call('es-es')).rejects.toBeInstanceOf(LangsysConfigurationError);
     });
 
     it('unconfigured, a display locale not shaped as one is still the configuration question: silent without requireCredentials, the error with it', async () => {
         resetSdk();
-        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        await LangsysApp.init({ projectid: P(), key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
         const said = vi.mocked(console.warn).mock.calls.length + errors.mock.calls.length;
         expect(await call('../projects')).toEqual(empty);
         expect(vi.mocked(console.warn).mock.calls.length + errors.mock.calls.length).toBe(said);
-        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
+        await LangsysApp.init({ projectid: P(), key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
         await expect(call('../projects')).rejects.toBeInstanceOf(LangsysConfigurationError);
     });
 
     it('under requireCredentials with the module unconfigured, a request scope with credentials of its own answers the list', async () => {
         resetSdk();
-        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
-        const scope = await createRequestScope({ locale: 'de-de', credentials: { projectid: 'p1', key: 'k1' } });
-        expect(await scope.run(() => call())).toEqual(await doubleList(route, 'de-de'));
+        await LangsysApp.init({ projectid: P(), key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
+        const scope = await createRequestScope({ locale: 'de-de', credentials: { projectid: P(), key: K('k1') } });
+        expect(await scope.run(() => call())).toEqual(await fixtureList(route, 'de-de'));
     });
 
     it('two reads of one list and locale while the first is unanswered share one request', async () => {
-        // A key whose second identical request inside the minute is refused 429.
-        await fx.seed(seed(REFERENCE, { keys: [{ key: 'k-once', project: 'p1', type: 'read', duplicate_guard: { max_attempts: 1, window_seconds: 60 } }] }));
+        // Under a key whose second identical request inside the minute is refused 429.
         await configured('k-once');
         const [a, b] = await Promise.all([call('fr-fr'), call('fr-fr')]);
-        const list = await doubleList(route, 'fr-fr', 'k1');
+        const list = await fixtureList(route, 'fr-fr', 'k1');
         expect(a).toEqual(list);
         expect(b).toEqual(list);
         // Control: the guard refuses a second identical request from that key.
-        const again = route.startsWith('locales') ? `${fx.baseUrl}/${route}?locales%5B%5D=en-us&append_target_locales=0` : `${fx.baseUrl}/${route}/en-us`;
-        expect((await fetch(again, { headers: { 'x-authorization': 'k-once' } })).status).toBe(200);
-        expect((await fetch(again, { headers: { 'x-authorization': 'k-once' } })).status).toBe(429);
+        const again = route.startsWith('locales') ? `/${route}?locales%5B%5D=en-us&append_target_locales=0` : `/${route}/en-us`;
+        expect((await fx.api(again, { key: K('k-once') })).status).toBe(200);
+        expect((await fx.api(again, { key: K('k-once') })).status).toBe(429);
     });
 
     it('on the server profile, a request scope’s current locale is the scope’s, and a second request answers the held list with no read', async () => {
         await configured();
         const first = await createRequestScope({ locale: 'de-de' });
         const held = await first.run(() => call());
-        expect(held).toEqual(await doubleList(route, 'de-de'));
-        await fx.seed(seed(RESEEDED));
-        expect(await doubleList(route, 'de-de')).not.toEqual(held);
+        expect(held).toEqual(await fixtureList(route, 'de-de'));
+        await fx.update(w, { reference: RESEEDED });
+        expect(await fixtureList(route, 'de-de')).not.toEqual(held);
         const second = await createRequestScope({ locale: 'de-de' });
         expect(await second.run(() => call())).toEqual(held);
     });
 
     it('one hold serves every project: a request scope under another project, with its own key, answers the held list with no read', async () => {
+        await take('two projects');
         await configured();
         const held = await call('fr-fr');
-        expect(held).toEqual(await doubleList(route, 'fr-fr'));
-        await fx.seed(seed(RESEEDED, { projects: [{ id: 'p2', base_locale: 'en-us', target_locales: ['fr-fr'] }], keys: [{ key: 'k2', project: 'p2', type: 'read' }] }));
-        expect(await doubleList(route, 'fr-fr', 'k2')).not.toEqual(held);
-        const other = await createRequestScope({ locale: 'fr-fr', credentials: { projectid: 'p2', key: 'k2' } });
+        expect(held).toEqual(await fixtureList(route, 'fr-fr'));
+        await fx.update(w, { reference: RESEEDED });
+        expect(await fixtureList(route, 'fr-fr', 'k2')).not.toEqual(held);
+        const other = await createRequestScope({ locale: 'fr-fr', credentials: { projectid: P('p2'), key: K('k2') } });
         expect(await other.run(() => call())).toEqual(held);
     });
 
     it('a request scope reads under its own credentials: a scope’s refused key answers empty under a configured module, and a valid one answers under an unconfigured module', async () => {
         await configured();
-        const refused = await createRequestScope({ locale: 'en-us', credentials: { projectid: 'p1', key: 'k-unknown' } });
+        const refused = await createRequestScope({ locale: 'en-us', credentials: { projectid: P(), key: K('k-unknown') } });
         expect(await refused.run(() => call())).toEqual(empty);
         // The refusal's window is that key's: the module's own read inside it sends and answers.
-        expect(await call('en-us')).toEqual(await doubleList(route, 'en-us'));
+        expect(await call('en-us')).toEqual(await fixtureList(route, 'en-us'));
 
         resetSdk();
-        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
-        const valid = await createRequestScope({ locale: 'de-de', credentials: { projectid: 'p1', key: 'k1' } });
-        expect(await valid.run(() => call())).toEqual(await doubleList(route, 'de-de'));
+        await LangsysApp.init({ projectid: P(), key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        const valid = await createRequestScope({ locale: 'de-de', credentials: { projectid: P(), key: K('k1') } });
+        expect(await valid.run(() => call())).toEqual(await fixtureList(route, 'de-de'));
     });
 });
 
-describe.each(LOCALE_FORMS)('REF-1 against the contract double: $name answers the display locale’s entry', ({ route, call, empty }) => {
+describe.each(LOCALE_FORMS)('REF-1 against the contract fixture: $name answers the display locale’s entry', ({ route, call, empty }) => {
     it.each([
         ['posix', 'es_ES'],
         ['bcp47', 'es-ES'],
     ])('an organisation whose codes are %s: the entry keyed %s is answered for es-es, with every code in WIRE-3’s form', async (format) => {
-        await fx.seed(seed(REFERENCE, { format }));
+        await take(format as 'posix' | 'bcp47');
         await configured();
         const list = await call('es-es');
-        expect(list).toEqual(await doubleList(route, 'es-es'));
+        expect(list).toEqual(await fixtureList(route, 'es-es'));
         expect(JSON.stringify(list)).toContain('"code":"es-cr"');
         expect(JSON.stringify(list)).not.toMatch(/"code":"[a-z]+[_-][A-Z]/);
     });
 
     it('a code is answered in WIRE-3’s form, as the API stores it: en-us-posix is listed and can be asked for', async () => {
-        await fx.seed(seed(REFERENCE, { format: 'bcp47' }));
+        await take('bcp47');
         await configured();
         expect(JSON.stringify(await call('en-us'))).toContain('"code":"en-us-posix"');
         const posix = await call('en-US-POSIX');
-        expect(posix).toEqual(await doubleList(route, 'en-us-posix'));
+        expect(posix).toEqual(await fixtureList(route, 'en-us-posix'));
         expect(posix).not.toEqual(empty);
     });
 
@@ -373,20 +381,20 @@ describe.each(LOCALE_FORMS)('REF-1 against the contract double: $name answers th
         await configured();
         vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
         expect(await call('xx-yy')).toEqual(empty);
-        await fx.seed(seed({ ...REFERENCE, locales: [...REFERENCE.locales, 'xx-yy'] }));
-        expect(await doubleList(route, 'xx-yy')).not.toEqual(empty);
+        await fx.update(w, { reference: { ...REFERENCE, locales: [...REFERENCE.locales, 'xx-yy'] } });
+        expect(await fixtureList(route, 'xx-yy')).not.toEqual(empty);
         // Past any failure window: an answer held, not a failure remembered.
         vi.setSystemTime(Date.now() + 600_000);
         expect(await call('xx-yy')).toEqual(empty);
     });
 });
 
-describe('REF-1 against the contract double: what reads the held lists', () => {
+describe('REF-1 against the contract fixture: what reads the held lists', () => {
     it('getCountryName, getCurrencyName and getLocaleNameWithLookup name a code in the display locale', async () => {
         await configured();
         type Row = { code: string; label?: string; name?: string; locale_name?: string; lang_name?: string };
         const row = async (route: string, locale: string, code: string) =>
-            ((await doubleList(route, locale)) as Row[]).find((r) => r.code.toLowerCase() === code)!;
+            ((await fixtureList(route, locale)) as Row[]).find((r) => r.code.toLowerCase() === code)!;
         expect(await LangsysApp.getCountryName('es')).toBe((await row('countries', 'es-es', 'es')).label);
         expect(await LangsysApp.getCountryName('ES', 'en-us')).toBe((await row('countries', 'en-us', 'es')).label);
         expect(await LangsysApp.getCountryName('ES', 'en-us')).not.toBe(await LangsysApp.getCountryName('ES', 'es-es'));
@@ -403,35 +411,35 @@ describe('REF-1 against the contract double: what reads the held lists', () => {
         await configured();
         await LangsysApp.getLocalesData('es-es');
         expect(LangsysApp.getLocaleName('es-cr', false, 'es-es')).not.toBe('');
-        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        await LangsysApp.init({ projectid: P(), key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl });
         expect(LangsysApp.getLocaleName('es-cr', false, 'es-es')).toBe('');
-        await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
+        await LangsysApp.init({ projectid: P(), key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
         expect(() => LangsysApp.getLocaleName('es-cr', false, 'es-es')).toThrow(LangsysConfigurationError);
     });
 
     it('the locale data init() reads is the current locale’s as the core serves it, so getLocaleName names a code with no lookup', async () => {
         resetSdk();
-        const heIl = ((await doubleList('locales/data', 'he-il')) as { code: string; locale_name: string }[]).find((r) => r.code === 'he-il')!;
+        const heIl = ((await fixtureList('locales/data', 'he-il')) as { code: string; locale_name: string }[]).find((r) => r.code === 'he-il')!;
         vi.spyOn(console, 'warn').mockImplementation(() => {});
-        await LangsysApp.init({ projectid: 'p1', key: 'k1', UserLocaleStore: createSignal('iw-IL'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        await LangsysApp.init({ projectid: P(), key: K('k1'), UserLocaleStore: createSignal('iw-IL'), baseLocale: 'en', apiUrl: fx.baseUrl });
         // Nothing here reads the list: only init()'s own read can hold it.
         await vi.waitFor(() => expect(LangsysApp.getLocaleName('he-il')).toBe(heIl.locale_name), { timeout: 3000 });
     });
 
     it('a read an explicit refresh superseded does not overwrite what the refresh held, even when it fails', async () => {
         await configured();
-        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path: '/locales/data', delay_ms: 400, status: 503 }] }));
+        await fx.update(w, { faults: [{ method: 'GET', path: '/locales/data', delay_ms: 400, status: 503 }] });
         const superseded = LangsysApp.getLocalesData('fr-fr');
         await sleep(100);
         const refreshed = await LangsysApp.getLocalesData('fr-fr', true);
-        expect(refreshed).toEqual(await doubleList('locales/data', 'fr-fr'));
+        expect(refreshed).toEqual(await fixtureList('locales/data', 'fr-fr'));
         expect(await superseded).toEqual([]);
         expect(await LangsysApp.getLocalesData('fr-fr')).toEqual(refreshed);
     });
 
     it('an explicit refresh that fails again widens the window, as CACHE-2 counts every failure in a row', async () => {
         await configured();
-        await fx.seed(seed(REFERENCE, { faults: [{ method: 'GET', path: '/locales/data', status: 503, times: 2 }] }));
+        await fx.update(w, { faults: [{ method: 'GET', path: '/locales/data', status: 503, times: 2 }] });
         vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
         expect(await LangsysApp.getLocalesData('fr-fr')).toEqual([]);
         expect(await LangsysApp.getLocalesData('fr-fr', true)).toEqual([]);
@@ -439,22 +447,22 @@ describe('REF-1 against the contract double: what reads the held lists', () => {
         vi.setSystemTime(Date.now() + 3_001);
         expect(await LangsysApp.getLocalesData('fr-fr')).toEqual([]);
         vi.setSystemTime(Date.now() + 3_000);
-        expect(await LangsysApp.getLocalesData('fr-fr')).toEqual(await doubleList('locales/data', 'fr-fr'));
+        expect(await LangsysApp.getLocalesData('fr-fr')).toEqual(await fixtureList('locales/data', 'fr-fr'));
     });
 
     it('the first success resets the count, as CACHE-2 does: a refresh failing after it opens the first window, not a wider one', async () => {
         await configured();
-        const failing = seed(REFERENCE, { faults: [{ method: 'GET', path: '/locales/data', status: 503 }] });
-        await fx.seed(failing);
+        const failing = { faults: [{ method: 'GET', path: '/locales/data', status: 503 }] };
+        await fx.update(w, failing);
         vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
         expect(await LangsysApp.getLocalesData('fr-fr')).toEqual([]);
-        await fx.seed(seed());
+        await fx.update(w, { faults: [] });
         vi.setSystemTime(Date.now() + 3_001);
         const list = await LangsysApp.getLocalesData('fr-fr');
-        expect(list).toEqual(await doubleList('locales/data', 'fr-fr'));
-        await fx.seed(failing);
+        expect(list).toEqual(await fixtureList('locales/data', 'fr-fr'));
+        await fx.update(w, failing);
         expect(await LangsysApp.getLocalesData('fr-fr', true)).toEqual([]);
-        await fx.seed(seed());
+        await fx.update(w, { faults: [] });
         // The first failure after a success: 3 seconds, so a call 3 seconds on reads again.
         vi.setSystemTime(Date.now() + 3_001);
         expect(await LangsysApp.getLocalesData('fr-fr')).toEqual(list);
@@ -467,8 +475,8 @@ describe('REF-1 against the contract double: what reads the held lists', () => {
         try {
             resetSdk();
             const store = createSignal('es-es');
-            await LangsysApp.init({ projectid: 'p1', key: 'k1', UserLocaleStore: store, baseLocale: 'en', apiUrl: fx.baseUrl });
-            await LangsysApp.init({ projectid: 'p1', key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
+            await LangsysApp.init({ projectid: P(), key: K('k1'), UserLocaleStore: store, baseLocale: 'en', apiUrl: fx.baseUrl });
+            await LangsysApp.init({ projectid: P(), key: '', UserLocaleStore: createSignal('es-es'), baseLocale: 'en', apiUrl: fx.baseUrl, requireCredentials: true });
             store.set('fr-fr');
             await sleep(50);
             expect(unhandled).toEqual([]);
@@ -480,12 +488,12 @@ describe('REF-1 against the contract double: what reads the held lists', () => {
     it('an explicit refresh reads again: getLocalesData(locale, true), and refresh() for the locale data', async () => {
         await configured();
         const first = await LangsysApp.getLocalesData('fr-fr');
-        await fx.seed(seed(RESEEDED));
+        await fx.update(w, { reference: RESEEDED });
         expect(await LangsysApp.getLocalesData('fr-fr')).toEqual(first);
         const reread = await LangsysApp.getLocalesData('fr-fr', true);
-        expect(reread).toEqual(await doubleList('locales/data', 'fr-fr'));
+        expect(reread).toEqual(await fixtureList('locales/data', 'fr-fr'));
         expect(reread).not.toEqual(first);
-        await fx.seed(seed(REFERENCE));
+        await fx.update(w, { reference: REFERENCE });
         await LangsysApp.refresh();
         expect(await LangsysApp.getLocalesData('fr-fr')).toEqual(first);
     });

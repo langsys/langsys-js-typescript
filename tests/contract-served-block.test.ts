@@ -8,7 +8,10 @@ import { clearSharedCatalogs, createRequestScope } from '../src/request-scope.js
 import { createSignal } from '../src/signal.js';
 import { currentlyLoadedLocale } from '../src/stores.js';
 import { Translate } from '../src/translate.js';
-import { startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
+import { CLIENT_FLUSH_DEBOUNCE_MS, RETRY_BACKOFF_BASE_MS } from '../src/translations.js';
+import seeds, { INNER, OUTER } from './contract-seeds/contract-served-block.js';
+import type { World } from './contract-seeds/worlds.js';
+import { anyBlock, anyPhrase, startContractFixture, type ContractFixture } from './helpers/contract-fixture.js';
 import { resetSdk, sleep, until } from './helpers/sdk-session.js';
 
 /**
@@ -19,46 +22,27 @@ import { resetSdk, sleep, until } from './helpers/sdk-session.js';
  *
  * GATE-10: a nested host rendered from the catalog is served with its id and resolved marker,
  * so the browser never registers its translated text as source. SRV-4: a locale switch renders
- * the next locale from the source, never from the served text.
+ * the next locale from the source, never from the served text. Each case takes a world of its
+ * own from tests/contract-seeds/contract-served-block.ts.
  */
 
 let fx: ContractFixture;
-const SETTLE_MS = 1200; // past the 400ms flush debounce, short of the 3s backoff
+// The clone's answer to a registration, and its catalog serving it, measured well inside this.
+const ROUND_TRIP_MS = 800;
+// An absence is read once the SDK's flush would have sent and the clone answered, short of the
+// retry backoff a refused send waits out.
+const SETTLE_MS = CLIENT_FLUSH_DEBOUNCE_MS + ROUND_TRIP_MS;
+if (SETTLE_MS >= RETRY_BACKOFF_BASE_MS) throw new Error('the settle window reaches the retry backoff');
 
-const OUTER = generateCustomId('UI', ['Pricing plans', 'Pick one']);
-const INNER = generateCustomId('UI', ['Inner title', 'Inner body']);
 const INNER_AS_ITALIAN = generateCustomId('UI', ['Titolo interno', 'Corpo interno']);
+let w: World;
 
-const SEED = {
-    projects: [
-        {
-            id: 'p1',
-            base_locale: 'en',
-            target_locales: ['it-it', 'de-de'],
-            website_url: 'https://site.local',
-            phrases: [],
-            blocks: [
-                {
-                    category: 'UI',
-                    custom_id: OUTER,
-                    phrases: [
-                        { phrase: 'Pricing plans', translations: { 'it-it': 'Piani tariffari', 'de-de': 'Preispläne' } },
-                        { phrase: 'Pick one', translations: { 'it-it': 'Scegline uno', 'de-de': 'Wähle einen' } },
-                    ],
-                },
-                {
-                    category: 'UI',
-                    custom_id: INNER,
-                    phrases: [
-                        { phrase: 'Inner title', translations: { 'it-it': 'Titolo interno', 'de-de': 'Innerer Titel' } },
-                        { phrase: 'Inner body', translations: { 'it-it': 'Corpo interno', 'de-de': 'Innerer Text' } },
-                    ],
-                },
-            ],
-        },
-    ],
-    keys: [{ key: 'k-write', project: 'p1', type: 'write' }],
-};
+/** A fresh world for the case, named to the forwarder from the world's own address. */
+async function take(name: Parameters<typeof seeds.take>[0]): Promise<World> {
+    w = seeds.take(name);
+    await fx.use(w);
+    return w;
+}
 
 const TREE: BlockNode[] = [
     { tag: 'p', children: [{ text: 'Pricing plans' }] },
@@ -73,19 +57,23 @@ const TREE: BlockNode[] = [
     },
 ];
 
-/** The same project without the outer block: new page content around a block already translated. */
-const SEED_NEW_OUTER = { ...SEED, projects: [{ ...SEED.projects[0]!, blocks: SEED.projects[0]!.blocks.filter((b) => b.custom_id === INNER) }] };
-
-// Registrations as the API's catalog serves them; a block's stored content only `state()` reads (CONF-2).
-const heldIds = async () => Object.keys((await fx.held('k-write', 'p1', 'it-it')).blocks).sort();
-const contentOf = async (id: string) => (await fx.state()).projects.p1.blocks.find((b) => b.custom_id === id)?.content;
+// Registrations as the API's catalog serves them, and a block's stored content as the project's owner reads it.
+const catalog = () => fx.held(w.key('k-write'), w.project(), 'it-it');
+/** The blocks held under UI, where this file's blocks register. */
+const heldIds = async () => Object.keys((await catalog()).blocks.UI ?? {}).sort();
+/** Every block held, under any category: what an absence or an exact set is checked against. */
+const heldAnywhere = async () => anyBlock(await catalog()).sort();
+const storedBlocks = () => fx.storedBlocks(w, w.key('k-write'), 'it-it');
+const contentOf = async (id: string) => (await storedBlocks()).find((b) => b.custom_id === id)?.content;
+const init = (key: string, locale: string, store = createSignal(locale)) =>
+    LangsysApp.init({ projectid: w.project(), key: w.key(key), UserLocaleStore: store, baseLocale: 'en', apiUrl: fx.baseUrl });
 const live: Translate[] = [];
 
 /** The client session, at `locale`, with the store a locale switch goes through. */
 async function client(locale: string) {
     resetSdk();
     const store = createSignal(locale);
-    await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: store, baseLocale: 'en', apiUrl: fx.baseUrl });
+    await init('k-write', locale, store);
     await until(() => currentlyLoadedLocale.get() === locale);
     return store;
 }
@@ -102,6 +90,21 @@ async function serve(locale: string) {
     await scope.close();
     const attrs = Object.entries(rendered.hostAttrs).map(([k, v]) => ` ${k}="${v}"`).join('');
     return { html: `<div${attrs}>${serializeTree(rendered.nodes as BlockNode[])}</div>`, seed };
+}
+
+/** The custom ids the core's registration requests carry from here on, counted at the transport seam. */
+function sentBlockIds(): string[] {
+    const sent: string[] = [];
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+        if (String(input).includes('/translatable-items') && init?.method === 'POST') {
+            for (const item of (JSON.parse(String(init.body)) as { translatable_items?: Array<{ custom_id?: string }> }).translatable_items ?? []) {
+                if (item.custom_id) sent.push(item.custom_id);
+            }
+        }
+        return real(input as string, init);
+    });
+    return sent;
 }
 
 function mount(html: string): HTMLElement {
@@ -124,7 +127,6 @@ beforeEach(async () => {
     for (const m of ['log', 'info', 'warn', 'group', 'groupCollapsed', 'groupEnd', 'error'] as const) {
         vi.spyOn(console, m).mockImplementation(() => {});
     }
-    await fx.seed(SEED);
 });
 afterEach(() => {
     for (const t of live) t.destroy();
@@ -139,7 +141,7 @@ describe('GATE-10: a translated block nested in one served as source', () => {
     // The outer block is new, so it is served as source with no resolved marker and the
     // client registers it; the nested block is translated, and only its own markers say so.
     beforeEach(async () => {
-        await fx.seed(SEED_NEW_OUTER);
+        await take('new outer');
     });
 
     it('the nested host is served with its id and resolved marker, and its Italian text is never registered', async () => {
@@ -149,7 +151,7 @@ describe('GATE-10: a translated block nested in one served as source', () => {
         mount(html);
         await until(async () => (await heldIds()).includes(OUTER));
         await sleep(SETTLE_MS);
-        expect(await heldIds()).toEqual([INNER, OUTER].sort());
+        expect(await heldAnywhere()).toEqual([INNER, OUTER].sort());
     });
 
     it('control: served with a bare declaration, the client registers the Italian text as source, and the API accepts it', async () => {
@@ -162,6 +164,7 @@ describe('GATE-10: a translated block nested in one served as source', () => {
 
 describe('SRV-4: a block served in it-it, hydrated, and switched to de-de on the client', () => {
     it('a switch renders de-de from the source, the seed handed over after init, and still registers nothing', async () => {
+        await take('base');
         const store = await client('it-it');
         const { html, seed } = await serve('it-it');
         for (const block of Object.values(seed.blocks)) registerBlock(block);
@@ -174,7 +177,7 @@ describe('SRV-4: a block served in it-it, hydrated, and switched to de-de on the
         expect(host.textContent).toBe('PreispläneWähle einenInnerer TitelInnerer Text');
         expect(host.querySelector('section')!.getAttribute('data-ls-resolved')).toBe('de-de');
         await sleep(SETTLE_MS);
-        expect(await heldIds()).toEqual([INNER, OUTER].sort());
+        expect(await heldAnywhere()).toEqual([INNER, OUTER].sort());
     });
 });
 
@@ -182,10 +185,7 @@ describe('a seeded registration right after init sends nothing the catalog holds
     // Observed at the transport seam: a known block sent again is an upsert the API's
     // catalog cannot show. The phrase-shaped case is also visible in the catalog.
     it('neither a known block nor a phrase-shaped block whose id holds its token, although the catalog is still loading', async () => {
-        await fx.seed({
-            ...SEED,
-            projects: [{ ...SEED.projects[0]!, blocks: [...SEED.projects[0]!.blocks, { category: 'UI', custom_id: 'pricing-hero', phrases: [{ phrase: 'Pricing plans', translations: { 'it-it': 'Piani tariffari' } }] }] }],
-        });
+        await take('phrase-shaped block');
         resetSdk();
         const posted: string[] = [];
         const realFetch = globalThis.fetch;
@@ -194,7 +194,7 @@ describe('a seeded registration right after init sends nothing the catalog holds
             return realFetch(url, init);
         }) as typeof fetch;
         try {
-            await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('it-it'), baseLocale: 'en', apiUrl: fx.baseUrl });
+            await init('k-write', 'it-it');
             registerBlock({ customId: INNER, category: 'UI', tokens: ['Inner title', 'Inner body'], shape: 'block' });
             registerBlock({ customId: 'pricing-hero', category: 'UI', tokens: ['Pricing plans'], shape: 'phrase' });
             registerBlock({ customId: 'seeded-new', category: 'UI', tokens: ['New one', 'New two'], shape: 'block', content: '<p>New one</p><p>New two</p>' });
@@ -205,26 +205,24 @@ describe('a seeded registration right after init sends nothing the catalog holds
             globalThis.fetch = realFetch;
         }
         expect(posted.filter((body) => body.includes(INNER) || body.includes('Pricing plans'))).toEqual([]);
-        expect((await fx.held('k-write', 'p1', 'it-it')).phrases).not.toContain('Pricing plans');
+        expect(anyPhrase(await catalog())).not.toContain('Pricing plans');
         expect(await contentOf('seeded-new')).toBe('<p>New one</p><p>New two</p>');
     });
 });
 
 describe('a seeded block the catalog does not hold registers with the content the server rendered it from', () => {
-    // The API stores a block only with its content, which these read from the fixture's state:
-    // no route a project key can call returns it.
-    const NO_BLOCKS = { ...SEED, projects: [{ ...SEED.projects[0]!, blocks: [] }] };
-    const contents = async () => Object.fromEntries((await fx.state()).projects.p1.blocks.map((b) => [b.custom_id, b.content]));
+    // The API stores a block only with its content, which these read as the project's owner does.
+    const contents = async () => Object.fromEntries((await storedBlocks()).map((b) => [b.custom_id, b.content]));
 
     it('the outer and the nested block, each with the content a registration over their nodes sends', async () => {
-        await fx.seed(NO_BLOCKS);
+        await take('no blocks');
         await client('it-it');
         const { seed } = await serve('it-it');
         for (const block of Object.values(seed.blocks)) registerBlock(block);
         await until(async () => (await heldIds()).length === 2);
         const fromSeed = await contents();
         // Control: the same tree registered over its nodes, in a project that holds neither block.
-        await fx.seed(NO_BLOCKS);
+        await take('no blocks');
         await client('it-it');
         registerBlock(TREE, { category: 'UI' });
         await until(async () => (await heldIds()).length === 2);
@@ -233,19 +231,21 @@ describe('a seeded block the catalog does not hold registers with the content th
     });
 
     it('a seeded block with no content registers nothing from the seed; control: with its content, the same block registers', async () => {
-        // The API refuses a whole registration carrying a block without content, and both blocks
-        // go in one flush, so the block with content being held shows the other was not sent.
-        await fx.seed(NO_BLOCKS);
+        // Each block is a registration of its own, and the API refuses one without content, so
+        // what was not sent is counted at the transport seam.
+        await take('no blocks');
         await client('it-it');
+        const sent = sentBlockIds();
         registerBlock({ customId: 'no-content', category: 'UI', tokens: ['New one', 'New two'], shape: 'block' });
         registerBlock({ customId: 'with-content', category: 'UI', tokens: ['Other one', 'Other two'], shape: 'block', content: '<p>Other one</p><p>Other two</p>' });
         await until(async () => (await heldIds()).includes('with-content'));
         await sleep(SETTLE_MS);
-        expect(await heldIds()).toEqual(['with-content']);
+        expect(sent).toEqual(['with-content']);
+        expect(await heldAnywhere()).toEqual(['with-content']);
     });
 
     it('a seeded block with no content is left to its host: the Translate over the host, served as source, registers it with its own content', async () => {
-        await fx.seed(NO_BLOCKS);
+        await take('no blocks');
         await client('it-it');
         const id = generateCustomId('UI', ['Host one', 'Host two']);
         registerBlock({ customId: id, category: 'UI', tokens: ['Host one', 'Host two'], shape: 'block' });
@@ -263,28 +263,32 @@ describe('a block mounted before init() decides once the write capability is kno
     const mountEarly = () => mount('<div><p>Early one</p><p>Early two</p></div>');
 
     it('a write key registers it once init() answers', async () => {
+        await take('base');
         resetSdk();
         LangsysApp.seedCatalog({ UI: {} } as never, 'it-it');
         mountEarly();
         await sleep(300);
-        await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('it-it'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        await init('k-write', 'it-it');
         await until(async () => (await heldIds()).includes(NEW_BLOCK));
         await sleep(SETTLE_MS);
         expect((await heldIds()).filter((id) => id === NEW_BLOCK)).toHaveLength(1);
     });
 
-    it('a read key still registers nothing, and says why', async () => {
-        await fx.seed({ ...SEED, keys: [...SEED.keys, { key: 'k-read', project: 'p1', type: 'read' }] });
+    it('a read key sends no registration for it', async () => {
+        // The API refuses a read key's write itself, so what was not sent is counted at the transport seam.
+        await take('base');
         resetSdk();
+        const sent = sentBlockIds();
         LangsysApp.seedCatalog({ UI: {} } as never, 'it-it');
         mountEarly();
-        await LangsysApp.init({ projectid: 'p1', key: 'k-read', UserLocaleStore: createSignal('it-it'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        await init('k-read', 'it-it');
         await sleep(SETTLE_MS);
-        expect(await heldIds()).not.toContain(NEW_BLOCK);
+        expect(sent).toEqual([]);
+        expect(await heldAnywhere()).not.toContain(NEW_BLOCK);
         // Control: the API stores the same block from a session that may write.
         resetSdk();
         document.body.innerHTML = '';
-        await LangsysApp.init({ projectid: 'p1', key: 'k-write', UserLocaleStore: createSignal('it-it'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        await init('k-write', 'it-it');
         await until(() => currentlyLoadedLocale.get() === 'it-it');
         mountEarly();
         await until(async () => (await heldIds()).includes(NEW_BLOCK));
@@ -298,6 +302,7 @@ describe('SRV-5: a Suspense fallback swapped out inside the settle window, again
     const SPINNER = generateCustomId('UI', ['Intro one', 'Loading spinner']);
 
     it('holds the block keyed on the real content, never on the spinner', async () => {
+        await take('base');
         await client('it-it');
         const wrap = document.createElement('div');
         wrap.innerHTML = '<div><p>Intro one</p><p>Loading spinner</p></div>';
@@ -310,7 +315,7 @@ describe('SRV-5: a Suspense fallback swapped out inside the settle window, again
         host.replaceChild(real, host.lastElementChild!);
         await until(async () => (await heldIds()).includes(REAL));
         await sleep(SETTLE_MS);
-        expect(await heldIds()).not.toContain(SPINNER);
-        expect((await fx.held('k-write', 'p1', 'it-it')).blocks[REAL]).toEqual(['Intro one', 'Real content']);
+        expect(await heldAnywhere()).not.toContain(SPINNER);
+        expect((await catalog()).blocks.UI?.[REAL]).toEqual(['Intro one', 'Real content']);
     });
 });

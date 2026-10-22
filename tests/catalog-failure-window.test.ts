@@ -8,7 +8,7 @@ import { Translations } from '../src/translations.js';
  * CACHE-2's in-process half, proven at the transport seam (`n/a (pure)`).
  *
  * The rendered consequence of the window — source text inside it, the translation after it —
- * is graded against the contract double in `contract-write-lane`. What the double cannot see is
+ * is graded against the API in `contract-write-lane`. What the API cannot show is
  * how many requests were made, because a catalog read changes no server state. That is proven
  * here, by counting calls into the API client: concurrent fetches share one request, the window
  * doubles and caps, the first success clears it, and an explicit refresh still goes out.

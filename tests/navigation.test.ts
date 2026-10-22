@@ -20,7 +20,7 @@ import { Translate } from '../src/translate.js';
  * HINT-13 in the core: `notifyNavigation()` re-enters every translated node still attached to
  * the document, as a re-render would, so its misses are recorded at the page's new URL.
  *
- * The contract-tier half — a persistent layout bound to `t`, graded against the double — is in
+ * The contract-tier half — a persistent layout bound to `t`, graded against the API — is in
  * `contract-hint-lane`. This file covers the core's own DOM classes, which subscribe to the
  * navigation rather than to `t`, and the spec's control for them: an instance on a node that
  * was removed but never destroyed records nothing.
