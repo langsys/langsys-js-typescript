@@ -141,7 +141,7 @@ Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC
    - Bumps `package.json`, runs `npm install` + `npm run build` locally as a final sanity check.
    - Amends the last commit with the version bump, force-pushes `main`.
    - Creates and pushes a `v$NEW_VERSION` tag.
-   - Creates a GitHub release whose notes are the install line, the version's CHANGELOG section and a compare link from the previous version. The notes are built and checked before anything is changed: a version with no `## x.y.z - unreleased` section, or notes over GitHub's 125,000-character limit on a release body, is refused before the bump. `_dev_/publish.sh <version> --notes-only` prints the notes it would send and changes nothing.
+   - Creates a GitHub release whose notes are the install line, the version's CHANGELOG section and a compare link from the previous version. The notes are built and checked before anything is changed: a version with no `## x.y.z - …` section, or notes over GitHub's 125,000-character limit on a release body, is refused before the bump. A heading that already carries a date passes as written and is not stamped, which is why step 3 has headings written as `- unreleased`. `_dev_/publish.sh <version> --notes-only` prints the notes it would send and changes nothing.
    - **Stops there.** Hands off to the Action.
 3. **Changelog dates are stamped by the release script, then verified.** Write new sections as `## x.y.z - unreleased`; `publish.sh` fills the date in at release time, seconds before publish, so the shipped tarball carries a real date instead of the word "unreleased". After the Action completes, verify with `npm view langsys-js-typescript time --json` and correct if they disagree.
 

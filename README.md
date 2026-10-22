@@ -382,7 +382,7 @@ Attributes honored on contained elements:
 
 ### Nested blocks
 
-An element inside a block that carries `data-ls-contentblock` is a block of its own. The enclosing block leaves it out of its tokens and never writes into it, and the nested element registers and renders as its own unit, under its own `data-ls-category` when it names one. A `Translate` you construct on it manages it; otherwise the enclosing `Translate` does. A bare, `true`, `1` or `yes` value declares a block, `false` or `0` opts out, and any other value is the block's id: it renders under that id, and registers under it when the catalog lacks it. Inside `data-ls-resolved`, on the element or an ancestor, which a server sets on content it already rendered from the catalog, nothing registers and no miss is recorded, since that text is a translation rather than source. An element marked `data-ls-phrase` is likewise its own [`Phrase`](#the-phrase-class). (`langsys-php`'s `data-langsys-*` spellings of these markers are read the same way.)
+An element inside a block that carries `data-ls-contentblock` is a block of its own. The enclosing block leaves it out of its tokens and never writes into it, and the nested element registers and renders as its own unit, under its own `data-ls-category` when it names one. A `Translate` you construct on it manages it; otherwise the enclosing `Translate` does. When the markup does not mark the nested element and its own `Translate` adds the marker, construct that `Translate` before the enclosing block's, since the enclosing block reads its words when it is constructed. A bare, `true`, `1` or `yes` value declares a block, `false` or `0` opts out, and any other value is the block's id: it renders under that id, and registers under it when the catalog lacks it. Inside `data-ls-resolved`, on the element or an ancestor, which a server sets on content it already rendered from the catalog, nothing registers and no miss is recorded, since that text is a translation rather than source. An element marked `data-ls-phrase` is likewise its own [`Phrase`](#the-phrase-class). (`langsys-php`'s `data-langsys-*` spellings of these markers are read the same way.)
 
 ### Interpolation params
 
@@ -657,7 +657,7 @@ The DOM walkers (`tokenizeElement`, `encodeRichText`) and everything that sends 
 
 A sentence that shows a value from a variable registers once, as a phrase with a `{placeholder}`, for every user. `Hello {name}` is one phrase; `Hello Ana` and `Hello Luis` would be two, and a phrase with no placeholder cannot be given plural or gendered forms.
 
-Where you call `t()` yourself, pass the value as a param: `t('Hello {name}', { name })`, or name it in a template tag, ``t`Hello ${{ name }}` ``. A tag value with no name renders, but registers nothing.
+Where you call `t()` yourself, pass the value as a param: `t('Hello {name}', { name })`, or name it in a template tag, ``t`Hello ${{ name }}` ``. A tag names the placeholder by the key in snake_case, so ``t`Hello ${{ userName }}` `` registers `Hello {user_name}`, a different phrase from `t('Hello {userName}', { userName })`. A tag with a value that is not a one-key object returns its text as written: nothing in it is looked up, translated or registered.
 
 Where the text is rendered first and read afterwards (`<Translate>`, `<Phrase>`, server-rendered HTML), the emitter marks each printed value, and the SDK reads the mark back as the placeholder:
 

@@ -10,6 +10,7 @@
 - **The cached catalog is keyed by project and locale**, as `langsys:translations:{projectid}:{locale}`, so a page never shows another locale's or project's cached text. Nothing to do: the first load after upgrading fetches once more, and the old `translations` entry is removed.
 - **`detectPreferredLocale(header, supported)` returns `false` when nothing in `supported` matches**, not the user's own first preference. To do: add a fallback, as in `… || 'en-us'`.
 - **An unconfigured client rejects explicit writes:** without credentials, `LangsysAppAPI.post`, `put`, `patch`, `delete` and `createTranslatableItems` reject with `LangsysConfigurationError`, and a refused `init()` forgets the credentials an earlier one accepted. To do: write after a successful `init()`, or catch the error.
+- **`TFunction` has a template-tag signature,** `(strings: TemplateStringsArray, ...values: unknown[]) => string`, so a function you type as `TFunction` yourself, such as a test double or a wrapper, no longer compiles unless it accepts that call. To do: accept it, or cast with `as TFunction`.
 
 ### What's new
 
@@ -89,7 +90,7 @@
 - **A failed catalog fetch is not repeated on every locale emission**, a switch mid-load shows the new locale, and a first visit waits for its catalog before registering.
 - **An API outage triggers no re-registration**, and a registration answered after a locale switch keeps the new locale's translations.
 - **A historical content-block id is used only when its stored block holds the same phrases.**
-- **A content block has one registration request in flight per project and API key**; 0.6.5 sent one per `<Translate>` over it. An answer that arrives after a re-init under other credentials marks the block known only for the project it went out under.
+- **A content block has one registration request in flight per project and API key**; 0.6.5 sent one per `<Translate>` over it. An answer that arrives after a re-init under other credentials marks nothing known, so the block registers under the new project too.
 - **A block's registered `content` is its host's children**, inlining only the styles that differ from a bare element; 0.6.5 stored the host itself.
 - **`en-US-POSIX` canonicalises to `en-us-posix`**, the code the API holds, not `en-US-u-va-posix`.
 - **A catalog answer with a non-category member no longer crashes the fetch.**
