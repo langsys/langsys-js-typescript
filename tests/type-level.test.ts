@@ -24,6 +24,10 @@ describe('t() signature', () => {
         expect(diagnosticsOf('types/t-signature.ts').map(describeDiagnostic)).toEqual([]);
     }, 30_000);
 
+    it('t as a template tag, as the README writes it, typechecks and returns a string; the call form keeps its checks', () => {
+        expect(diagnosticsOf('types/t-tag.ts').map(describeDiagnostic)).toEqual([]);
+    }, 30_000);
+
     it('control: the same bad calls without @ts-expect-error each fail to compile', () => {
         const lines = diagnosticsOf('types/t-signature.control.ts').map((d) => d.file!.getLineAndCharacterOfPosition(d.start ?? 0).line + 1);
         expect(new Set(lines).size).toBe(3);

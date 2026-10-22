@@ -75,13 +75,19 @@ export type TranslationParams = Record<string, ParamPrimitive>;
  *   t('Hello, {name}!', { name: 'X' })            // no category, with params
  *   t('Hello, {name}!', 'Greetings', { name: 'X' }) // category + params
  *   t('checkout.greet', { name: 'X' })            // a legacy key: params accepted
+ *   t`Hello, ${{ name }}!`                        // a template tag: `{name}`, with its value
  *
  * Two overloads discriminate on the type at position 2 (string → category,
  * object → params). `category` is required for the second overload —
  * pass any non-empty string. There is no "null category" wire concept:
  * absent category means absent.
+ *
+ * As a template tag, each value written as a one-key object is a placeholder
+ * named by its key, with the value as its param. Any other value is rendered
+ * and the text registers nothing. A tag takes no category.
  */
 export interface TFunction {
     <P extends string>(phrase: P, ...args: TArgs<P>): string;
     <P extends string>(phrase: P, category: string, ...args: TArgs<P>): string;
+    (strings: TemplateStringsArray, ...values: unknown[]): string;
 }
