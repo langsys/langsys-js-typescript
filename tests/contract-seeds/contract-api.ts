@@ -22,7 +22,7 @@ const KEYS: Record<string, KeySeed> = {
     'k-writer-reporter': { project: 'p1', type: 'ip_write', ip_allowlist: ['@self'], report_discovered_content: true },
     'k-grant': { project: 'p1', type: 'read', write_grant_secret: GRANT_SECRET },
     'k-dup': { project: 'p1', type: 'read', duplicate_guard: { max_attempts: 1, window_seconds: 60 } },
-    'k-guarded': { project: 'p1', type: 'read', duplicate_guard: { max_attempts: 3, window_seconds: 1 } },
+    'k-guarded': { project: 'p1', type: 'read', duplicate_guard: { max_attempts: 3, window_seconds: 10 } },
     'k-other': { project: 'p2', type: 'write' },
     'k-orphan': { project: null, type: 'write' },
 };

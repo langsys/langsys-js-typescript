@@ -3569,7 +3569,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -3647,7 +3647,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -3725,7 +3725,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -3803,7 +3803,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -3881,7 +3881,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -3959,7 +3959,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4037,7 +4037,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4115,7 +4115,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4193,7 +4193,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4271,7 +4271,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4349,7 +4349,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4427,7 +4427,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4505,7 +4505,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4583,7 +4583,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4661,7 +4661,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4739,7 +4739,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4817,7 +4817,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4895,7 +4895,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -4973,7 +4973,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5051,7 +5051,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5129,7 +5129,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5207,7 +5207,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5285,7 +5285,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5363,7 +5363,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5441,7 +5441,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5519,7 +5519,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5597,7 +5597,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5675,7 +5675,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5753,7 +5753,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5831,7 +5831,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5909,7 +5909,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -5987,7 +5987,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6065,7 +6065,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6143,7 +6143,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6221,7 +6221,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6299,7 +6299,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6377,7 +6377,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6455,7 +6455,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6533,7 +6533,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6611,7 +6611,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6689,7 +6689,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6767,7 +6767,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6845,7 +6845,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -6923,7 +6923,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7001,7 +7001,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7079,7 +7079,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7157,7 +7157,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7235,7 +7235,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7313,7 +7313,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7391,7 +7391,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7469,7 +7469,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7547,7 +7547,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7625,7 +7625,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7703,7 +7703,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7781,7 +7781,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7859,7 +7859,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -7937,7 +7937,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8015,7 +8015,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8093,7 +8093,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8171,7 +8171,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8249,7 +8249,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8327,7 +8327,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8405,7 +8405,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8483,7 +8483,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8561,7 +8561,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8639,7 +8639,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8717,7 +8717,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8795,7 +8795,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8873,7 +8873,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -8951,7 +8951,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9029,7 +9029,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9107,7 +9107,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9185,7 +9185,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9263,7 +9263,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9341,7 +9341,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9419,7 +9419,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9497,7 +9497,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9575,7 +9575,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9653,7 +9653,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9731,7 +9731,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9809,7 +9809,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9887,7 +9887,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -9965,7 +9965,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10043,7 +10043,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10121,7 +10121,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10199,7 +10199,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10277,7 +10277,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10355,7 +10355,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10433,7 +10433,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10511,7 +10511,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10589,7 +10589,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10667,7 +10667,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10745,7 +10745,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10823,7 +10823,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10901,7 +10901,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -10979,7 +10979,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -11071,7 +11071,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -11149,7 +11149,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -11227,7 +11227,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
@@ -11305,7 +11305,7 @@
             "type": "read",
             "duplicate_guard": {
                 "max_attempts": 3,
-                "window_seconds": 1
+                "window_seconds": 10
             }
         },
         {
