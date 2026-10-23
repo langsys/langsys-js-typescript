@@ -19,15 +19,124 @@ This is the base SDK. Framework-specific bindings (`langsys-js-svelte`, `langsys
 - `t(phrase, category?, params?)` — the everyday translation function. The phrase is both the lookup key *and* the base-language default. Curly-brace placeholders interpolate from `params` and are compile-time type-checked.
 - `tSignal: Signal<TFunction>` — reactive primitive that re-emits a fresh `t` on every translations/locale change. Framework bindings subscribe to this to drive re-renders.
 - `Translate` class — wraps a DOM element, walks text + translatable attributes, registers a content block with the Translation Manager, re-translates on locale change.
+- `Phrase` class — wraps one sentence that contains inline markup, so it registers and translates whole.
+- Server rendering — request scopes that keep one visitor's catalog and locale from the next, content blocks rendered without a DOM, hydration seeds and catalog snapshots.
+- `langsys-js-typescript/pure` — the identity rules (content-block ids, locale canonicalization, interpolation) with no DOM, for servers, workers and build scripts.
 - `Signal<T>` — tiny subscribe/set/update/get primitive. Compatible with Svelte's store contract by design, so the Svelte binding is nearly trivial.
 - `LangsysAppAPI` — direct HTTP access if you want to bypass everything else.
-- One runtime dependency (`intl-messageformat`, for ICU plurals and gender selects). ~20 kB gzipped. Works in browsers, Node, any bundler.
+- One runtime dependency (`intl-messageformat`, for ICU plurals and gender selects). About 37 kB minified and gzipped, 46 kB with `intl-messageformat` included. Works in browsers, Node, any bundler.
 
 ## Install
 
 ```bash
 npm install langsys-js-typescript
 ```
+
+### No build step? Use the browser build
+
+For a plain HTML page with no bundler, import the self-contained browser build —
+it inlines its one dependency so there is nothing for the browser to resolve:
+
+```html
+<script type="module">
+    import { LangsysApp, createSignal } from './node_modules/langsys-js-typescript/dist/langsys.browser.mjs';
+</script>
+```
+
+The same build is the package's `langsys-js-typescript/browser` export. Or, without modules at all — exposes a `Langsys` global:
+
+```html
+<script src="./node_modules/langsys-js-typescript/dist/langsys.browser.global.js"></script>
+<script>
+    Langsys.LangsysApp.init({ /* ... */ });
+</script>
+```
+
+Package consumers (Vite, webpack, Next, SvelteKit, Node) should keep importing
+`langsys-js-typescript` normally — the main entry leaves `intl-messageformat`
+external so your bundler dedupes it against its own copy. **Do not load
+`dist/index.mjs` directly in a browser:** it imports the bare specifier
+`intl-messageformat`, which a browser cannot resolve without an import map, and
+the failure is silent — the file returns 200 and the module body simply never
+executes.
+
+### Pointing at a different API host
+
+The SDK talks to `https://api.langsys.dev/api` by default. To run it against a
+local instance, a staging host, or a stateful test double, pass `apiUrl` to
+`init`:
+
+```ts
+import { LangsysApp, createSignal } from 'langsys-js-typescript';
+
+await LangsysApp.init({
+    projectid: '...',
+    key: '...',
+    UserLocaleStore: createSignal('en-us'),
+    apiUrl: 'http://localhost:8000/api',   // no trailing slash needed
+});
+```
+
+Same from the browser build, via the global:
+
+```html
+<script src=".../dist/langsys.browser.global.js"></script>
+<script>
+    Langsys.LangsysApp.init({
+        projectid: '...',
+        key: '...',
+        UserLocaleStore: Langsys.createSignal('en-us'),
+        apiUrl: 'http://localhost:8000/api',
+    });
+</script>
+```
+
+This is what integration tests should use to point the SDK at a stateful test
+double rather than the live API. Patching the built artifact is never necessary.
+
+> **Prefer `apiUrl` over `LangsysAppAPI.setBaseUrl()`.**
+> `setBaseUrl` still exists and still works, but it has to run **before**
+> `init()`, and running it after leaves the SDK **permanently inert**. `init()`
+> will already have authorized against the default host, and with a key for a
+> different environment that authorization fails; the locale subscription is
+> installed closed over that failed result, so **it no-ops for the life of the
+> app**. Later locale changes won't recover it and neither will fixing the URL
+> afterwards — only calling `init()` again will.
+>
+> Nothing throws, so the symptom is simply that no translations ever arrive.
+> `apiUrl` is applied inside `init()` before authorization, in the same call
+> that consumes it, so the ordering cannot be got wrong.
+
+**Always check what `init()` returns.** A failed authorization — wrong key,
+wrong host, unreachable server — is reported there and nowhere else:
+
+```ts
+const res = await LangsysApp.init({ /* ... */ });
+if (!res.status) console.error('Langsys init failed', res.errors);
+```
+
+### Running without credentials
+
+`init()` without a project id, an API key or a locale store does not throw: it
+resolves `{ status: false, errors }` and leaves the client unconfigured, so a
+preview build or a test run without secrets still renders. `t()` shows the
+source text with its params filled and makes no request, and a `<Translate>`
+block's registration resolves skipped with reason `not-configured`. An explicit
+write, such as `LangsysAppAPI.createTranslatableItems`, throws
+`LangsysConfigurationError`. `LangsysApp.isConfigured()` reports the state.
+
+To fail loudly instead, pass `requireCredentials: true`: `t()` then throws
+`LangsysConfigurationError` while the client is unconfigured. The core's
+`Phrase` and `Translate` still construct without throwing, and their
+asynchronous render rejects with that error instead, as does the promise
+`registerBlock` returns for a block rendered as a tree. That holds for a
+component mounted before `init()` too: it rejects once `init()` refuses. The
+reference lists fail the same way: each list call rejects with that error, and
+`getLocaleName`, which is synchronous, throws it. The option fails on the first
+`t()` call, registration or reference read, so a block that only renders never
+fails: one with `register: false`, on any path, and one rendered
+through `renderBlock` alone and never passed to `registerBlock`. Both show their
+source text.
 
 ## Quick start
 
@@ -36,14 +145,14 @@ import { LangsysApp, createSignal, t } from 'langsys-js-typescript';
 
 // 1. A reactive holder for the user's current locale. Use `createSignal` if you
 //    have nothing of your own — any object with subscribe/set/update/get works.
-const userLocale = createSignal('en-US');
+const userLocale = createSignal('en-us');
 
 // 2. Initialize
 const response = await LangsysApp.init({
     projectid: process.env.LANGSYS_PROJECT_ID!,
     key: process.env.LANGSYS_API_KEY!,
     UserLocaleStore: userLocale,
-    baseLocale: 'en-US',
+    baseLocale: 'en-us',
     debug: false,
 });
 
@@ -58,12 +167,18 @@ document.querySelector('#greeting')!.textContent =
     t('Hello, {name}!', 'Greetings', { name: 'Sarah' });
 
 // 5. Change locale — all subscribed consumers re-translate
-userLocale.set('es-ES');
+userLocale.set('es-es');
 ```
+
+### Locale identifiers
+
+Locale identifiers are lowercase `xx-yy` throughout the SDK. Whatever form you pass (`en-US`, `en_US`, `zh-Hant-TW`) is canonicalized where it enters, so `currentlyLoadedLocale`, `localeHeaders()`, `detectPreferredLocale()` and the catalog cache all hold `en-us` and `zh-hant-tw`. `canonicalizeLocale('en-US')` is `en-us`, and it resolves legacy aliases on the way (`iw-IL` is `he-il`). Compare locales in that form, or pass yours through `canonicalizeLocale` first.
 
 ### How `t()` works
 
-The signature is `t(phrase, category?, params?)` — the phrase comes first, the category is optional, params come last. The phrase is the lookup key. The first time `t('Welcome to my app', 'Home')` runs with a write key, Langsys registers the phrase in the Translation Manager under the "Home" category. On subsequent locale changes, the SDK fetches translations and `t()` returns the translated version. If no translation exists yet, you get back the original phrase — your base language stays visible while translations get filled in.
+The signature is `t(phrase, category?, params?)` — the phrase comes first, the category is optional, params come last. The phrase is the lookup key. The first time `t('Welcome to my app', 'Home')` runs in a session that can write (see [Write capability](#write-capability)), Langsys registers the phrase in the Translation Manager under the "Home" category. On subsequent locale changes, the SDK fetches translations and `t()` returns the translated version. If no translation exists yet, you get back the original phrase — your base language stays visible while translations get filled in.
+
+In a browser the catalog is cached in `localStorage` under its project and locale (`langsys:translations:<projectid>:<locale>`), so a reload renders that project's catalog for that locale while `init()` authorizes, and the fetched catalog then replaces it. The cache holds translations only; whether the session may write is asked of the server every time. Where there is no `localStorage`, `setPersistStorage(storage)` supplies a synchronous one, such as MMKV or an in-memory mirror of AsyncStorage on React Native.
 
 #### Compile-time-checked interpolation
 
@@ -75,9 +190,15 @@ t('Hello, {name}!', 'Greetings', {});                          // ❌ Property '
 t('Hello, {name}!', 'Greetings', { name: 'x', extra: 'y' });   // ❌ Unknown property 'extra'
 ```
 
-Allowed value types: `string | number | Date | boolean`. Numbers and Dates format per the active locale's CLDR rules (`1234.5` → `1.234,5` in `de-DE`; Dates use the medium date style). Pass values as strings to opt out — e.g. IDs and codes that must not get grouping separators.
+Allowed value types: `string | number | Date | boolean`. Numbers and Dates format per the active locale's CLDR rules (`1234.5` → `1.234,5` in `de-de`; Dates use the medium date style). Pass values as strings to opt out — e.g. IDs and codes that must not get grouping separators.
 
-> Translations containing ICU MessageFormat syntax — `{count, plural, one {# item} other {# items}}`, `{gender, select, …}`, `{n, number}`, `{d, date}` — are rendered with full CLDR plural rules for the active locale (Arabic's six categories, Russian's four, etc.). Plain `{name}` slots keep working unchanged.
+> Translations containing ICU MessageFormat syntax — `{count, plural, one {# item} other {# items}}`, `{gender, select, …}`, `{n, number}`, `{d, date}` — are rendered with full CLDR plural rules for the active locale (Arabic's six categories, Russian's four, etc.), alongside plain `{name}` slots. Every request carries `X-Langsys-Capabilities: icu`, so the server sends plurals and selects as ICU for `t()` to render, and a select or plural renders its `other` branch when its argument is not passed.
+>
+> In a language with grammatical gender, Langsys can turn a plain `{name}` into `{name_gender, select, …}` in the translation. Pass `name_gender` beside `name` when you know it; it is typed as an optional param for every placeholder, and without it the neutral `other` branch renders:
+>
+> ```ts
+> t('{name} has been invited', 'Team', { name: 'Ana', name_gender: 'female' });
+> ```
 
 > **⚠️ Always pass values through `params` — never build the phrase yourself.**
 >
@@ -86,7 +207,7 @@ Allowed value types: `string | number | Date | boolean`. Numbers and Dates forma
 > t('Hello, {name}!', 'Greetings', { name });     // ✓
 > ```
 >
-> The template literal resolves *before* `t()` runs, so with a write key the SDK registers `"Hello, Sarah!"` as a brand-new phrase — and every distinct runtime value mints another one ("Hello, Priya!", "Hello, Ahmed!"). Your Translation Manager fills with untranslatable one-offs, and since projects share one catalog across SDKs, it pollutes what every other binding reads too. The SDK cannot detect this: an interpolated string is indistinguishable from an authored one. The `params` form registers the phrase once, with the placeholder intact for translators.
+> The template literal resolves *before* `t()` runs, so in a session that can write the SDK registers `"Hello, Sarah!"` as a brand-new phrase — and every distinct runtime value mints another one ("Hello, Priya!", "Hello, Ahmed!"). Your Translation Manager fills with untranslatable one-offs, and since projects share one catalog across SDKs, it pollutes what every other binding reads too. The SDK cannot detect this: an interpolated string is indistinguishable from an authored one. The `params` form registers the phrase once, with the placeholder intact for translators.
 
 #### Categorization disambiguates context
 
@@ -97,12 +218,36 @@ t('Home', 'Home repairs');      // 'Hogar' in Spanish
 
 The same phrase in different categories can have different translations. Without categorization, "Home" would only have one. Langsys's philosophy: *translate once, use everywhere* — categorize when the same phrase legitimately means different things in different parts of the app.
 
-### API key permissions
+### Write capability
 
-- **Write key** (development) — new phrases and content blocks discovered as your app runs are registered automatically.
-- **Read-only key** (production) — only fetches existing translations; no token creation, no content-block writes.
+Whether a session registers what it finds is the server's decision, made per session from the API key, the address the request comes from and any write grant. The server answers `write_enabled` when `init()` authorizes and again with every catalog it serves, so a session follows a change without a re-init. An answer without `write_enabled` is not write-enabled. The SDK never decides from the key's type, and never caches the decision.
 
-Detected automatically from the validation response — you don't configure this manually.
+- **`write` key** — every session can write: phrases `t()` misses and new content blocks are registered as your app runs. Keep it out of code you ship to the public.
+- **`read` key** — fetches translations and registers nothing.
+- **`ip_write` key** — can write only from the addresses on the key's allow-list, and is read-only everywhere else. Ship this one in a public site: visitors' browsers read, while your own allow-listed machines, and Langsys's discovery renderer, register.
+
+The answer is the `writeEnabled` signal: `undefined` until the server has answered, when misses are held rather than dropped, then `true` or `false`. It is only ever set in a browser, so on a server it stays `undefined`. When a `write` or `ip_write` key's session comes back read-only, the SDK logs one warning saying so, debug or not.
+
+#### Write grants
+
+An app behind a login, which the discovery renderer cannot reach, makes its own users' sessions write-enabled with a write grant: a short-lived token your backend mints, sent as `X-Write-Grant`. Pass a function, which the SDK calls before every request so it always sends a fresh token, and return `null` until there is one:
+
+```ts
+await LangsysApp.init({
+    projectid, key, UserLocaleStore,
+    writeGrant: () => session.langsysGrant ?? null,   // called before each request, never cached
+});
+
+await setWriteGrant(() => fetchGrant());               // replace it later; the session re-authorizes
+```
+
+Configure the provider at `init()` even when the token only exists after login. With no grant configured, a read-only answer means no grant can ever arrive, and what the session missed goes to discovery instead of waiting. A bare string works for a quick start, but grants expire within minutes. While a grant is configured, `ssrTokenStrategy` acts as `'client'`, since a grant makes the decision per user and a server process renders for many.
+
+#### Content discovery from read-only sessions
+
+A session that cannot write still tells Langsys where its untranslated content is. When `t()` or a content block misses, the SDK reports the page's URL, and nothing else, after a random 5–30 second delay and at most once per URL per browser session. Langsys's discovery renderer then loads that URL from an allow-listed address, where the same page registers what it shows. Reporting happens only where the key permits it, a setting on the key in Langsys that arrives as the `autoDiscovery` signal. Tracking parameters (`utm_*`, `gclid`, `fbclid` and the like) are stripped first, and a URL that carries a credential-shaped parameter (`token`, `password`, `session`, `email` and the like) is never reported. A session that can write registers and never reports, and nothing is reported from a server render.
+
+A project can also limit both registering and reporting to pages shown in its base locale, a project setting the server sends with its answer, so a page served already translated never files its translated text as source.
 
 ## Reactivity for frameworks
 
@@ -152,9 +297,27 @@ Use the dedicated [`langsys-js-svelte`](https://github.com/langsys/langsys-js-sv
 
 The same pattern: subscribe to `tSignal` for invalidation, call the current `TFunction` for values. ~5-10 lines of binding code per framework.
 
+### Route changes: `notifyNavigation()`
+
+Call `notifyNavigation()` after every client-side route change. Content that stays mounted across routes — a layout, a header, a sidebar — is otherwise never looked up again, so a phrase missing from it is reported for the first page only, and never for the pages the visitor moves to.
+
+The call publishes a fresh `t` through `tSignal`, so anything bound to it re-renders, and each miss is recorded at the new URL. `Translate` and `Phrase` instances re-run their lookup too, but only while their element is still attached to the page. The call sends nothing itself, and a phrase already registered is not registered again.
+
+```ts
+import { notifyNavigation } from 'langsys-js-typescript';
+
+router.afterEach(() => notifyNavigation());        // Vue Router
+afterNavigate(() => notifyNavigation());           // SvelteKit
+router.events.subscribe((e) => {                   // Angular
+    if (e instanceof NavigationEnd) notifyNavigation();
+});
+```
+
+Framework bindings wire this for you from their router's after-navigation hook.
+
 ## The `Translate` class
 
-For larger blocks of HTML — articles, help text, multi-sentence markup — use `Translate` to wrap an existing DOM element. It tokenizes text nodes and translatable attributes, registers the block with the Translation Manager (so translators see your styled markup), and re-translates on locale change.
+For larger blocks of HTML — articles, help text, multi-sentence markup — use `Translate` to wrap an existing DOM element. It tokenizes text nodes and translatable attributes, registers the block with the Translation Manager (so translators see your styled markup), and re-translates on locale change. It stamps the block's id on the element as `data-ls-contentblock`.
 
 ```ts
 import { Translate } from 'langsys-js-typescript';
@@ -165,6 +328,27 @@ const handle = new Translate(article, { category: 'Blog', label: 'Welcome post' 
 // Locale changes are picked up automatically. Call .destroy() to stop.
 handle.destroy();
 ```
+
+> **Single-token content keeps its markup.**
+> When the wrapped element's content resolves to a *single* text run,
+> `Translate` writes the translation into that one text node and leaves the
+> surrounding structure alone — so a `data-testid`, `id`, or ref on a child
+> element survives:
+>
+> ```html
+> <div>                                  <!-- before -->
+>   <p data-testid="greeting">Welcome back.</p>
+> </div>
+> <div>                                  <!-- after -->
+>   <p data-testid="greeting">Bentornato.</p>
+> </div>
+> ```
+>
+> Every other shape is translated node by node, in place, and keeps its
+> structure too, including an element whose one token is an attribute, such as
+> `<img alt="…">`. `Phrase` preserves markup in all cases.
+
+What a block shows when it mounts is taken as provisional. A framework can mount a block with a placeholder in it, a Suspense fallback or a lazy child's spinner, and swap the real content in a moment later. `Translate` renders at once, but registers only once the element's structure has been quiet for 500ms. That is above React's `FALLBACK_THROTTLE_MS` (300ms), the least time React keeps a Suspense fallback on screen once it shows one, so a fallback React swaps out for its content is never what registers. If the structure changes later, it reads the block again, under the id its new content derives (your own `custom_id` stays), and registers that. Until the window first closes, a text change counts too, since a framework may swap a placeholder's text for its content in the same element; after that, only structure counts, so a framework updating a value's text never re-keys a block. A block whose placeholder outlives the window has already registered under the placeholder's id, and that registration stays; with `debug` on, a notice names both ids when the block re-keys. A list inside a block that grows or shrinks re-keys it, as mounting the block in that state would.
 
 Attributes honored on contained elements:
 
@@ -178,12 +362,15 @@ Attributes honored on contained elements:
 
 > Leaving these untranslated has **no visible symptom**. Nothing on the page changes, so reviewing the rendered output cannot catch it — the failure is audible only to the users least able to work around it.
 
-**Validation messages** — `data-error`, `data-error-message`, `data-validation-message`, `data-invalid-message`, `data-required-message`, `data-pattern-message`
+**Validation and status messages** — `data-error`, `data-error-message`, `data-validation-message`, `data-invalid-message`, `data-required-message`, `data-pattern-message`, `data-success-message`, `data-warning-message`, `data-empty-message`
+
+**Tooltips, dialogs and widgets** — `data-confirm`, `data-tooltip`, `data-title`, `data-content`, `data-original-title`, `data-bs-title`, `data-bs-content`, `data-loading-text`, `data-placeholder`
 
 **Opting out**
 
 - `translate="no"` (case-insensitive), or `data-notrans` — `langsys-php`'s author-facing alias, honored here so an SSR-rendered page opts out consistently in both SDKs. Presence means intent; an explicit `="false"` or `="0"` opts back in.
 - Elements marked this way, and their children, are skipped entirely.
+- `<script>`, `<style>`, `<template>`, `<noscript>` and `<math>` are always skipped: code and notation are not prose. Text inside an `<svg>` is translated like any other.
 
 > **`Translate` tokenizes per text node — so inline markup splits a sentence.**
 >
@@ -192,6 +379,10 @@ Attributes honored on contained elements:
 > ```
 >
 > registers **three** phrases: `"My content"`, `"is the best"`, `"when internationalized."` That's correct for a block of independent runs, and it's what `Translate` is for. But a translator sees three fragments with no context, and neither reordering nor grammatical agreement can cross a fragment boundary — fatal for a sentence whose word order or noun forms change with the language. When inline markup sits *inside a sentence*, reach for [`Phrase`](#the-phrase-class) instead.
+
+### Nested blocks
+
+An element inside a block that carries `data-ls-contentblock` is a block of its own. The enclosing block leaves it out of its tokens and never writes into it, and the nested element registers and renders as its own unit, under its own `data-ls-category` when it names one. A `Translate` you construct on it manages it; otherwise the enclosing `Translate` does. When the markup does not mark the nested element and its own `Translate` adds the marker, construct that `Translate` before the enclosing block's, since the enclosing block reads its words when it is constructed. A bare, `true`, `1` or `yes` value declares a block, `false` or `0` opts out, and any other value is the block's id: it renders under that id, and registers under it when the catalog lacks it. Inside `data-ls-resolved`, on the element or an ancestor, which a server sets on content it already rendered from the catalog, nothing registers and no miss is recorded, since that text is a translation rather than source. An element marked `data-ls-phrase` is likewise its own [`Phrase`](#the-phrase-class). (`langsys-php`'s `data-langsys-*` spellings of these markers are read the same way.)
 
 ### Interpolation params
 
@@ -228,7 +419,7 @@ In compiled frameworks, bare `{key}` written in markup never reaches the SDK —
 </Translate>
 ```
 
-Both spellings are equivalent: `%key%` is normalized to canonical `{key}` at tokenization, so the Translation Manager, the wire, and translators only ever see `{key}`, and existing `{key}` content in vanilla HTML keeps working unchanged. Keys must be identifiers (`[A-Za-z_][A-Za-z0-9_]*`), so literal `%` signs in prose ("20% off") are never touched. `t()` phrases are plain JS strings with no compiler in the way — they stay `{key}`-only.
+Both spellings are equivalent: `%key%` is normalized to canonical `{key}` at tokenization, so the Translation Manager, the wire, and translators only ever see `{key}`, and `{key}` content in vanilla HTML works as written. A translation that writes `%key%` renders like `{key}` for a key you pass. Keys must be identifiers (`[A-Za-z_][A-Za-z0-9_]*`), so literal `%` signs in prose ("20% off") are never touched. `t()` phrases are plain JS strings with no compiler in the way — they stay `{key}`-only.
 
 Writing `{key}` in markup fails *silently* — the base locale still looks right, so the mistake surfaces only once someone switches language. With `debug: true`, the SDK catches it for you: if you pass `params` whose keys have no matching placeholder in the captured content, it warns and names the fix.
 
@@ -240,6 +431,15 @@ instead.
 ```
 
 The check runs whenever the params key-set changes, so a ticking `count` won't spam the console, and it's silent in production.
+
+### Registering a block yourself
+
+A binding that renders its own DOM registers through the same primitives `Translate` uses: `tokenizeElement(element)` gives a block's `tokens` and `content`, `generateCustomId(category, tokens)` its id, and `isContentBlockKnown(category, id)` whether the catalog holds it already. `registerContentBlock({ custom_id, category, content, tokens, label })` sends it, never throws, and resolves `{ status: true }` only once the server has stored the block:
+
+- `{ status: false, skipped: true, reason }` when it did not send, on purpose: `not-configured`, `not-write-enabled` (the page is reported for discovery instead), `catalog-unavailable` (the catalog fetch failed, so an unknown block cannot be told from a registered one), `base-locale-gate`, or `deferred` (inside a request scope, which sends it at `close()`).
+- `{ status: false, reason, errors }` when the request was made and did not succeed: `refused` (the server answered with a failure) or `failed` (the request did not complete).
+
+Check `status`, not whether a result came back.
 
 ## The `Phrase` class
 
@@ -264,9 +464,81 @@ That registers as a single phrase — `Based on {n} {m0o}reviews{m0c}` — rathe
 
 Use it standalone, or nested inside a `Translate` block to protect specific runs — the block tokenizer skips any subtree carrying `data-ls-phrase` (exported as `PHRASE_MARKER_ATTR`), letting the `Phrase` own it. `setParams()` re-renders on a changed count, same as `Translate`.
 
-> **Who sets `data-ls-phrase`.** In the framework bindings it's internal — `<Phrase>` puts it on its own host element and you never write it yourself. In **vanilla usage it is yours to set**: the `Phrase` class does not add it, so a `Phrase` nested inside a `Translate` block needs the attribute present in your HTML *before* the wrapping `Translate` tokenizes, or the block will tokenize straight through the phrase and both will fight over the same nodes. Standalone `Phrase` doesn't need it at all. (Not to be confused with `langsys-php`'s `data-langsys-*` attributes, which are author-facing by design.)
+An element you exclude inside a phrase, with `translate="no"` or `data-notrans`, is one empty pair in the key, whatever it holds: `Signed in as <span translate="no">a@b.c</span> today` is `Signed in as {m0o}{m0c} today` for every user, and the translator never sees the address. Code elements (`<script>`, `<style>` and the rest the tokenizer skips) are the same. The element renders as the page has it, the same node with its own content, and a `{key}` or `%key%` inside an excluded element is filled from the phrase's params as plain text: `Write to <b translate="no">%email%</b> for help` shows the address. A phrase made only of excluded content registers nothing. A phrase keyed with its excluded text by an earlier version, such as `Welcome to {m0o}Langsys{m0c}`, keeps rendering that translation until its current key has one, and only the current key registers.
+
+> **Who sets `data-ls-phrase`.** In the framework bindings it's internal: `<Phrase>` puts it on its own host element and you never write it yourself. In **vanilla usage you write it** on the element, and the enclosing `Translate` then treats that element as one phrase and registers it whole, whether or not you construct a `Phrase` for it. Construct one when you need `setParams()`, and it takes over from the `Translate`. A nested `data-ls-contentblock` works the same way; see [Nested blocks](#nested-blocks). (`langsys-php`'s `data-langsys-*` spellings are read the same way.)
 
 If a translation drops or unbalances a markup token, rendering degrades to plain text with the markers stripped — the meaning survives even when the markup doesn't.
+
+## Migrating from i18n keys
+
+An app on vue-i18n or i18next can move to Langsys without rewriting its call sites. Keep the source-language file, delete every other language's file, and hand the kept file to `init`:
+
+```ts
+import en from './locales/en.json';
+
+await LangsysApp.init({
+    projectid, key, UserLocaleStore,
+    legacyKeys: [{ name: 'locales/en.json', format: 'vue-i18n', data: en }],
+});
+
+t('checkout.submit');          // → "Pay now", registered under category "checkout"
+t('Welcome back!');            // not a key: literal source text, as always
+```
+
+`t()` resolves its argument as a key first. On a hit the key's value is the phrase — the key itself never reaches Langsys — so a later codemod can inline the English and delete the file without moving an id. The key's first segment is the category unless the call passes one.
+
+Values are converted to Langsys syntax as they are read:
+
+- **Placeholders**, whatever the format: `{{name}}`, `:name`, `%{name}` and `%(name)s` become `{name}`, and `%%` is a literal `%`.
+- **Plurals**, by the file's `format`:
+    - `vue-i18n`: `car | cars` becomes `{count, plural, =1 {car} other {cars}}`, and three forms add `=0`. This keeps vue's selection by exact count.
+    - `i18next`: `items_one` / `items_other` become one plural under `items`, by CLDR category. The older `items` / `items_plural` pair works too.
+    - `plain`, the default: no plurals, so a `|` is text.
+- **Anything the conversion cannot express**, such as a `|` in a `plain` file, `:Name`, or a formatted `%(amount).2f`, registers exactly as written and logs a warning naming the file and key.
+
+A plural's argument is `count`, so pass `{ count }` in params. `name` is what errors report. `namespace` makes a per-namespace file answer only keys under that prefix, with the namespace as their category. With several files, the first that holds a key answers.
+
+This core reads `i18next`, `vue-i18n` and `plain`. A file in another format (`laravel`, `rails-i18n`, `gettext`, or a name ending `.php`, `.yml`, `.po` or `.mo`) makes `init` throw `LegacyFormatError`, naming the format and the file. Leave `legacyKeys` unset once the migration is done, and `t()` does no key lookup at all.
+
+`convertLegacyValue`, `convertLegacyPluralForms`, `convertLegacyCall` and `createLegacyKeys` are exported from `langsys-js-typescript/pure` too, so a server or a framework bridge converts through the same code and registers the same phrase.
+
+## Server messages
+
+A Langsys server SDK leaves your framework's error response exactly as it is and attaches translatable entries beside it. Laravel, for example, puts them under `langsys_errors` next to its own `message` and `errors`. An entry is the framework's own sentence as a `template`, with the field's label written in and `{name}` markers for values such as numbers, plus the `params` that fill it. `message` is that sentence already filled. `field` and `code` are the framework's own, passed through unchanged: Laravel's rule name, Pydantic's error `type`, Django's `code`.
+
+```ts
+import { renderServerMessage, resolveServerMessages } from 'langsys-js-typescript';
+
+const res = await fetch('/api/signup', { method: 'POST', body });
+if (!res.ok) {
+    for (const entry of resolveServerMessages(await res.json(), { key: 'langsys_errors' })) {
+        showError(entry.field, renderServerMessage(entry));
+    }
+}
+```
+
+- **`resolveServerMessages(body, { key })`** reads the entries at the path your server attaches them under, which is the same setting as the server's. Nothing else in the body is read or changed. If your entries use other piece names, map them with `pieces: { template: 'sentence', … }`. Pass `{ resolver }` to build entries from the body yourself. With neither `key` nor `resolver` it throws, because it has nowhere to look.
+- **`renderServerMessage(entry, category?)`** renders the entry's `template` through `t()`, filled from its `params`, in the current locale. When the catalog has no translation for the template it shows the entry's `message`, which is the framework's own text. An entry with no `template` shows its `message` and is not looked up. `message` itself is never looked up. A count param drives an ICU plural in the translation with no ICU in your code.
+- **Branch on `code`, never on text.** It is your framework's identifier, so the logic you already have keeps working, whatever language the text is in.
+- **Category.** Templates are registered and rendered under `Errors`. If your server uses another category, set the same one with `messagesCategory` in `LangsysApp.init`, or every lookup misses.
+
+`templateMarkers`, `fillTemplate`, `resolveServerMessages` and `toServerMessage` are also exported from `langsys-js-typescript/pure`, with no DOM.
+
+## Catalog snapshots
+
+A snapshot is a project's catalog for chosen locales and categories, exported to a file. A mobile bundle, a first paint or an offline session can then render translations without calling the API. Any Langsys SDK's export tool writes the same `langsys-catalog-snapshot` format, and this SDK loads it synchronously:
+
+```ts
+import snapshot from './langsys-snapshot.json';
+
+LangsysApp.loadSnapshot(snapshot);        // before first render; returns false if it has no catalog for the locale
+t('Save', 'UI');                          // → "Guardar", on the next line
+```
+
+The locale is the user's current one, else the snapshot's base locale, or pass it as the second argument. The snapshot is a cache, not the catalog of record. `init()` still fetches the catalog, which replaces it and supplies any phrase it lacked. Registration waits for that live catalog too: nothing is registered, or skipped, on the snapshot's say-so. With no network the snapshot keeps rendering, and anything it lacks shows its source text.
+
+Never edit a snapshot by hand; export it again. Its checksum covers the contents, so an edited file is refused with a `SnapshotError`, as are a different format, an unsupported version and a missing member. `buildSnapshot` writes the format for an export tool of your own. It and `parseSnapshot` are also on `langsys-js-typescript/pure`.
 
 ## Server-Side Rendering
 
@@ -277,9 +549,9 @@ await LangsysApp.init({
     projectid: env.LANGSYS_PROJECT_ID,
     key: env.LANGSYS_API_KEY,
     UserLocaleStore: userLocale,
-    baseLocale: 'en-US',
+    baseLocale: 'en-us',
     initialTranslations,                       // fetched on the server
-    initialTranslationsLocale: 'es-ES',
+    initialTranslationsLocale: 'es-es',
     ssrTokenStrategy: 'client',                // 'client' | 'server' | 'auto'
 });
 ```
@@ -287,6 +559,130 @@ await LangsysApp.init({
 - `'client'` (default) — tokens discovered during SSR flush from the client after hydration.
 - `'server'` — flush tokens immediately from the server.
 - `'auto'` — small batches (≤5) flush from server, larger batches wait for the client.
+
+> **Precondition for `'server'`, and for the server half of `'auto'`: allow-list the origin server's address.**
+> Registration during a server render is sent from your server, not from the visitor's browser, so the write
+> decision is computed for your server's own address. If that address is not on the key's allow-list, the server
+> lane is read-only and fails silently: no error, no request, nothing in the catalog, and no discovery report
+> either, since reports are never sent during a server render. Allow-list the address your server makes requests
+> from before choosing `'server'` or `'auto'`, or keep the default `'client'`.
+
+### Rendering on a server: request scopes
+
+A server process renders for many visitors at once, and the SDK's catalog, locale and miss queue are module state, so each request renders inside a **request scope** of its own. A scope has its own locale, its own view of the catalog, its own misses and its own hydration seed, and nothing one scope does reaches another.
+
+```ts
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createRequestScope, setRequestScopeStorage } from 'langsys-js-typescript';
+
+setRequestScopeStorage(new AsyncLocalStorage());           // once, at startup
+
+// per request, in your framework's request hook:
+const scope = await createRequestScope({ locale: resolvedLocale, url: request.url });
+const html = await scope.run(() => renderApp());            // t(), Translate and Phrase resolve to the scope
+const seed = scope.seed();                                  // serialise into the page
+// ...send the response, then:
+await scope.close();                                        // sends what the render missed, after the response
+```
+
+On the client, hydrate with `LangsysApp.seedCatalog(seed.catalog, seed.locale, seed)`, before the DOM classes mount. The seed's blocks give each served block's source tokens, and its blocks and phrases are marked `collected` when the server sends them itself at `close()`; the client never registers those.
+
+- **`scopeFromSeed(seed)`** rebuilds the server's scope on the client, synchronously, from the seed the page carries: for a hydration render that must read what the server read, in a provider that cannot await. It sends nothing itself; its render's misses and blocks go to the page, which skips what the server collected.
+- **Wrap `scope.t`, not `tSignal.get()`.** The `t` that `tSignal.get()` returns inside `run()` reads the catalog when it is called, so a component calling it later, outside `run()`, reads the page's catalog. `scope.t` is the scope's wherever it is called.
+- **`createRequestScope({ locale, catalog?, url?, credentials? })`** resolves once the scope's catalog is in hand. That's the `catalog` you pass, or a fetch. A fetch is made at most once per request and shared read-only with scopes rendering the same locale under the same credentials for a minute. A failed fetch renders source text and records nothing.
+- **`credentials: { projectid, key, writeGrant? }`** is for a process that renders for more than one project. The scope's catalog fetch and its `close()` go out under them wherever they run, and so does every request the render makes, however renders interleave, once `setRequestScopeStorage` has an `AsyncLocalStorage`. Without one, only a request made before the render's first `await` sees the scope, and a later one goes out under the credentials `init()` set; pass `{ credentials }` to a `LangsysAppAPI` call you make there. Without `credentials` the scope sends under the credentials `init()` set, and the page's own requests always do. A process can call `init()` without credentials and give every scope its own: its `apiUrl` and `ssrTokenStrategy` still apply. The scope's write capability is its key's, as its catalog fetch reports it, so a scope given both a `catalog` and credentials has no answer for its key, and its `close()` resolves `not-write-enabled` and leaves the misses to the client. Both a project id and a key, or `createRequestScope` rejects with `LangsysConfigurationError`. They are never part of `seed()`.
+- **`setRequestScopeStorage`** is opt-in, and what it guarantees depends on the host's async model. Under zone.js, for one, promises don't carry it across concurrent renders. A binding can instead carry the scope through its own dependency injection and read `scope.t` directly.
+- **`scope.run(fn)`** makes the scope current while `fn` runs, for `t()` and for `currentlyLoadedLocale.get()` and `sTranslations.get()` alike, and returns what `fn` returns, a promise included. Without `setRequestScopeStorage`, only code that finishes synchronously inside `fn` sees the scope; `scope.t` always works.
+- **`scope.enter()`** makes the scope current for the rest of the current async context, for a host that cannot wrap its render in a function. It holds only in the continuation that itself performs the render: called inside a function the host awaits and returns from, such as a Nuxt plugin, a Nitro request hook or an awaited helper, the scope is gone when that function returns. So call `enter()` in the function that renders, use `run()` everywhere else, and hand the scope to the app through the framework's injection when the host awaits you. It needs the storage, and throws without it.
+- **`scope.close()`** runs after the response. It sends the scope's misses when the key may write and the strategy collects on the server (`'server'`, or `'auto'` for a short list), and otherwise leaves them to the client. Its result names what happened. It never throws.
+- `currentRequestScope()` returns the scope the current code runs in.
+
+Framework bindings wire this for you through their own request hooks.
+
+#### Content blocks without a DOM
+
+A server render, or a client render before mount, has no DOM for the `Translate` class to walk, and inside a request scope that class does nothing. Instead, render the block from its content as a tree:
+
+```ts
+import { renderBlock, registerBlock } from 'langsys-js-typescript';
+
+const content = [{ tag: 'p', children: [{ text: 'Compare every plan' }] }, { tag: 'p', children: [{ text: 'Cancel anytime' }] }];
+const { nodes, hostAttrs } = renderBlock(content, { category: 'Pricing' });   // synchronous, registers nothing
+registerBlock(content, { category: 'Pricing' });                               // discovery, deferred to scope.close()
+```
+
+On a server, `registerBlock` registers only inside a request scope. Outside one there is no scope to hold the block for `close()`, so it registers nothing, resolves at once, and says so in one debug notice.
+
+`renderBlock` returns the translated tree, the id, and `hostAttrs` to set on the host element: `data-ls-contentblock` always, and `data-ls-resolved` when the text came from the catalog in a non-base locale. Every element names its input element by `source`, its pre-order index, so a binding can re-attach handlers even where a translation reorders inline markup. `id` registers under your own `custom_id`; `customId` adopts a stamp the server rendered from the catalog. Nested hosts are marked the same way: a nested block gets its id, and a nested block or phrase host rendered from the catalog in a non-base locale gets `data-ls-resolved`. A nested host's element node can carry `params` of its own, `{ tag: 'span', attrs: { 'data-ls-phrase': true }, params: { name: owner.name }, children }`, which it renders with in place of the block's, so each unit names its values on its own and a nested phrase keys as it does standing alone.
+
+On the client, `applyRendered(element, rendered)` writes a rendered block into the existing nodes in place: text, translatable attributes and nested hosts' markers. It refuses with `reason: 'structure'` when the markup's shape differs. When the tree was rendered from the host element itself rather than its children, as a standalone phrase host is, pass `{ self: true }` and the element is matched against the tree's root. `blockNodesOf(element)` turns a DOM host's content into the tree.
+
+A page served translated holds the translation, and the catalog is keyed by source. Hand the scope's seed to the client with `seedCatalog`, as above, and register each block after `init()`:
+
+```ts
+for (const block of Object.values(seed.blocks)) registerBlock(block);   // registers nothing the server collected
+```
+
+That loop is for bindings that mount the DOM classes. A binding that renders trees registers each block from its nodes as it renders, and `registerBlock` skips what the seed marks `collected` there too.
+
+A `Translate` over a stamped host in a resolved scope then takes the block's source tokens from the seed, or, without one, from the catalog entry the served text was rendered from. After a locale switch, the host's own resolved marker names the locale it now holds. A `Phrase` over a resolved host takes its source phrase from the catalog the same way. Neither reads the source from the DOM, so a later locale switch renders that locale. A host whose source cannot be recovered keeps the text it was served with, and the core warns once.
+
+## The `/pure` subpath
+
+`langsys-js-typescript/pure` holds the rules that decide what is stored and how it renders, with no DOM: for a server, a worker, an edge runtime or a build script. Nothing it exports reads `window`, `document`, `navigator` or storage, at import or on any call, and importing it has no side effects. Code that registers or looks up content outside the browser derives the same ids, keys and output the browser does:
+
+```ts
+import { canonicalizeLocale, generateCustomId, interpolate } from 'langsys-js-typescript/pure';
+
+canonicalizeLocale('zh-Hant-TW');                                    // 'zh-hant-tw'
+generateCustomId('Pricing', ['Compare every plan', 'Cancel anytime']);   // the block's custom_id
+interpolate('{n, plural, one {# item} other {# items}}', { n: 3 }, 'en-us');   // '3 items'
+```
+
+What it exports:
+
+- **Ids and keys:** `generateCustomId`, `generateLegacyCustomId`, `canonicalContentBlockJson`, `encodeRichPhrase` (the `Phrase` encoder over a node shape of your own), `md5`, `md5Legacy`.
+- **What the tokenizer is built from:** `TRANSLATABLE_ATTRIBUTES`, `NON_TRANSLATABLE_ELEMENTS`, `isTranslationExcluded`, `normalizeTokenText`, `normalizeMarkupPlaceholders`, `stripC0Controls`.
+- **Marker attributes:** `PHRASE_MARKER_ATTR`, `PHRASE_MARKER_ATTR_LEGACY`, `PHRASE_MARKER_ATTRS`, `CONTENT_BLOCK_MARKER_ATTR`, `CONTENT_BLOCK_MARKER_ATTR_LEGACY`, `CONTENT_BLOCK_MARKER_ATTRS`, `RESOLVED_MARKER_ATTR`, `RESOLVED_MARKER_ATTR_LEGACY`, `RESOLVED_MARKER_ATTRS`, `VAR_PARAM_ATTR`.
+- **Locales:** `canonicalizeLocale`, `maximizedLangScript`.
+- **Interpolation and placeholders:** `interpolate`, `defaultedArguments`, `isICU`, `findUnusedParamKeys`, `derivePlaceholderNames`, `snakeCase`.
+- **Legacy keys:** `createLegacyKeys`, `convertLegacyValue`, `convertLegacyPluralForms`, `convertLegacyCall`, `LegacyFormatError`, `LEGACY_FORMATS`, `SUPPORTED_LEGACY_FORMATS`.
+- **Catalog snapshots:** `buildSnapshot`, `parseSnapshot`, `canonicalSnapshotJson`, `snapshotChecksum`, `SnapshotError`, `SNAPSHOT_FORMAT`, `SNAPSHOT_VERSION`.
+- **Server messages:** `resolveServerMessages`, `toServerMessage`, `templateMarkers`, `fillTemplate`, `DEFAULT_SERVER_MESSAGE_CATEGORY`.
+- **Utilities:** `isEmpty`.
+
+The DOM walkers (`tokenizeElement`, `encodeRichText`) and everything that sends a request are on the main entry only.
+
+## Variables in registered text
+
+A sentence that shows a value from a variable registers once, as a phrase with a `{placeholder}`, for every user. `Hello {name}` is one phrase; `Hello Ana` and `Hello Luis` would be two, and a phrase with no placeholder cannot be given plural or gendered forms.
+
+Where you call `t()` yourself, pass the value as a param: `t('Hello {name}', { name })`, or name it in a template tag, ``t`Hello ${{ name }}` ``. A tag names the placeholder by the key in snake_case, so ``t`Hello ${{ userName }}` `` registers `Hello {user_name}`, a different phrase from `t('Hello {userName}', { userName })`. A tag with a value that is not a one-key object returns its text as written: nothing in it is looked up, translated or registered.
+
+Where the text is rendered first and read afterwards (`<Translate>`, `<Phrase>`, server-rendered HTML), the emitter marks each printed value, and the SDK reads the mark back as the placeholder:
+
+```html
+<p>Hello <!--ls:name-->Ana<!--/ls-->, welcome back</p>
+<p>Hello <span data-ls-param="name">Ana</span>, welcome back</p>   <!-- where comments cannot be written -->
+```
+
+Both register `Hello {name}, welcome back` with `name` = `Ana` as its param, unless you pass `name` yourself. In a tree for `renderBlock`, the same marker is `{ comment: 'ls:name' }` … `{ comment: '/ls' }`. The framework bindings' build-time transforms emit these for you. The value is text only: an element inside the pair makes it ordinary markup. A unit holding nothing but markers registers nothing. The content a block registers with, which the Translation Manager shows, holds `Hello {name}, welcome back` as plain text: the marker and the value are gone, in either form.
+
+A translation that keeps each placeholder once and in order is written around the framework's own value node, so the framework's later updates to the value still show. A translation that moves or repeats one is written as a whole sentence with the value in it.
+
+Placeholder names come from the source expression (`derivePlaceholderNames`): `user.firstName` → `first_name`, `items.length` → `items_count`, `price.value` → `price`.
+
+A `Translate` or `Phrase` created with `register: false`, and `registerBlock(nodes, { register: false })`, renders from the catalog and registers nothing. A binding uses this for content it cannot name without its transform, and one debug notice says so. Such a block is a read on every path: under `requireCredentials` it never rejects.
+
+## Asking your own API for the user's language
+
+```ts
+import { localeHeaders } from 'langsys-js-typescript';
+
+await fetch('/api/orders', { headers: { ...localeHeaders() } });   // { 'Accept-Language': 'es-es' }
+```
+
+`localeHeaders()` names the locale the user chose, or the request scope's inside one, so an API that answers in the negotiated language answers in the user's.
 
 ## Detecting the user's preferred locale
 
@@ -305,17 +701,19 @@ const locale = LangsysApp.detectPreferredLocale(
 );
 ```
 
-The matcher tries an exact match first (`en-US`), then falls back to same-language-and-script matching using CLDR likely-subtags data (`es-MX` matches `es-ES`; `zh-TW` matches `zh-Hant` but never `zh-Hans` — cross-script fallbacks are deliberately refused). All results come back in BCP 47 canonical form (`en-US`, `zh-Hant-TW`). When you pass `supported` and none match, it falls back to the user's top preference (canonicalized); it returns `false` only when no preference can be determined at all.
+The matcher tries an exact match first (`en-us`), then falls back to same-language-and-script matching using CLDR likely-subtags data (`es-mx` matches `es-es`; `zh-tw` matches `zh-hant` but never `zh-hans` — cross-script fallbacks are deliberately refused). Results come back in the core's lowercase form (`en-us`, `zh-hant-tw`). When you pass `supported` and none match, it returns `false`, so `detectPreferredLocale(header, supported) || 'en-us'` reaches your default; without `supported` it returns the user's top preference, and `false` only when no preference can be determined at all.
 
 ## Localized country / currency / locale lists
 
 ```ts
-const countries    = await LangsysApp.getCountries();    // [{ code, label }, ...]
-const dialCodes    = await LangsysApp.getDialCodes();    // [{ country_code, dial_code, name }, ...]
+const countries    = await LangsysApp.getCountries();    // [{ code, label, eu }, ...]
+const dialCodes    = await LangsysApp.getDialCodes();    // [{ country_code, dial_code, name }, ...] — '34', 'Spain (+34)'
 const currencies   = await LangsysApp.getCurrencies();   // [{ code, name, symbol, ... }, ...]
 const locales      = await LangsysApp.getLocales();      // { LanguageName: [{ code, name }] }
-const localeName   = await LangsysApp.getLocaleNameWithLookup('es-ES', true, 'fr-FR'); // 'espagnol'
+const localeName   = await LangsysApp.getLocaleNameWithLookup('es-es', true, 'fr-fr'); // 'Espagnol'
 ```
+
+Each call takes an optional display locale, else the current one as `t()` serves it (inside a request scope, the scope's), normalised as `t()` normalises a locale (`iw-IL` is `he-il`), and answers the list named in it, with locale codes in the API's lowercase `xx-yy` form (`_` read as `-`) whatever format the organization writes them in. A list is read once per display locale and held for the core's lifetime, so a country field on every page of a server costs one request per locale for the process; concurrent calls share one request, and each call answers its own copy, safe to sort or edit. No call throws: a failed read answers an empty list (`{}` for `getLocales`) and logs why, and that list and locale are not asked again under the same credentials until the catalog's failure window has passed (3 seconds, doubling to 5 minutes). A display locale that is not shaped as a locale is refused with nothing sent, and an unconfigured client answers empty lists without a request, or rejects under `requireCredentials`; `getLocaleName` then answers `''`, or throws. `getLocalesData(locale, true)` and `refresh()` read the locale data again.
 
 ## The `Signal<T>` primitive
 
@@ -358,11 +756,19 @@ import type {
     ExtractParamKeys,
     ParamsFor,
     Signal,
+    WriteGrant,
+    RegistrationResult,
+    RequestScope,
+    BlockNode,
+    RenderedBlock,
 } from 'langsys-js-typescript';
 ```
 
 - `LangsysApp.init(config)` — initialize, returns an `iLangsysResponse`.
+- `LangsysApp.isConfigured()` — whether `init()` accepted a project id, an API key and a locale store.
+- `LangsysApp.setWriteGrant(grant)` (also top-level `setWriteGrant`) — supply or replace the write grant after `init()`, and re-authorize.
 - `LangsysApp.refresh()` — force-refetch translations for the current locale.
+- `LangsysApp.notifyNavigation()` — tell the SDK the route changed, so mounted content is looked up again for the new URL.
 - `LangsysApp.t` — current `TFunction` (getter; reads fresh state on every call).
 - `LangsysApp.translationsLoadingPromise` — resolves when the current locale's translations are ready.
 - `LangsysApp.detectPreferredLocale(header?, supported?)` — locale detection.
@@ -371,7 +777,23 @@ import type {
 - `LangsysApp.getCurrencies(inLocale?)` / `.getCurrencyName(code, inLocale?)`
 - `LangsysApp.getLocales(inLocale?)` / `.getLocalesFlat(inLocale?)` / `.getLocalesData(inLocale?, force?)`
 - `LangsysApp.getLocaleName(code, short?, inLocale?)` / `.getLocaleNameWithLookup(...)`
-- Top-level: `t`, `tSignal`, `currentlyLoadedLocale`, `sTranslations`, `LangsysAppAPI`, `Translate`, `createSignal`, `getValue`, `persist`, `interpolate`, `Logger`, `logger`, `md5`, `isEmpty`.
+- `LangsysApp.renderServerMessage(entry, category?)` — render a server message entry: its template through `t()`, or its `message` when there is no translation.
+- `LangsysApp.seedCatalog(catalog, locale, seed?)` — put a catalog in place synchronously, before mount, for hydration.
+- `LangsysApp.localeHeaders()` (also top-level `localeHeaders`) — `{ 'Accept-Language': … }` for the user's locale.
+- `interpolate(template, params?, locale?, options?)` — ICU and `{name}` interpolation; `options.onDefaulted` and `options.onFormatterFailure` hand its notices to a logger of your own. `defaultedArguments(template, params)` names the arguments a render would default.
+- `createRequestScope({ locale, catalog?, url?, credentials? })`, `setRequestScopeStorage(storage)`, `currentRequestScope()`, `scopeFromSeed(seed)` — render on a server with one visitor's state kept from the next (see *Rendering on a server*).
+- `renderBlock(nodes, options?)`, `registerBlock(nodesOrSeededBlock, options?)`, `tokenizeTree(nodes)`, `applyRendered(element, rendered, options?)`, `blockNodesOf(element)` — content blocks as trees, with no DOM (see *Content blocks without a DOM*).
+- `registerContentBlock(block)`, `tokenizeElement(element)`, `generateCustomId(category, tokens)`, `isContentBlockKnown(category, id)` — the content-block primitives `Translate` is built on (see *Registering a block yourself*).
+- `derivePlaceholderNames(expressions)` — placeholder names from source expressions, for a build-time transform.
+- `canonicalizeLocale(locale)` — the SDK's lowercase `xx-yy` form of a locale identifier.
+- `LangsysApp.loadSnapshot(snapshot, locale?)` — load a catalog snapshot synchronously as the preloaded catalog; the fetched catalog still replaces it.
+- `createLegacyKeys(files)` — the legacy-key resolver `t()` uses in migrate mode, for a server or bridge that reads its own files.
+- `resolveServerMessages(body, { key } | { resolver })` — the server message entries attached to a response body at the configured key.
+- `setTeardownSignal(subscribe)` — on a host with no `document` (React Native), supply the "app is going away" signal: `subscribe(fire)` returns an unsubscribe, and the SDK flushes what is queued when `fire` is called.
+- `setPersistStorage(storage)` — a synchronous storage for the catalog cache where there is no `localStorage`.
+- `writeEnabled`, `autoDiscovery` — the server's write decision for this session and whether the key may report pages for discovery (see *Write capability*).
+- `LangsysConfigurationError`, `SnapshotError`, `LegacyFormatError` — what an unconfigured write, a refused snapshot and an unreadable legacy file throw.
+- Top-level: `t`, `tSignal`, `notifyNavigation`, `renderServerMessage`, `resolveServerMessages`, `localeHeaders`, `setWriteGrant`, `currentlyLoadedLocale`, `sTranslations`, `writeEnabled`, `autoDiscovery`, `LangsysAppAPI`, `Translate`, `Phrase`, `createSignal`, `getValue`, `persist`, `interpolate`, `canonicalizeLocale`, `Logger`, `logger`, `md5`, `isEmpty`.
 
 ## License
 

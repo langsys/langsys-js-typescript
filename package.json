@@ -1,7 +1,7 @@
 {
     "name": "langsys-js-typescript",
-    "version": "0.6.5",
-    "description": "Framework-agnostic TypeScript SDK for Langsys translation management — realtime continuous translations with automatic token discovery.",
+    "version": "0.7.0",
+    "description": "Framework-agnostic TypeScript SDK for Langsys translation management \u2014 realtime continuous translations with automatic token discovery.",
     "author": "Langsys",
     "license": "MIT",
     "homepage": "https://github.com/langsys/langsys-js-typescript",
@@ -23,7 +23,17 @@
             "types": "./dist/index.d.ts",
             "import": "./dist/index.mjs",
             "require": "./dist/index.js"
-        }
+        },
+        "./pure": {
+            "types": "./dist/pure.d.ts",
+            "import": "./dist/pure.mjs",
+            "require": "./dist/pure.js"
+        },
+        "./browser": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/langsys.browser.mjs"
+        },
+        "./package.json": "./package.json"
     },
     "files": [
         "dist",
@@ -37,8 +47,12 @@
         "typecheck": "tsc --noEmit",
         "test": "vitest run",
         "test:watch": "vitest",
+        "test:no-clone": "vitest run --project no-clone",
         "prepublishOnly": "npm run build",
-        "release": "./_dev_/publish.sh"
+        "release": "./_dev_/publish.sh",
+        "verify:spec": "./_dev_/verify-spec-blob.sh",
+        "tally:conformance": "node _dev_/tally-conformance.mjs",
+        "pretest": "npm run build"
     },
     "keywords": [
         "i18n",

@@ -1,3 +1,105 @@
+## 0.7.0 - 2026-10-22
+
+### Upgrading from 0.6.x
+
+- **Write capability is the server's decision.** 0.6.x registered content whenever the key type was `write`; 0.7.0 registers only while the server's answer says `write_enabled: true`, and an answer without it counts as `false`. To do: make sure the server makes your session write-enabled, with a `write` key, an `ip_write` key from an allow-listed address, or a write grant.
+- **Read-only sessions report page URLs for discovery** where the key's `auto_discovery` policy allows it, never the page's text, so the discovery renderer can register what the page shows; 0.6.x sent nothing. Nothing to do.
+- **Some content-block ids and `<Phrase>` keys move**, through the changes marked *(moves ids)* or *(moves keys)* below. A moved block or phrase re-registers and shows source text until it is translated again, except a `<Phrase>` holding an excluded element, which keeps rendering its earlier translation. To do: nothing, except that vanilla code must construct a nested block's `Translate` first.
+- **Locale identifiers are lowercase:** `canonicalizeLocale` and `currentlyLoadedLocale` give `en-us` and `zh-hant-tw`, where 0.6.x gave `en-US` and `zh-Hant-TW`. To do: compare against the lowercase form.
+- **`registerContentBlock` no longer reports a skip as success:** it resolves `{ status: false, skipped: true, reason }` for a skip and `{ status: false, reason, errors }` for a failure. To do: treat only `status: true` as stored.
+- **The cached catalog is keyed by project and locale**, as `langsys:translations:{projectid}:{locale}`, so a page never shows another locale's or project's cached text. Nothing to do: the first load after upgrading fetches once more, and the old `translations` entry is removed.
+- **`detectPreferredLocale(header, supported)` returns `false` when nothing in `supported` matches**, not the user's own first preference. To do: add a fallback, as in `… || 'en-us'`.
+- **An unconfigured client rejects explicit writes:** without credentials, `LangsysAppAPI.post`, `put`, `patch`, `delete` and `createTranslatableItems` reject with `LangsysConfigurationError`, and a refused `init()` forgets the credentials an earlier one accepted. To do: write after a successful `init()`, or catch the error.
+- **`TFunction` has a template-tag signature,** `(strings: TemplateStringsArray, ...values: unknown[]) => string`, so a function you type as `TFunction` yourself, such as a test double or a wrapper, no longer compiles unless it accepts that call. To do: accept it, or cast with `as TFunction`.
+
+### What's new
+
+#### Write capability and discovery
+
+- **`writeEnabled` and `autoDiscovery` signals** expose the server's write decision, re-read from every catalog answer, and the key's reporting policy.
+- **Write grants** (`writeGrant` in `init()`, or `setWriteGrant()` later) let the server make a signed-in user's session write-enabled.
+- **A one-time warning when a `write` or `ip_write` key cannot write**, shown outside debug; a `read` key stays silent.
+- **Misses and blocks recorded before the server answers wait for its decision**, even a block mounted before `init()`.
+- **Missing phrases are coalesced for 400 ms**, sent within the server's batch limit, retried with back-off after a failure, and flushed with `keepalive` when the page is hidden.
+- **Discovery reports a page once per browser session**, after a random 5 to 30 second delay, without tracking parameters, and never a URL that carries a credential.
+- **`notifyNavigation()`** re-checks content that stays mounted across a route change, so its misses count for the new URL.
+- **`discovery_base_locale_only`**, a project setting, limits registration and discovery to the base locale.
+- **`data-ls-resolved`** on an element marks text a server already translated: nothing inside it is registered or reported.
+- **A one-time warning when a write grant turns off server-side collection.**
+
+#### Content blocks
+
+- **Code and notation are no longer harvested** *(moves ids)*: the contents of `<script>`, `<style>`, `<template>`, `<noscript>` and `<math>`. `<svg>` text is still translated.
+- **Attribute values collapse whitespace as text does** *(moves ids)*, and twelve attributes join the list: `data-confirm`, `data-tooltip`, `data-title`, `data-content`, `data-original-title`, `data-bs-title`, `data-bs-content`, `data-loading-text`, `data-success-message`, `data-warning-message`, `data-empty-message`, `data-placeholder`.
+- **C0 control characters are removed** *(moves ids and keys)* from text, attributes, `<Phrase>` strings and `t()` keys: U+0001 to U+0008, U+000B, U+000C and U+000E to U+001F.
+- **A nested content block is its own block** *(moves ids)*: an element carrying `data-ls-contentblock` gives the enclosing block none of its words and is never overwritten by it.
+- **A unit whose one token sits beside excluded content is a phrase** *(moves ids)*, as `<p>Hello <script>…</script></p>` registers `Hello`.
+- **`<Translate>` registers the content it settles on** *(moves ids)*: it waits until its structure has been quiet for 500 ms, so a fallback shown at mount never registers.
+- **A stamped `data-ls-contentblock` id is the block's id** *(moves ids)*, adopted without registering inside a resolved scope.
+- **`Translate` stamps its host with `data-ls-contentblock`**, and every marker constant is exported from both entries.
+- **Unmanaged marked hosts inside a `<Translate>` become units:** a `data-ls-phrase` host registers as one phrase, a block declaration as its own block.
+- **Content-block ids written by older versions and by the other Langsys SDKs keep resolving** on lookup; registration uses only the current id.
+- **`generateCustomId` treats `__uncategorized__` as no category.**
+
+#### Phrases and variables
+
+- **A marked variable registers as a placeholder:** `<!--ls:name-->Ana<!--/ls-->` or `data-ls-param="name"` reads as `{name}`, so every user shares one phrase. See the README's "Variables in registered text".
+- **`derivePlaceholderNames`** names placeholders from source expressions for binding transforms, beside `snakeCase` and `VAR_PARAM_ATTR`.
+- **`register: false`** renders from the catalog and registers nothing; `warnUnregistered` notes it at debug level.
+- **`t` is also a typed template tag:** ``t`Hello ${{ name }}` `` registers `Hello {name}`.
+- **An excluded element in a `<Phrase>` is an empty markup pair** *(moves keys)*, so a value inside `translate="no"` no longer makes one phrase per user.
+- **Debug notices** name an argument a gendered translation defaulted, and a phrase ending in an ellipsis.
+- **`localeHeaders()`** gives `{ 'Accept-Language': … }` for the current locale, for your app's own API calls.
+
+#### Reference lists
+
+- **Locale, country, dial-code and currency lists are held per display locale**, shared between concurrent calls and read from the API's current routes; 0.6.x re-read some on every call and held others for one locale.
+- **A failed list read answers empty** and waits 3 seconds, doubling to 5 minutes, before trying again; a malformed display locale is refused with a warning.
+
+#### Server rendering
+
+- **`langsys-js-typescript/pure`**, a side-effect-free subpath with the core's ids, tokenizing, locale, interpolation, snapshot, legacy-key and server-message functions, for servers and build tools. See the README's "The `/pure` subpath" for the list.
+- **`LangsysApp.seedCatalog()`** publishes a server-rendered catalog synchronously, before `init()`, so the first paint carries translations.
+- **Request scopes** (`createRequestScope`, `run`, `enter`, `close`, `setRequestScopeStorage`) keep each visitor's locale, catalog and misses apart on a server, under the scope's own credentials when given. See the README's "Rendering on a server: request scopes".
+- **`scopeFromSeed`**, `currentRequestScope` and `clearSharedCatalogs` complete the scope API.
+- **Content blocks without a DOM:** `renderBlock`, `registerBlock`, `tokenizeTree`, `applyRendered`, `blockNodesOf`, `serializeTree` and `warnUnrenderedBlock`.
+- **A block the server translated switches locale on the client** from its source.
+- **`LangsysApp.loadSnapshot()`** loads a catalog snapshot synchronously; an edited file is refused with a `SnapshotError`.
+- **`resolveServerMessages` and `renderServerMessage`** translate the messages a Langsys server SDK attaches to a framework's error body.
+- **`interpolate` options and `defaultedArguments`** hand its notices to a host's own logger.
+
+#### Migration from other i18n libraries
+
+- **`legacyKeys` in `init()`** resolves keys from your kept `i18next`, `vue-i18n` or `plain` files and registers their converted values, and a key with params typechecks. See the README's "Migrating from i18n keys".
+
+#### Configuration and platforms
+
+- **`LangsysApp.isConfigured()` and `requireCredentials`:** without credentials `t()` renders source text and sends nothing, or throws `LangsysConfigurationError` when credentials are required.
+- **`apiUrl`** in `init()` points the SDK at another API host.
+- **A `./browser` build** inlines every dependency for a page with no bundler, and `langsys-js-typescript/package.json` resolves.
+- **`setPersistStorage` and `setTeardownSignal`** give hosts without `localStorage` or `document`, such as React Native, a catalog cache and a teardown flush.
+
+### Fixed
+
+- **`Phrase` and `Translate` no longer hang** after a refused `init()` or authorization; they show source text.
+- **`Translate` re-renders on a catalog change**, and no longer overwrites the elements in single-token content, `<img alt>` and `<input placeholder>` included.
+- **Translated `<Phrase>` and `<option>` text goes into the existing nodes**, and an `<option>` follows every locale switch.
+- **ICU phrases render correctly:** one with no params shows its `other` branch, a Date or boolean param is written as text, a quoted element renders as itself, and one the formatter rejects still renders, with a warning.
+- **`%name%` placeholders resolve when rendering, and `<name>_gender` params typecheck**; `findUnusedParamKeys` counts both as used.
+- **`interpolate(template)` without params no longer throws**, and a phrase shaped like a 32-character hex id registers.
+- **A failed catalog fetch is not repeated on every locale emission**, a switch mid-load shows the new locale, and a first visit waits for its catalog before registering.
+- **An API outage triggers no re-registration**, and a registration answered after a locale switch keeps the new locale's translations.
+- **A historical content-block id is used only when its stored block holds the same phrases.**
+- **A content block has one registration request in flight per project and API key**; 0.6.5 sent one per `<Translate>` over it. An answer that arrives after a re-init under other credentials marks nothing known, so the block registers under the new project too.
+- **A block's registered `content` is its host's children**, inlining only the styles that differ from a bare element; 0.6.5 stored the host itself.
+- **`en-US-POSIX` canonicalises to `en-us-posix`**, the code the API holds, not `en-US-u-va-posix`.
+- **A catalog answer with a non-category member no longer crashes the fetch.**
+- **The flush timer runs only while something is queued**, not every 3 seconds forever.
+- **React Native persists the catalog and logs readably.**
+- **`getLocaleName` tells data not yet loaded from a locale not found.**
+
+Gianluca Capra found several of these fixes (PRs #2 and #3, issue #5).
+
 ## 0.6.5 - 2026-08-16
 
 ### Added

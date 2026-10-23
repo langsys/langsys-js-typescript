@@ -40,6 +40,12 @@ export function createSignal<T>(initial: T): Signal<T> {
     };
 
     const set = (next: T): void => {
+        // IDENTITY IS THE CHANGE SIGNAL. This guard is what makes
+        // `Translations.tSignal` require a FRESH `TFunction` per emit — see
+        // `translations.ts` where it is minted. Memoize that closure and this
+        // line silently swallows every emit: no subscriber fires, and every
+        // binding renders stale text with a correct catalog in the store.
+        // Pinned by `tfunction-identity.test.ts`.
         if (Object.is(value, next)) return;
         value = next;
         for (const run of subscribers) run(value);

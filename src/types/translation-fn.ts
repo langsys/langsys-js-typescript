@@ -21,18 +21,47 @@ export type ExtractParamKeys<S extends string> = S extends `${string}{${infer K}
     ? K | ExtractParamKeys<Rest>
     : never;
 
+/**
+ * Optional `<name>_gender` companions, one per placeholder. Langsys promotes a plain
+ * `{username}` to `{username_gender, select, …}` in gendered target locales, so the
+ * argument exists in the translation but never in the phrase you wrote. Optional because
+ * most apps don't know the gender; without it the neutral `other` branch renders.
+ * @example
+ *   GenderParamsFor<"{username} has been invited">  // { username_gender?: string }
+ */
+export type GenderParamsFor<S extends string> = {
+    [K in ExtractParamKeys<S> as `${K}_gender`]?: string;
+};
+
 /** Build the params object type required for a given phrase. */
 export type ParamsFor<S extends string> = {
     [K in ExtractParamKeys<S>]: ParamPrimitive;
-};
+} & GenderParamsFor<S>;
+
+/**
+ * Whether a phrase can be a legacy key (spec MIG-2): no whitespace and no
+ * placeholder, like `checkout.greet`. In the legacy-key mode such an argument
+ * resolves to a source value whose placeholders the call site cannot see, so its
+ * params are accepted rather than checked. A sentence is never key-shaped, so its
+ * placeholders stay checked. A phrase that is not a literal (`string`) is
+ * key-shaped too: nothing about its placeholders is known.
+ */
+export type KeyShaped<P extends string> = P extends `${string}${' ' | '\n' | '\t'}${string}`
+    ? false
+    : P extends `${string}{${string}`
+      ? false
+      : true;
 
 /**
  * Rest-tuple for the optional params argument.
- * Empty when the phrase has no placeholders → 3rd arg is forbidden.
- * Required tuple when the phrase has placeholders → 3rd arg must be passed.
+ * Placeholders in the phrase → the params they name must be passed.
+ * No placeholders, and the phrase is a sentence → no params.
+ * No placeholders, and the phrase is key-shaped → params are optional and free.
  */
 export type TArgs<P extends string> = [ExtractParamKeys<P>] extends [never]
-    ? []
+    ? KeyShaped<P> extends true
+        ? [params?: TranslationParams]
+        : []
     : [params: ParamsFor<P>];
 
 /** Loose params type — used inside generic stores where the phrase isn't a known literal. */
@@ -45,13 +74,22 @@ export type TranslationParams = Record<string, ParamPrimitive>;
  *   t('Save', 'UI')                               // categorized
  *   t('Hello, {name}!', { name: 'X' })            // no category, with params
  *   t('Hello, {name}!', 'Greetings', { name: 'X' }) // category + params
+ *   t('checkout.greet', { name: 'X' })            // a legacy key: params accepted
+ *   t`Hello, ${{ name }}!`                        // a template tag: `{name}`, with its value
  *
- * Two overloads discriminate on the type at position 2 (string → category,
- * object → params). `category` is required for the second overload —
+ * The two phrase overloads discriminate on the type at position 2 (string →
+ * category, object → params). `category` is required for the second overload —
  * pass any non-empty string. There is no "null category" wire concept:
  * absent category means absent.
+ *
+ * As a template tag, each value written as a one-key object is a placeholder
+ * named by its key in snake_case (`${{ userName }}` is `{user_name}`), with the
+ * value as its param. With any other value, the tag returns the rendered text
+ * as written: nothing is looked up, translated or registered. A tag takes no
+ * category.
  */
 export interface TFunction {
     <P extends string>(phrase: P, ...args: TArgs<P>): string;
     <P extends string>(phrase: P, category: string, ...args: TArgs<P>): string;
+    (strings: TemplateStringsArray, ...values: unknown[]): string;
 }

@@ -1,0 +1,625 @@
+[
+  {
+    "category": "Blog",
+    "tokens": [
+      "Hello",
+      "World"
+    ],
+    "note": "ASCII: the code-unit hash and a UTF-8 byte hash AGREE. Positive control — a byte-hash port passes this row, which is why ASCII-only coverage proves nothing",
+    "canonical_json": "[\"Blog\",[\"Hello\",\"World\"]]",
+    "codepoints": {
+      "category": [
+        "U+0042",
+        "U+006C",
+        "U+006F",
+        "U+0067"
+      ],
+      "tokens": [
+        [
+          "U+0048",
+          "U+0065",
+          "U+006C",
+          "U+006C",
+          "U+006F"
+        ],
+        [
+          "U+0057",
+          "U+006F",
+          "U+0072",
+          "U+006C",
+          "U+0064"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22426c6f67222c5b2248656c6c6f222c22576f726c64225d5d",
+    "legacy_custom_id": "e842b4fa43d2a813dded03f74d2ff5bf",
+    "pipe_join_custom_id": "4a6e5f26ed09234b889d8664e78f8ef8"
+  },
+  {
+    "category": "",
+    "tokens": [
+      "Hello",
+      "World"
+    ],
+    "note": "empty category slot",
+    "canonical_json": "[\"\",[\"Hello\",\"World\"]]",
+    "codepoints": {
+      "category": [],
+      "tokens": [
+        [
+          "U+0048",
+          "U+0065",
+          "U+006C",
+          "U+006C",
+          "U+006F"
+        ],
+        [
+          "U+0057",
+          "U+006F",
+          "U+0072",
+          "U+006C",
+          "U+0064"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22222c5b2248656c6c6f222c22576f726c64225d5d",
+    "legacy_custom_id": "129c7fff6e0191131fb4e45845b89550",
+    "pipe_join_custom_id": "529ca1eba836cfb401ed571ffcaf5823"
+  },
+  {
+    "category": "__uncategorized__",
+    "tokens": [
+      "Hello",
+      "World"
+    ],
+    "note": "sentinel slot: the other spelling an old path could have written",
+    "canonical_json": "[\"__uncategorized__\",[\"Hello\",\"World\"]]",
+    "codepoints": {
+      "category": [
+        "U+005F",
+        "U+005F",
+        "U+0075",
+        "U+006E",
+        "U+0063",
+        "U+0061",
+        "U+0074",
+        "U+0065",
+        "U+0067",
+        "U+006F",
+        "U+0072",
+        "U+0069",
+        "U+007A",
+        "U+0065",
+        "U+0064",
+        "U+005F",
+        "U+005F"
+      ],
+      "tokens": [
+        [
+          "U+0048",
+          "U+0065",
+          "U+006C",
+          "U+006C",
+          "U+006F"
+        ],
+        [
+          "U+0057",
+          "U+006F",
+          "U+0072",
+          "U+006C",
+          "U+0064"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b225f5f756e63617465676f72697a65645f5f222c5b2248656c6c6f222c22576f726c64225d5d",
+    "legacy_custom_id": "22e3ddde5a1d67c256323ece0f876aa9",
+    "pipe_join_custom_id": "a6165aa400b4f338a00c1a4b30989068"
+  },
+  {
+    "category": "a/b",
+    "tokens": [
+      "Café",
+      "e/mail"
+    ],
+    "note": "slash + Latin-1 accent",
+    "canonical_json": "[\"a/b\",[\"Café\",\"e/mail\"]]",
+    "codepoints": {
+      "category": [
+        "U+0061",
+        "U+002F",
+        "U+0062"
+      ],
+      "tokens": [
+        [
+          "U+0043",
+          "U+0061",
+          "U+0066",
+          "U+00E9"
+        ],
+        [
+          "U+0065",
+          "U+002F",
+          "U+006D",
+          "U+0061",
+          "U+0069",
+          "U+006C"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22612f62222c5b22436166c3a9222c22652f6d61696c225d5d",
+    "legacy_custom_id": "5049eaa4cebc35f262f73e6bf8e800c3",
+    "pipe_join_custom_id": "27e68a3d04bb9fc5f383f9be49bca999"
+  },
+  {
+    "category": "home",
+    "tokens": [
+      "Don’t miss out"
+    ],
+    "note": "U+2019 typographic apostrophe",
+    "canonical_json": "[\"home\",[\"Don’t miss out\"]]",
+    "codepoints": {
+      "category": [
+        "U+0068",
+        "U+006F",
+        "U+006D",
+        "U+0065"
+      ],
+      "tokens": [
+        [
+          "U+0044",
+          "U+006F",
+          "U+006E",
+          "U+2019",
+          "U+0074",
+          "U+0020",
+          "U+006D",
+          "U+0069",
+          "U+0073",
+          "U+0073",
+          "U+0020",
+          "U+006F",
+          "U+0075",
+          "U+0074"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22686f6d65222c5b22446f6ee2809974206d697373206f7574225d5d",
+    "legacy_custom_id": "1571508b698a5858661e298395cc327e",
+    "pipe_join_custom_id": "2d8ced5d54e730062fa592eb8c5a1f89"
+  },
+  {
+    "category": "home",
+    "tokens": [
+      "ǩa"
+    ],
+    "note": "U+01E9, just above Latin-1",
+    "canonical_json": "[\"home\",[\"ǩa\"]]",
+    "codepoints": {
+      "category": [
+        "U+0068",
+        "U+006F",
+        "U+006D",
+        "U+0065"
+      ],
+      "tokens": [
+        [
+          "U+01E9",
+          "U+0061"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22686f6d65222c5b22c7a961225d5d",
+    "legacy_custom_id": "c816aa5c3d809da240841cddf1e251df",
+    "pipe_join_custom_id": "7d0b268ded8ab5db9ba1c1f3123fd174"
+  },
+  {
+    "category": "home",
+    "tokens": [
+      "Mon–Fri"
+    ],
+    "note": "U+2013 en dash",
+    "canonical_json": "[\"home\",[\"Mon–Fri\"]]",
+    "codepoints": {
+      "category": [
+        "U+0068",
+        "U+006F",
+        "U+006D",
+        "U+0065"
+      ],
+      "tokens": [
+        [
+          "U+004D",
+          "U+006F",
+          "U+006E",
+          "U+2013",
+          "U+0046",
+          "U+0072",
+          "U+0069"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22686f6d65222c5b224d6f6ee28093467269225d5d",
+    "legacy_custom_id": "a2f3860c6b33aef448bee2b183fca698",
+    "pipe_join_custom_id": "2a633ee722a3be607760b2429e1f20bb"
+  },
+  {
+    "category": "ключ",
+    "tokens": [
+      "Привет"
+    ],
+    "note": "Cyrillic: DIVERGES from a UTF-8 byte hash",
+    "canonical_json": "[\"ключ\",[\"Привет\"]]",
+    "codepoints": {
+      "category": [
+        "U+043A",
+        "U+043B",
+        "U+044E",
+        "U+0447"
+      ],
+      "tokens": [
+        [
+          "U+041F",
+          "U+0440",
+          "U+0438",
+          "U+0432",
+          "U+0435",
+          "U+0442"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22d0bad0bbd18ed187222c5b22d09fd180d0b8d0b2d0b5d182225d5d",
+    "legacy_custom_id": "27adf2b801f51c3c364c8c4255d47c55",
+    "pipe_join_custom_id": "8f849f4a92bee34e8eaa46b281d392b2"
+  },
+  {
+    "category": "home",
+    "tokens": [
+      "日本語のテキスト"
+    ],
+    "note": "CJK: diverges",
+    "canonical_json": "[\"home\",[\"日本語のテキスト\"]]",
+    "codepoints": {
+      "category": [
+        "U+0068",
+        "U+006F",
+        "U+006D",
+        "U+0065"
+      ],
+      "tokens": [
+        [
+          "U+65E5",
+          "U+672C",
+          "U+8A9E",
+          "U+306E",
+          "U+30C6",
+          "U+30AD",
+          "U+30B9",
+          "U+30C8"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22686f6d65222c5b22e697a5e69cace8aa9ee381aee38386e382ade382b9e38388225d5d",
+    "legacy_custom_id": "0363c66e40a7c76b44bfecb88c35919c",
+    "pipe_join_custom_id": "219cd03238b7e63496a5fc3f0bbaee7b"
+  },
+  {
+    "category": "home",
+    "tokens": [
+      "Ελληνικά"
+    ],
+    "note": "Greek: diverges",
+    "canonical_json": "[\"home\",[\"Ελληνικά\"]]",
+    "codepoints": {
+      "category": [
+        "U+0068",
+        "U+006F",
+        "U+006D",
+        "U+0065"
+      ],
+      "tokens": [
+        [
+          "U+0395",
+          "U+03BB",
+          "U+03BB",
+          "U+03B7",
+          "U+03BD",
+          "U+03B9",
+          "U+03BA",
+          "U+03AC"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22686f6d65222c5b22ce95cebbcebbceb7cebdceb9cebaceac225d5d",
+    "legacy_custom_id": "62b146b0f9e99efa4a7a846c0d9b5bb0",
+    "pipe_join_custom_id": "160bc63999de8ddb4bb0476f907d46dc"
+  },
+  {
+    "category": "home",
+    "tokens": [
+      "עברית"
+    ],
+    "note": "Hebrew: diverges",
+    "canonical_json": "[\"home\",[\"עברית\"]]",
+    "codepoints": {
+      "category": [
+        "U+0068",
+        "U+006F",
+        "U+006D",
+        "U+0065"
+      ],
+      "tokens": [
+        [
+          "U+05E2",
+          "U+05D1",
+          "U+05E8",
+          "U+05D9",
+          "U+05EA"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22686f6d65222c5b22d7a2d791d7a8d799d7aa225d5d",
+    "legacy_custom_id": "565c92e8bdb336dc5c114cca87abe7bf",
+    "pipe_join_custom_id": "b6a3220ef4371b8ab90567f39bbc2653"
+  },
+  {
+    "category": "home",
+    "tokens": [
+      "العربية"
+    ],
+    "note": "Arabic: diverges",
+    "canonical_json": "[\"home\",[\"العربية\"]]",
+    "codepoints": {
+      "category": [
+        "U+0068",
+        "U+006F",
+        "U+006D",
+        "U+0065"
+      ],
+      "tokens": [
+        [
+          "U+0627",
+          "U+0644",
+          "U+0639",
+          "U+0631",
+          "U+0628",
+          "U+064A",
+          "U+0629"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22686f6d65222c5b22d8a7d984d8b9d8b1d8a8d98ad8a9225d5d",
+    "legacy_custom_id": "763ea4898d51dc0eef4ea78a5472f719",
+    "pipe_join_custom_id": "89249cb70e64e1376856b5980917851c"
+  },
+  {
+    "category": "home",
+    "tokens": [
+      "a😀b"
+    ],
+    "note": "non-BMP: the surrogate pair counts as TWO code units, shifting length and packing",
+    "canonical_json": "[\"home\",[\"a😀b\"]]",
+    "codepoints": {
+      "category": [
+        "U+0068",
+        "U+006F",
+        "U+006D",
+        "U+0065"
+      ],
+      "tokens": [
+        [
+          "U+0061",
+          "U+1F600",
+          "U+0062"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22686f6d65222c5b2261f09f988062225d5d",
+    "legacy_custom_id": "a4d28bcadad0c2601a83653ce5b2612a",
+    "pipe_join_custom_id": "ee52f9c11bea708fbf2769b51562b517"
+  },
+  {
+    "category": "home",
+    "tokens": [
+      "𝄞𝄞𝄞"
+    ],
+    "note": "non-BMP run",
+    "canonical_json": "[\"home\",[\"𝄞𝄞𝄞\"]]",
+    "codepoints": {
+      "category": [
+        "U+0068",
+        "U+006F",
+        "U+006D",
+        "U+0065"
+      ],
+      "tokens": [
+        [
+          "U+1D11E",
+          "U+1D11E",
+          "U+1D11E"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b22686f6d65222c5b22f09d849ef09d849ef09d849e225d5d",
+    "legacy_custom_id": "7488c34c425b0df09725842ce1bf7502",
+    "pipe_join_custom_id": "123991bda4410901edf8f4d5be8cbe90"
+  },
+  {
+    "category": "Legal",
+    "tokens": [
+      "line one line two",
+      "para break"
+    ],
+    "note": "U+2028/U+2029 emitted raw by JSON.stringify",
+    "canonical_json": "[\"Legal\",[\"line one line two\",\"para break\"]]",
+    "codepoints": {
+      "category": [
+        "U+004C",
+        "U+0065",
+        "U+0067",
+        "U+0061",
+        "U+006C"
+      ],
+      "tokens": [
+        [
+          "U+006C",
+          "U+0069",
+          "U+006E",
+          "U+0065",
+          "U+0020",
+          "U+006F",
+          "U+006E",
+          "U+0065",
+          "U+2028",
+          "U+006C",
+          "U+0069",
+          "U+006E",
+          "U+0065",
+          "U+0020",
+          "U+0074",
+          "U+0077",
+          "U+006F"
+        ],
+        [
+          "U+0070",
+          "U+0061",
+          "U+0072",
+          "U+0061",
+          "U+2029",
+          "U+0062",
+          "U+0072",
+          "U+0065",
+          "U+0061",
+          "U+006B"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b224c6567616c222c5b226c696e65206f6e65e280a86c696e652074776f222c2270617261e280a9627265616b225d5d",
+    "legacy_custom_id": "140b231f7c47772e478395cf1c35543d",
+    "pipe_join_custom_id": "3ee89f026f424cec5d90fff02797364d"
+  },
+  {
+    "category": "UI",
+    "tokens": [
+      "xxxA"
+    ],
+    "note": "CODE-UNIT COLLISION pair A — collides with the next row under md5Legacy",
+    "canonical_json": "[\"UI\",[\"xxxA\"]]",
+    "codepoints": {
+      "category": [
+        "U+0055",
+        "U+0049"
+      ],
+      "tokens": [
+        [
+          "U+0078",
+          "U+0078",
+          "U+0078",
+          "U+0041"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b225549222c5b2278787841225d5d",
+    "legacy_custom_id": "ba623bfd68d7c2b3fd3a63854bc5cd9d",
+    "pipe_join_custom_id": "8aa0748a0029cbcabc359bcdfc1af04d"
+  },
+  {
+    "category": "UI",
+    "tokens": [
+      "xxxŁ"
+    ],
+    "note": "CODE-UNIT COLLISION pair B — the UTF-16 packing loses a byte at every fourth position. NOTE: the collision is a property of the FINAL hashed string, so changing the category moves every character into different lanes and it disappears",
+    "canonical_json": "[\"UI\",[\"xxxŁ\"]]",
+    "codepoints": {
+      "category": [
+        "U+0055",
+        "U+0049"
+      ],
+      "tokens": [
+        [
+          "U+0078",
+          "U+0078",
+          "U+0078",
+          "U+0141"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b225549222c5b22787878c581225d5d",
+    "legacy_custom_id": "ba623bfd68d7c2b3fd3a63854bc5cd9d",
+    "pipe_join_custom_id": "fda390755f2583628f171ff44e735c06"
+  },
+  {
+    "category": "UI|Buy now",
+    "tokens": [],
+    "note": "PIPE COLLISION pair A — collides with the next row under the pipe-join scheme (see pipe_join_custom_id), NOT under md5Legacy",
+    "canonical_json": "[\"UI|Buy now\",[]]",
+    "codepoints": {
+      "category": [
+        "U+0055",
+        "U+0049",
+        "U+007C",
+        "U+0042",
+        "U+0075",
+        "U+0079",
+        "U+0020",
+        "U+006E",
+        "U+006F",
+        "U+0077"
+      ],
+      "tokens": []
+    },
+    "serialized_utf8_hex": "5b2255497c427579206e6f77222c5b5d5d",
+    "legacy_custom_id": "6a2aa02fc3dfab28dd9706e34c9a3836",
+    "pipe_join_custom_id": "73f51ed6ee89b192e6fc737ecf282224"
+  },
+  {
+    "category": "UI",
+    "tokens": [
+      "Buy now"
+    ],
+    "note": "PIPE COLLISION pair B — joining on an unescaped delimiter loses the field boundary",
+    "canonical_json": "[\"UI\",[\"Buy now\"]]",
+    "codepoints": {
+      "category": [
+        "U+0055",
+        "U+0049"
+      ],
+      "tokens": [
+        [
+          "U+0042",
+          "U+0075",
+          "U+0079",
+          "U+0020",
+          "U+006E",
+          "U+006F",
+          "U+0077"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b225549222c5b22427579206e6f77225d5d",
+    "legacy_custom_id": "4054bf4612bde8b50244d17eb38a928d",
+    "pipe_join_custom_id": "73f51ed6ee89b192e6fc737ecf282224"
+  },
+  {
+    "category": null,
+    "tokens": [
+      "Hello"
+    ],
+    "note": "untyped caller: generateLegacyCustomId does not coalesce, so this serializes as [null,...]",
+    "canonical_json": "[null,[\"Hello\"]]",
+    "codepoints": {
+      "category": null,
+      "tokens": [
+        [
+          "U+0048",
+          "U+0065",
+          "U+006C",
+          "U+006C",
+          "U+006F"
+        ]
+      ]
+    },
+    "serialized_utf8_hex": "5b6e756c6c2c5b2248656c6c6f225d5d",
+    "legacy_custom_id": "070da110d929eba925663cc6d431c264",
+    "pipe_join_custom_id": null
+  }
+]

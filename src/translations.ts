@@ -1,9 +1,17 @@
-import { LangsysAppAPI } from './api.js';
+import { LangsysAppAPI, type LangsysConfigurationError } from './api.js';
+import { recordMissForDiscovery } from './discovery.js';
+import { isServerCollectedPhrase } from './served-source.js';
+import { warnUnregistered } from './notices.js';
+import { derivePlaceholderNames } from './var-names.js';
+import { _registerTeardownFlush } from './teardown.js';
+import { stripC0Controls } from './identity.js';
 import { interpolate } from './interpolate.js';
+import { activeCatalog, activeScope } from './scope-context.js';
+import { createLegacyKeys, type LegacyKeyFile, type LegacyKeys } from './legacy-keys.js';
 import { canonicalizeLocale } from './locale.js';
-import { Logger } from './logger.js';
+import { Logger, logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
-import { currentlyLoadedLocale, sTranslations } from './stores.js';
+import { batchLimit, catalogScopeOf, catalogUnavailable, pageCatalog, pageLocale, currentlyLoadedLocale, discoveryBaseLocaleOnly, navigationEpoch, scopeCatalogCache, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
 import type { TFunction } from './types/translation-fn.js';
@@ -13,6 +21,45 @@ interface iTokenUpdate {
     projectid: string;
     category: string;
     token: string;
+}
+
+/**
+ * `'auto'` SSR strategy: flush from the server while the queue is at or below
+ * this size. Above it, `'auto'` defers to the client — which cannot receive the
+ * queue across a real process boundary (see `shouldQueueForWrite`), so we also
+ * stop collecting at that point rather than retaining tokens nothing will send.
+ */
+export const AUTO_SSR_FLUSH_THRESHOLD = 5;
+
+/**
+ * Client-side flush debounce. Long enough that a burst of misses from one
+ * render coalesces into a single POST, short enough that late-arriving content
+ * is still registered inside the discovery renderer's post-scroll grace window.
+ */
+export const CLIENT_FLUSH_DEBOUNCE_MS = 400;
+
+/** Backstop period. Only runs while something is queued — see `ensureBackstop`. */
+const BACKSTOP_INTERVAL_MS = 3000;
+
+/**
+ * Exponential backoff for a failing registration endpoint.
+ *
+ * A failed send leaves its batch queued so it can be retried — but the 3s
+ * interval then retries unconditionally, so a persistently failing server
+ * (a misconfigured CSRF rule, an outage, an expired key) gets a request every
+ * 3 seconds for as long as the page is open, with the payload growing as new
+ * misses accumulate. That is the same client-side amplification this feature's
+ * hint lane goes to some length to prevent, on the lane that never got it.
+ */
+export const RETRY_BACKOFF_BASE_MS = 3_000;
+const RETRY_BACKOFF_MAX_MS = 300_000;
+
+/**
+ * CACHE-2's window after the `failures`th failed read in a row of one catalog pair, or of one
+ * reference list and display locale (REF-1): 3s, 6s, 12s … capped at 5 minutes.
+ */
+export function failureWindowMs(failures: number): number {
+    return Math.min(RETRY_BACKOFF_BASE_MS * 2 ** (failures - 1), RETRY_BACKOFF_MAX_MS);
 }
 
 function isObject(test: unknown): test is Record<string, unknown> {
@@ -32,14 +79,142 @@ function sameToken(a: iTokenUpdate, b: iTokenUpdate): boolean {
  *    every time translations or the loaded locale change) so reactive
  *    templates re-render automatically.
  */
+/**
+ * OBS-1 — say once, above debug level, when a key that is supposed to write
+ * cannot write from here.
+ *
+ * Module-scope so the ONE latch is shared by both channels that learn about
+ * capability: `authorize-project` at init, and the envelope on every catalog
+ * fetch. Two latches would let the same condition be announced twice, and a
+ * latch on only one channel is how the mid-session transition went silent.
+ *
+ * Only for a key type EXPECTED to write. A `read` key resolving read-only is
+ * correct, not a misconfiguration, and warning on every ordinary site is how
+ * this becomes the notice everyone silences — taking the `ip_write` case with
+ * it. Latched on the OUTCOME, so a change in the answer speaks again while a
+ * repeat of the same answer stays quiet.
+ */
+let capabilityNoticeSignature: string | null = null;
+
+export function noticeUnusableWriteCapability(enabled: boolean, keyType: string | undefined): void {
+    const signature = `${keyType ?? 'unknown'}:${enabled}`;
+    if (signature === capabilityNoticeSignature) return;
+    capabilityNoticeSignature = signature;
+
+    if (enabled || (keyType !== 'write' && keyType !== 'ip_write')) return;
+
+    logger.warn(
+        `Langsys: this session cannot write. The key is '${keyType}', but the server's answer did not ` +
+            `make this request write-enabled — so missing phrases will NOT be registered and nothing ` +
+            `will appear in the Translation Manager. For an 'ip_write' key this usually means the address ` +
+            `is not allow-listed; otherwise supply a write grant via LangsysApp.setWriteGrant(). Page URLs ` +
+            `may still be reported for discovery if auto_discovery is enabled for this key.`
+    );
+}
+
+/**
+ * The write decision a catalog answer carries. The API sends it on every answer, and one
+ * without it is not write-enabled, exactly as if it said false (GATE-8). A failed read
+ * answers nothing about it, so the decision already held stays.
+ */
+export function answeredWriteDecision(response: { errors?: unknown; write_enabled?: unknown }): boolean | undefined {
+    if (typeof response.write_enabled === 'boolean') return response.write_enabled;
+    return response.errors ? undefined : false;
+}
+
+/** Test seam — the latch is module state and must not leak between cases. */
+export function _resetCapabilityNotice(): void {
+    capabilityNoticeSignature = null;
+}
+
+/**
+ * SSR-2: when a configured write grant stops a server render from collecting, say so,
+ * outside debug.
+ *
+ * The degradation itself was already right. Under a grant, write capability is
+ * per-user, and a process-wide server queue cannot carry it, so `shouldQueueForWrite`
+ * refuses to collect and the browser collects after hydration instead. But it did
+ * that with a silent `return false`, and the only trace was a debug-gated log. A
+ * production site that configured a grant lost server-side collection without a
+ * word, and the rule's title says the degradation is loud.
+ *
+ * Latched ONCE per process. The cause is the process's configuration, not any
+ * particular miss, so repeating it on every miss would be noise, and noise is how a
+ * warning gets silenced. It fires only for a strategy that would otherwise have
+ * collected; under `'client'` nothing was degraded.
+ */
+let ssrGrantNoticeGiven = false;
+
+export function noticeSsrGrantDegradation(strategy: string): void {
+    if (ssrGrantNoticeGiven) return;
+    ssrGrantNoticeGiven = true;
+    logger.warn(
+        `Langsys: a write grant is configured, so this server render does not collect missing phrases ` +
+            `(ssrTokenStrategy '${strategy}' is degraded to 'client'). Under a grant, write capability is ` +
+            `per-user and a process-wide server queue cannot carry it, so missing phrases are collected in the ` +
+            `browser after hydration instead.`
+    );
+}
+
+/** Where `t()` reads and records: the page's state, or a request scope's (SRV-7). */
+export interface CatalogView {
+    catalog(): iCategories;
+    locale(): string;
+    miss(category: string, key: string, onlyForRegistration: boolean): void;
+    fromSnapshot(): boolean;
+}
+
+/** Test seam — module state, and must not leak between cases. */
+export function _resetSsrGrantNotice(): void {
+    ssrGrantNoticeGiven = false;
+}
+
 export class Translations {
     private config: iLangsysConfig;
     private locale: string;
     private lastLoaded: Record<string, number> = {};
     private missingTokens: iTokenUpdate[] = [];
+    /** Phrases already reported under REG-11, so the warning fires once each. */
+    private warnedEllipsis = new Set<string>();
+    /** The legacy-key mode (MIG-1): null unless configured, and then `t()` does no key lookup at all. */
+    private legacyKeys: LegacyKeys | null = null;
+    private warnedLegacy = new Set<string>();
     private timer: ReturnType<typeof setInterval> | null = null;
+    /**
+     * Catalog fetches still in flight. While any is, queued tokens are held: the flush
+     * deduplicates against the catalog, and the catalog being fetched is not there yet.
+     */
+    private catalogFetchesInFlight = 0;
+    /**
+     * The published catalog is a snapshot, not the live catalog (SNAP-2). Lookups
+     * read it, but registration is decided only against the live catalog
+     * (REG-13), so until one arrives every phrase is queued and the queue is held.
+     */
+    private catalogFromSnapshot = false;
+    /**
+     * CACHE-2: a failed catalog fetch, remembered per project and locale. Until `retryAt` a
+     * lookup for that pair renders source text and nothing is fetched. The window follows
+     * REG-8's clock on the read side: 3s, doubling on each consecutive failure to 5 minutes,
+     * cleared by the first success. Held on this instance, so it lasts the page session in a
+     * browser and the life of the server object on a server, and is never written anywhere.
+     */
+    private catalogFailures = new Map<string, { failures: number; retryAt: number }>();
+    /** CACHE-2: a catalog request in flight per project and locale, shared by concurrent fetches. */
+    private catalogRequests = new Map<string, Promise<boolean>>();
     private flushScheduled = false;
+    private updateInFlight = false;
+    private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    private consecutiveFailures = 0;
+    /** Epoch ms before which no send may be attempted. See RETRY_BACKOFF_*. */
+    private retryNotBefore = 0;
+    private teardownInstalled = false;
+    /** Unregisters this instance from an injected teardown signal (`setTeardownSignal`). */
+    private releaseTeardownFlush: (() => void) | null = null;
     private isFirstClientRun = true;
+    /** Process-level write decision for the SSR lane. See `canWrite`. */
+    private ssrWriteEnabled: boolean | undefined = undefined;
+    /** Thrown by `t()` when `init()` was refused for missing credentials under `requireCredentials`. */
+    private credentialsError: LangsysConfigurationError | null = null;
     private readyResolve: () => void = () => {};
     private readyPromise: Promise<void> = new Promise((resolve) => {
         this.readyResolve = resolve;
@@ -54,9 +229,44 @@ export class Translations {
         this.debug = new Logger(!!config.debug);
         this.locale = canonicalizeLocale(config.baseLocale || '');
 
+        // A FRESH closure per emit, and that is a contract, not an accident.
+        // `Signal.set` drops a value that is `Object.is`-equal to the current
+        // one (`signal.ts`), so identity IS the change signal every binding
+        // subscribes to. Memoizing `buildTFn` — the obvious optimization, since
+        // the closure body never varies — makes every `set` a no-op: no
+        // subscriber fires, nothing throws, and every consumer renders stale
+        // text while the correct catalog sits in the store.
+        //
+        // The closure reads `sTranslations` at CALL time, so a stable reference
+        // would still return fresh values to anyone who called it. That is what
+        // makes the failure so quiet: `t()` is right, and nobody re-renders to
+        // ask it. Pinned by `tfunction-identity.test.ts`.
         this.tSignal = createSignal<TFunction>(this.buildTFn());
         sTranslations.subscribe(() => this.tSignal.set(this.buildTFn()));
         currentlyLoadedLocale.subscribe(() => this.tSignal.set(this.buildTFn()));
+
+        // Misses collected before authorization resolved (or before a write
+        // grant arrived) are held, not dropped — flush them the moment the
+        // session turns out to be write-enabled.
+        writeEnabled.subscribe((enabled) => {
+            if (!this.missingTokens.length) return;
+            if (enabled === true) {
+                this.scheduleTokenFlush();
+            } else if (enabled === false && !LangsysAppAPI.hasWriteGrant()) {
+                // Authorization came back read-only and no grant can change
+                // that, so these can never be sent. They were recorded by the
+                // discovery lane when they missed, so releasing them loses
+                // nothing and keeps a long-lived session from holding a queue
+                // that will never drain.
+                this.debug.log(`Releasing ${this.missingTokens.length} held tokens (session is read-only)`);
+                this.missingTokens = [];
+                // Nothing will ever be queued again on this session, so the
+                // backstop has nothing left to back up. Without this it keeps
+                // ticking every 3s for the life of the page: `updateTokens`
+                // returns early on an empty queue, before reaching the disarm.
+                this.stopBackstop();
+            }
+        });
 
         if (config.key && config.projectid) this.setup(config);
     }
@@ -70,6 +280,79 @@ export class Translations {
      */
     public ready(): Promise<void> {
         return this.readyPromise;
+    }
+
+    /**
+     * Resolve `ready()` without a catalog, for the paths where none is coming:
+     * `init` refused the config, or authorization failed.
+     *
+     * `Phrase` and `Translate` both await this gate before rendering, so
+     * leaving it pending on those paths is not a degraded mode — it is a
+     * permanent blank render, with no error, on the commonest misconfigurations
+     * there are. Settling makes them fall back to their source text, which is
+     * what an SDK that cannot reach its backend should show.
+     *
+     * Idempotent. A later successful load still updates the stores and
+     * re-renders every subscriber.
+     */
+    public settle(): void {
+        this.readyResolve();
+    }
+
+    /**
+     * WIRE-4: `init()` was refused for missing credentials. Reads render source through the
+     * catalog-failed path, so no miss is recorded and nothing is sent; and the capability
+     * settles as not writable, so nothing waits on it, and the read-only release drops what
+     * an earlier render queued, since it can never be sent. With `requireCredentials`, `t()`
+     * throws `error`.
+     */
+    public markUnconfigured(error: LangsysConfigurationError, requireCredentials: boolean): void {
+        this.credentialsError = requireCredentials ? error : null;
+        this.settleNotWritable();
+        catalogUnavailable.set(true);
+        this.settle();
+    }
+
+    /**
+     * Under `requireCredentials`, throw the configuration error while the client is
+     * unconfigured (WIRE-4). `t()` calls it, and so does `Translate`'s render, whose
+     * multi-phrase blocks never reach `t()`.
+     */
+    public assertConfigured(): void {
+        if (this.credentialsError) throw this.credentialsError;
+    }
+
+    /** `init()` accepted credentials: undo an earlier refusal, so the first catalog decides afresh. */
+    public markConfigured(): void {
+        if (this.credentialsError === null && !catalogUnavailable.get()) return;
+        this.credentialsError = null;
+        catalogUnavailable.set(false);
+    }
+
+    /**
+     * The capability is known to be "no": the client has no credentials, or authorization was
+     * refused. Without this a block registration waiting for the capability would wait forever.
+     */
+    public settleNotWritable(): void {
+        setWriteEnabled(false);
+        if (typeof window === 'undefined') this.ssrWriteEnabled = false;
+    }
+
+    /**
+     * A route change re-enters the SDK (HINT-13). Call it from the router's after-navigation
+     * hook. It publishes a fresh `t` through `tSignal` — the same dependency a locale change
+     * advances — so a component bound to `t` re-renders its mounted nodes, and each miss is
+     * recorded at the URL the page is now on. The core's own `Translate` and `Phrase` re-enter
+     * too, but only while their host is attached to the document, so an instance left
+     * undestroyed on a removed node records nothing.
+     *
+     * It sends nothing itself. What follows is the ordinary miss path: one report per URL,
+     * the jitter, the decline rules, GATE-9 and GATE-10 all apply, and a phrase already queued
+     * or registered is not queued again. Calling it twice for the same URL reports nothing more.
+     */
+    public notifyNavigation(): void {
+        navigationEpoch.set(navigationEpoch.get() + 1);
+        this.tSignal.set(this.buildTFn());
     }
 
     /** Current translation function. Reads fresh state on every call. */
@@ -89,7 +372,7 @@ export class Translations {
      * a missing token — the DOM class manages its own lifecycle via content blocks.
      */
     public lookupContent(category: string, customId: string, token: string): string | null {
-        const cats = sTranslations.get();
+        const cats = activeCatalog();
         const lookupCat = category || '__uncategorized__';
         const contentData = cats[lookupCat]?.[customId];
         if (!contentData || typeof contentData !== 'object') return null;
@@ -104,9 +387,10 @@ export class Translations {
      * un-interpolated template (it supplies its own markup-token values).
      */
     public lookup(phrase: string, category: string): string | null {
-        const cats = sTranslations.get();
+        const cats = activeCatalog();
         const lookupCat = category || '__uncategorized__';
-        const value = cats[lookupCat]?.[phrase];
+        // The catalog key never carries a C0 control (TOK-2), on lookup as on register.
+        const value = cats[lookupCat]?.[stripC0Controls(phrase)];
         return typeof value === 'string' && value.length > 0 ? value : null;
     }
 
@@ -118,55 +402,251 @@ export class Translations {
         //   t(phrase, 'Category')                      → category='Category', params=undefined
         //   t(phrase, 'Category', {params...})         → category='Category', params={params}
         const fn = ((phrase: string, ...rest: unknown[]): string => {
-            const category = typeof rest[0] === 'string' ? rest[0] : '';
-            const params = (typeof rest[0] === 'object' ? rest[0] : rest[1]) as Record<string, unknown> | undefined;
-
-            const cats = sTranslations.get();
-            // '__uncategorized__' is a server-internal bucket name used only
-            // in GET /translations responses to group null-category phrases.
-            // We normalize to it for the local cats lookup (so we read from
-            // the same bucket the server writes to), but we MUST NOT leak
-            // the sentinel back into the missingToken queue — that queue
-            // feeds the POST wire payload, and clients are not allowed to
-            // send the reserved sentinel as a category.
-            const lookupCat = category || '__uncategorized__';
-            const value = cats[lookupCat]?.[phrase];
-
-            let translated: string;
-            if (typeof value === 'string' && value.length > 0) {
-                this.debug.log('TRANSLATION FOUND', [lookupCat, phrase, value]);
-                translated = value;
-            } else {
-                this.missingToken(category, phrase);
-                translated = phrase;
-            }
-
-            return params ? interpolate(translated, params, currentlyLoadedLocale.get()) : translated;
+            // Inside a request scope (SRV-7), the scope's catalog and miss collection,
+            // never the page's: the page's state is shared by every render in the process.
+            const scope = activeScope();
+            // A scope with credentials of its own is configured whatever the module is (SRV-2).
+            if (!scope?.credentials) this.assertConfigured();
+            if (scope) return scope.t(phrase, ...rest);
+            return this.renderWith(this.pageView, phrase, rest);
         }) as TFunction;
         return fn;
     }
 
-    private missingToken(category: string, token: string | undefined | null) {
+    /** The page's catalog, locale and miss queue: what `t()` uses outside every request scope. */
+    private readonly pageView: CatalogView = {
+        catalog: () => pageCatalog(),
+        locale: () => pageLocale(),
+        miss: (category, key, onlyForRegistration) => this.missingToken(category, key, onlyForRegistration),
+        fromSnapshot: () => this.catalogFromSnapshot,
+    };
+
+    /**
+     * The body of `t()` over a catalog view: the page's, or a request scope's
+     * (SRV-7). One implementation, so a scope looks up, converts legacy keys,
+     * strips C0 controls and interpolates exactly as the page does, and differs
+     * only in whose catalog it reads and whose misses it records.
+     */
+    public renderWith(view: CatalogView, phrase: string, rest: unknown[]): string {
+        // A tagged template, t`Hello ${{ name }}`: each value named by its object's one key
+        // becomes a placeholder with the value as its param (VAR-1, VAR-2). A value that
+        // cannot be named is rendered but never registered (VAR-7).
+        if (isTemplateStrings(phrase)) {
+            const tagged = fromTaggedTemplate(phrase, rest);
+            if (tagged.phrase === null) {
+                warnUnregistered('tagged-template');
+                return tagged.text;
+            }
+            phrase = tagged.phrase;
+            rest = [tagged.params];
+        }
+        let category = typeof rest[0] === 'string' ? rest[0] : '';
+        const params = (typeof rest[0] === 'object' ? rest[0] : rest[1]) as Record<string, unknown> | undefined;
+
+        // In the legacy-key mode the argument is resolved as a key first (MIG-2):
+        // a hit becomes the key's converted source value, never the key string.
+        if (this.legacyKeys) ({ phrase, category } = this.resolveLegacyKey(phrase, category));
+
+        const cats = view.catalog();
+        // '__uncategorized__' is a server-internal bucket name used only
+        // in GET /translations responses to group null-category phrases.
+        // We normalize to it for the local cats lookup (so we read from
+        // the same bucket the server writes to), but we MUST NOT leak
+        // the sentinel back into the missingToken queue — that queue
+        // feeds the POST wire payload, and clients are not allowed to
+        // send the reserved sentinel as a category.
+        const lookupCat = category || '__uncategorized__';
+        const bucket = cats[lookupCat];
+
+        // KEY PRESENCE, not truthiness. Three states, and the middle one is
+        // common rather than exotic:
+        //   1. key absent            — never seen. A genuine miss.
+        //   2. key present, value null — registered, translation still being
+        //      produced by MT (a minute or two).
+        //   3. key present, non-empty  — translated.
+        // States 2 and 3 both render the source-text fallback, but only
+        // state 1 may register/report. Collapsing 2 into 1 would make every
+        // visitor during the MT window re-report content that was already
+        // registered — worst on exactly the projects with the most
+        // untranslated content, which is the amplification this design
+        // exists to prevent.
+        //
+        // `hasOwnProperty` rather than `in`: the catalog comes from
+        // JSON.parse and so inherits Object.prototype, and `in` walks the
+        // chain — `t('toString')` and `t('constructor')` would read as
+        // already-known and never register.
+        // The catalog key is the phrase with TOK-2's C0 controls removed, on lookup and on
+        // registration alike. What renders when there is no translation is the phrase as
+        // the caller wrote it: the strip governs identity, not output.
+        const key = stripC0Controls(phrase);
+        const known = !!bucket && Object.prototype.hasOwnProperty.call(bucket, key);
+        const value = known ? bucket[key] : undefined;
+
+        let translated: string;
+        if (typeof value === 'string' && value.length > 0) {
+            this.debug.log('TRANSLATION FOUND', [lookupCat, phrase, value]);
+            translated = value;
+        } else {
+            if (!known) view.miss(category, key, false);
+            translated = phrase;
+        }
+        // A phrase the snapshot holds is not yet known to the live catalog. It is
+        // queued for registration without a discovery report, and the flush,
+        // held until the live catalog arrives, drops it there if it is present.
+        if (known && view.fromSnapshot()) view.miss(category, key, true);
+
+        // Interpolated with or without params. Returning early without them
+        // rendered a select or plural as its raw source, where ICU-1 renders the
+        // `other` branch and ICU-3 shows `{count}` in place of a `#` with no count.
+        // Plain text, braces included, comes back exactly as written.
+        return interpolate(translated, params ?? {}, view.locale());
+    }
+
+    /**
+     * Turn on the legacy-key mode with the app's kept source-language files, or
+     * turn it off with null (MIG-1). Throws `LegacyFormatError` for a file this
+     * core does not read (MIG-7), before anything resolves through it.
+     */
+    public setLegacyKeys(files: LegacyKeyFile[] | null | undefined): void {
+        this.legacyKeys = files && files.length > 0 ? createLegacyKeys(files) : null;
+        this.warnedLegacy.clear();
+    }
+
+    /**
+     * A key hit is the key's converted value, and the key's namespace is the
+     * category unless the call passed one (MIG-3, MIG-5). A miss is the argument
+     * as literal source text, which Langsys `t()` does not convert (MIG-2), and
+     * is noted at debug so a mistyped or removed key is visible (MIG-6). A value
+     * the conversion does not recognise registers as written and warns at every
+     * log level, naming the file and the key (MIG-4).
+     */
+    private resolveLegacyKey(arg: string, category: string): { phrase: string; category: string } {
+        const hit = this.legacyKeys!.resolve(arg);
+        if (!hit) {
+            if (logger.debugEnabled && this.warnOnce(`miss\0${arg}`)) {
+                logger.warn(`"${arg}" is not a key in the legacy source files, so it registers as literal source text.`);
+            }
+            return { phrase: arg, category };
+        }
+        if (!hit.recognised && this.warnOnce(`value\0${hit.file}\0${hit.key}`)) {
+            logger.warn(`The legacy key "${hit.key}" in ${hit.file} ${hit.issue}, so its value registers exactly as written.`);
+        }
+        return { phrase: hit.phrase, category: category || hit.category || '' };
+    }
+
+    private warnOnce(key: string): boolean {
+        if (this.warnedLegacy.has(key)) return false;
+        this.warnedLegacy.add(key);
+        return true;
+    }
+
+    /**
+     * Record a miss on the page's lanes, as `t()` outside every scope does: for a
+     * request scope rebuilt from a seed on the client (`scopeFromSeed`), whose
+     * render's misses belong to the page.
+     */
+    public recordPageMiss(category: string, token: string): void {
+        this.missingToken(category, token);
+    }
+
+    private missingToken(category: string, token: string | undefined | null, onlyForRegistration = false) {
         if (token === undefined || token === null) {
             return this.debug.warn(`Received undefined or null token for category: ${category}`);
         }
 
-        if (this.config.key_type !== 'write') {
-            this.debug.log(`Skipping missing token collection (API key is ${this.config.key_type || 'unknown'}):`, {
-                category,
-                token,
-            });
-            return;
-        }
-
-        // Skip content-block id lookups (32-hex md5 strings).
-        if (/^[0-9a-f]{32}$/.test(token)) return;
+        // No id-shape test here (REG-12). A block is recognised by structure: its catalog
+        // value is a nested map, which `t()` counts as known by key presence, so a stored
+        // block never reaches this method, and no caller hands `t()` a custom id (core,
+        // bindings and JS Server searched). A `/^[0-9a-f]{32}$/` guard used to sit here,
+        // and with the structure in hand it could only reject a legitimate phrase that
+        // happens to look like a hash.
         if (token === 'toJSON') {
             this.debug.error(`Received toJSON as token ${category}:${token}`, token);
             return;
         }
         if (token === '') {
             this.debug.warn('Received empty token', token);
+            return;
+        }
+
+        // NOTE: no write-capability check here. It used to live at this line as
+        // `key_type !== 'write'`, which cannot express the current model — an
+        // `ip_write` key is read-only everywhere except from allow-listed IPs,
+        // and the discovery renderer relies on running this exact, unmodified
+        // path from such an IP. Worse, gating COLLECTION means a `t()` call
+        // landing before `validate()` resolves is dropped forever. The decision
+        // now happens at the flush site, so pre-authorization misses are held
+        // rather than discarded, and the lane is chosen once it's actually known.
+        //
+        // REG-11 — an ellipsis in the phrase itself is usually upstream
+        // truncation: the truncated form gets translated and stored, never
+        // matches the full paragraph, and the paragraph later registers as a
+        // second phrase. Catalog pollution plus double translation spend.
+        //
+        // WARN ONLY, deliberately. A blanket skip has real false positives —
+        // "Loading…", "Saving…", "Please wait…" are legitimate phrases — and
+        // silently refusing to register them would create a NEW silent failure,
+        // which is the class this whole surface exists to remove. The spec
+        // permits suppression only on a second signal (a longer catalog entry
+        // sharing the prefix); that is not implemented here, so nothing is
+        // skipped. Note CSS truncation needs no handling: `text-overflow` and
+        // `-webkit-line-clamp` clip visually and leave the DOM text complete.
+        // Deduped per phrase, and debug-level per the rule text. Undeduped it
+        // fires on every miss of the same string — and on a read-only session
+        // the phrase never becomes known, so `Loading…` warns on every render
+        // for the life of the page. A diagnostic that spams is a diagnostic
+        // people turn off.
+        if (this.debug.debugEnabled && !this.warnedEllipsis.has(token) && /(?:…|\.\.\.)\s*$/.test(token)) {
+            this.warnedEllipsis.add(token);
+            this.debug.warn(
+                `Langsys: phrase ends in an ellipsis — "${token}". If this is upstream truncation, the ` +
+                    `shortened form will be translated and stored, and the full text will later register as a ` +
+                    `separate phrase. Register the untruncated string if you can. Registering anyway.`
+            );
+        }
+
+        // WIRE-4. Without a catalog a miss cannot be told from a hit, and treating a
+        // failed fetch as "everything is unknown" re-registers phrases that already
+        // exist: every outage becomes a write storm, on exactly the paths that were
+        // already failing. Record nothing, including the discovery miss, since a hint
+        // for content the catalog may hold is the same mistake on the read-only lane.
+        // A successful fetch rebuilds `t`, so reactive consumers re-render and miss
+        // again, and a genuine miss is recorded then.
+        if (catalogUnavailable.get()) {
+            this.debug.log('Not recording a miss: the catalog fetch failed, so a miss cannot be told from a hit', { category, token });
+            return;
+        }
+
+        // The base-locale gate, a project setting delivered in the handshake. On a page a
+        // server SDK rendered in another language every string is a translation, so
+        // registering one files a Spanish sentence as a SOURCE phrase, and hinting sends
+        // the renderer to a localized URL to find the same text. Both lanes, so neither
+        // happens. The loaded locale is empty until the first catalog publishes, so the
+        // locale being fetched stands in for it.
+        if (discoveryBaseLocaleOnly.get()) {
+            const loaded = currentlyLoadedLocale.get() || this.locale;
+            if (loaded !== canonicalizeLocale(this.config.baseLocale || '')) {
+                this.debug.log('Not recording a miss: discovery is limited to the base locale', { category, token, loaded });
+                return;
+            }
+        }
+
+        // Recorded before the queue dedup below: the discovery lane keys on the
+        // URL the miss occurred on, and a phrase already queued from an earlier
+        // route must not suppress the record for the page being viewed now.
+        if (!onlyForRegistration) recordMissForDiscovery(category, token);
+
+        // The server's request scope sends this phrase itself after the response (its
+        // seed says so, SSR-1/SSR-2), so queueing it here would register it twice.
+        if (isServerCollectedPhrase(category, token)) {
+            this.debug.log('Not queueing for registration: the server registers this phrase', { category, token });
+            return;
+        }
+
+        // Discovery has it; only hold it for registration if that queue can
+        // actually drain. See `shouldQueueForWrite`.
+        if (!this.shouldQueueForWrite()) {
+            this.debug.log('Not queueing for registration (no reachable flush path)', { category, token });
             return;
         }
 
@@ -178,6 +658,117 @@ export class Translations {
         }
     }
 
+    /**
+     * Whether this session may write. The single decision point for the write
+     * lane — never infer capability from `key_type`.
+     *
+     * In the browser the server-computed signal is authoritative, and `undefined`
+     * (not yet authorized) correctly holds rather than writing or hinting.
+     *
+     * Under SSR the signal is deliberately never written (it is a process-wide
+     * singleton and write capability is per-session), so we fall back to the
+     * value the last catalog fetch reported for THIS process. That is only sound
+     * while capability depends on the server's IP alone, which is constant for
+     * the process. A configured write grant makes it per-user instead, so the
+     * server lane is unsafe and we degrade to flushing after hydration — where
+     * the decision is per-user and correct.
+     */
+    /** Whether this session may write now, by the same decision the flush makes (see `canWrite`). */
+    public mayWrite(): boolean {
+        return this.canWrite();
+    }
+
+    private canWrite(): boolean {
+        if (typeof window !== 'undefined') return writeEnabled.get() === true;
+        if (LangsysAppAPI.hasWriteGrant()) return false;
+        return this.ssrWriteEnabled === true;
+    }
+
+    /**
+     * Record the server's write decision from an `authorize-project` or catalog
+     * response. Browser: updates the shared signal. Server: keeps a
+     * process-level copy used only when no grant is configured (see `canWrite`).
+     *
+     * `keyType` is the key type the same response describes. The authorization path
+     * passes it, because it runs before `init()` hands this instance the new config:
+     * reading `this.config` there would describe the PREVIOUS init's key on a re-init.
+     */
+    public applyWriteEnabled(value: boolean | undefined, keyType: string | undefined = this.config.key_type): void {
+        if (typeof value !== 'boolean') return;
+        setWriteEnabled(value);
+        if (typeof window === 'undefined') this.ssrWriteEnabled = value;
+        // OBS-1 reaches BOTH capability channels. This one runs on every
+        // catalog fetch — which is why it exists: capability can change without
+        // a re-init, and an `ip_write` key whose address drops off the
+        // allow-list mid-session is exactly the silent failure OBS-1 names. The
+        // notice was previously wired only to `authorize-project`, so that
+        // transition said nothing at all.
+        noticeUnusableWriteCapability(value, keyType);
+    }
+
+    /**
+     * Whether a miss is worth holding in the REGISTRATION queue. Distinct from
+     * `canWrite()`, which decides whether to send: this decides whether keeping
+     * it could ever lead to a send.
+     *
+     * What happens to a declined miss differs by arm, and the difference is
+     * load-bearing rather than incidental:
+     *
+     *  - In the BROWSER the discovery lane has already recorded it, so the page
+     *    is still reported and nothing is lost.
+     *  - Under SSR it is recorded NOWHERE — `recordMissForDiscovery` bails
+     *    without a `window`. The safety net there is that the client re-runs
+     *    `t()` after hydration and re-collects, which covers content rendered
+     *    on both sides and does NOT cover content that only ever executes
+     *    server-side. That gap is real and documented rather than closed.
+     *
+     * Two ways a queue becomes undrainable:
+     *
+     * SSR under `'client'` — the queue is meant to be flushed after hydration
+     * by `setup()`, but that reads the BROWSER's instance of this module. The
+     * push happened in the Node process's instance. Under real SSR (Next,
+     * Remix, Astro) those are different objects in different processes, and no
+     * channel carries tokens client-ward — `initialTranslations` goes the other
+     * way. So the tokens are silently dropped AND retained forever, since the
+     * 3s drain timer only exists in the browser branch of `setup()`. In a
+     * long-lived server that plateaus at "every phrase the app has ever
+     * server-rendered", held live and never sent. Declining to collect makes
+     * the limitation explicit instead of silent: server-side discovery requires
+     * `ssrTokenStrategy: 'server'`.
+     *
+     * Browser, definitively read-only — `writeEnabled` is `false` and no grant
+     * is configured, so no path exists by which this session becomes writable.
+     * (`undefined` still queues: capability isn't known yet and those misses
+     * must be held, not dropped. A configured grant also queues, since one
+     * arriving flips the session write-enabled.)
+     */
+    private shouldQueueForWrite(): boolean {
+        if (typeof window === 'undefined') {
+            // A configured grant makes the SSR write lane unusable — `canWrite`
+            // refuses it, because capability is then per-user and this queue is
+            // process-wide. Collecting anyway rebuilds precisely the
+            // undrainable plateau this method exists to prevent: nothing here
+            // can ever send it, and the `writeEnabled` release path can't fire
+            // either, since that signal is never written server-side. The
+            // degradation to the client lane is real, so the server instance
+            // must also stop collecting — not just stop sending.
+            const strategy = this.config.ssrTokenStrategy || 'client';
+            if (LangsysAppAPI.hasWriteGrant()) {
+                if (strategy !== 'client') noticeSsrGrantDegradation(strategy);
+                return false;
+            }
+            if (strategy === 'server') return true;
+            if (strategy === 'auto') {
+                // Past the threshold 'auto' defers to a client that can't receive it.
+                return this.missingTokens.length < AUTO_SSR_FLUSH_THRESHOLD;
+            }
+            return false;
+        }
+
+        if (writeEnabled.get() === false && !LangsysAppAPI.hasWriteGrant()) return false;
+        return true;
+    }
+
     private scheduleTokenFlush() {
         const strategy = this.config.ssrTokenStrategy || 'client';
         const isSSR = typeof window === 'undefined';
@@ -187,22 +778,14 @@ export class Translations {
                 case 'server':
                     if (!this.flushScheduled) {
                         this.flushScheduled = true;
-                        queueMicrotask(() => {
-                            this.updateTokens().then(() => {
-                                this.flushScheduled = false;
-                            });
-                        });
+                        queueMicrotask(() => void this.updateTokens());
                     }
                     break;
 
                 case 'auto':
-                    if (this.missingTokens.length <= 5 && !this.flushScheduled) {
+                    if (this.missingTokens.length <= AUTO_SSR_FLUSH_THRESHOLD && !this.flushScheduled) {
                         this.flushScheduled = true;
-                        queueMicrotask(() => {
-                            this.updateTokens().then(() => {
-                                this.flushScheduled = false;
-                            });
-                        });
+                        queueMicrotask(() => void this.updateTokens());
                     }
                     break;
 
@@ -212,16 +795,116 @@ export class Translations {
                     break;
             }
         } else {
-            // Client — flush immediately on first discovery, then let the 3s timer take over.
-            if (!this.flushScheduled && !this.timer) {
+            // Client — debounce briefly so a burst of misses coalesces into one
+            // POST, then send. It used to wait for the next 3s interval tick
+            // (the immediate path was gated on `!this.timer`, so it only ever
+            // ran before setup() installed the timer), which meant any content
+            // rendering after init was held for up to 3s. That is fatal for
+            // late-arriving content: the discovery renderer grants roughly 4s
+            // after its scroll phase, so an up-to-3s hold left about 1s of real
+            // budget, and anything past it was recorded and then destroyed with
+            // the page. Lazy-loaded and streamed content — precisely what the
+            // renderer exists to discover — is the common case for that.
+            if (!this.flushScheduled) {
                 this.flushScheduled = true;
-                queueMicrotask(() => {
-                    this.updateTokens().then(() => {
-                        this.flushScheduled = false;
-                    });
-                });
+                if (this.debounceTimer) clearTimeout(this.debounceTimer);
+                this.debounceTimer = setTimeout(() => {
+                    this.debounceTimer = null;
+                    void this.updateTokens();
+                }, CLIENT_FLUSH_DEBOUNCE_MS);
             }
+
+            // Arm the backstop only now that something is actually queued.
+            this.ensureBackstop();
         }
+    }
+
+    /**
+     * Start the backstop interval if it isn't already running.
+     *
+     * Demand-driven deliberately. It used to start in `setup()` and run for the
+     * life of the page whether or not anything was ever queued — a wakeup every
+     * three seconds forever, for a queue that is empty almost all of the time.
+     * That is a battery and background-work cost on mobile, and React Native
+     * takes this same branch because it defines `window`.
+     *
+     * The tick disarms itself once the queue drains; the next miss re-arms it
+     * through `scheduleTokenFlush`. While sends keep failing the queue stays
+     * non-empty and the interval keeps running, which is the case a backstop
+     * exists for.
+     */
+    private ensureBackstop(): void {
+        if (this.timer) return;
+        this.timer = setInterval(() => void this.updateTokens(), BACKSTOP_INTERVAL_MS);
+        this.debug.log('UPDATE TOKEN INTERVAL', this.timer);
+    }
+
+    private stopBackstop(): void {
+        if (!this.timer) return;
+        clearInterval(this.timer);
+        this.timer = null;
+    }
+
+    /**
+     * Stop background work. Queued tokens stay queued, and further discovery
+     * re-arms the backstop — this releases the timer, it does not discard work.
+     */
+    public destroy(): void {
+        this.stopBackstop();
+        this.releaseTeardownFlush?.();
+        this.releaseTeardownFlush = null;
+    }
+
+    /**
+     * Send whatever is still queued while the page is going away.
+     *
+     * Even with the debounce there is always a window where a miss is queued
+     * and the document is torn down — a tab closing, a client-side navigation,
+     * or the discovery renderer finishing its grace period. A normal request is
+     * cancelled with the document; `keepalive` survives it.
+     *
+     * Deliberately NOT `navigator.sendBeacon`, the usual answer here: it cannot
+     * set custom headers, and our authorization is `x-Authorization`, so every
+     * beacon would be rejected.
+     *
+     * Fire-and-forget with no local bookkeeping — the page is leaving, so there
+     * is no "after" in which a cache write or queue mutation could matter, and
+     * skipping them keeps this off the critical path of teardown.
+     */
+    private flushOnTeardown(): void {
+        if (!this.missingTokens.length) return;
+        this.debug.log(`Teardown flush: sending ${this.missingTokens.length} queued tokens with keepalive`);
+
+        // The ordinary flush path, only with keepalive — NOT a bespoke
+        // fire-and-forget send. `visibilitychange → hidden` also fires on a
+        // plain tab switch, where the page does not go away; a send that
+        // skipped the bookkeeping would leave everything queued and the 3s
+        // backstop would re-send it all on return. Reusing the normal path
+        // means the queue is cleared and the catalog updated exactly as usual
+        // when the page survives, and when it genuinely dies the request is
+        // already dispatched and the unrun bookkeeping costs nothing.
+        void this.updateTokens(true);
+    }
+
+    /**
+     * `visibilitychange → hidden` is the reliable teardown signal; `pagehide`
+     * backs it up. `unload`/`beforeunload` are deliberately not used — they are
+     * unreliable on mobile and block bfcache.
+     */
+    private installTeardownFlush(): void {
+        // Registered with an injected teardown signal on every host, before the document
+        // check: a host with no `document` — React Native — has no other way to flush.
+        // Re-registered after `destroy()` released it; the document listeners below are
+        // installed once per instance, so a second setup never doubles them.
+        if (!this.releaseTeardownFlush) this.releaseTeardownFlush = _registerTeardownFlush(() => this.flushOnTeardown());
+        if (this.teardownInstalled) return;
+        if (typeof document === 'undefined' || typeof window === 'undefined') return;
+        this.teardownInstalled = true;
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') this.flushOnTeardown();
+        });
+        window.addEventListener('pagehide', () => this.flushOnTeardown());
     }
 
     public setup(config: iLangsysConfig) {
@@ -243,9 +926,15 @@ export class Translations {
                 }
             }
 
-            if (this.timer) clearInterval(this.timer);
-            this.timer = setInterval(() => this.updateTokens(), 3000);
-            this.debug.log('UPDATE TOKEN INTERVAL', this.timer);
+            this.installTeardownFlush();
+
+            // Backstop only — the debounce in scheduleTokenFlush is what
+            // actually sends. This catches anything a failed send left queued,
+            // and runs only while there IS something queued: a fresh setup
+            // re-arms it iff a backlog survived (an SSR handoff, or a previous
+            // setup on this instance).
+            this.stopBackstop();
+            if (this.missingTokens.length) this.ensureBackstop();
         } else {
             const strategy = this.config.ssrTokenStrategy || 'client';
             this.debug.log(`SSR environment detected - using '${strategy}' token strategy`);
@@ -264,9 +953,23 @@ export class Translations {
         locale = canonicalizeLocale(locale);
         this.locale = locale;
         this.lastLoaded[locale] = new Date().getTime() / 1000;
+        this.catalogFromSnapshot = false;
+        catalogUnavailable.set(false);
         // A seeded catalog counts as "ready": the cache hit above means no
         // fetch will ever fire to resolve the promise, and content-block /
         // Phrase consumers awaiting ready() would otherwise hang forever.
+        this.readyResolve();
+    }
+
+    /**
+     * A catalog is present for rendering, but it is not the catalog of record:
+     * a snapshot (SNAP-3). Unlike `markLoaded` nothing is recorded as fetched,
+     * so the next settle for the locale still fetches the catalog and replaces
+     * it. What waits on `ready()` renders from it now.
+     */
+    public markSeeded(): void {
+        this.catalogFromSnapshot = true;
+        catalogUnavailable.set(false);
         this.readyResolve();
     }
 
@@ -281,8 +984,15 @@ export class Translations {
         // the same `lastLoaded` entry and compare equal to `this.locale`.
         locale = canonicalizeLocale(locale);
 
+        // Point the cache at this project+locale BEFORE anything reads or
+        // writes the catalog. A hit warms the start; a miss simply misses.
+        // Previously the cache was keyed by neither, so a page load restored
+        // whatever was stored and served it until a fetch replaced it.
+        scopeCatalogCache(this.catalogScope(locale));
+
         if (skipFetch) {
             this.debug.log('Using pre-fetched translations for locale', locale);
+            catalogUnavailable.set(false);
             this.locale = locale;
             this.lastLoaded[locale] = new Date().getTime() / 1000;
             this.readyResolve();
@@ -301,15 +1011,133 @@ export class Translations {
 
         this.debug.log('Locale change detected!', locale);
         this.locale = locale;
-        await this.getTranslations();
+        const scope = this.catalogScope(locale);
+
+        // CACHE-2: inside the window after a failure, keep rendering source text for this pair
+        // and fetch nothing, so an outage is not paid again on every locale emission. An
+        // explicit refresh (`force`) is a deliberate request rather than a lookup, and still
+        // goes out.
+        const failure = this.catalogFailures.get(scope);
+        if (!force && failure && Date.now() < failure.retryAt) {
+            this.debug.log('Catalog fetch skipped: the last one for this project and locale failed', {
+                scope,
+                retryInMs: failure.retryAt - Date.now(),
+            });
+            this.markCatalogUnavailable();
+            return false;
+        }
+
+        let request = this.catalogRequests.get(scope);
+        if (!request) {
+            request = this.fetchCatalog(scope).finally(() => this.catalogRequests.delete(scope));
+            this.catalogRequests.set(scope, request);
+        }
+        this.catalogFetchesInFlight += 1;
+        try {
+            await request;
+        } finally {
+            this.catalogFetchesInFlight -= 1;
+        }
+        // Tokens held while the catalog was in flight can be checked against it now.
+        // Without this they would wait for the next backstop tick, and SSR has no
+        // backstop at all.
+        if (this.missingTokens.length && !catalogUnavailable.get()) this.scheduleTokenFlush();
         return true;
     }
 
-    private async updateTokens(): Promise<boolean> {
-        if (!this.missingTokens.length) return false;
+    /** The project and locale a catalog belongs to: its cache key, request key and CACHE-2 pair. */
+    private catalogScope(locale: string): string {
+        return catalogScopeOf(this.config.projectid, locale);
+    }
+
+    /** One catalog request for a project and locale, recording the outcome for CACHE-2's window. */
+    private async fetchCatalog(scope: string): Promise<boolean> {
+        const ok = await this.getTranslations();
+        if (ok) {
+            this.catalogFailures.delete(scope);
+            return true;
+        }
+        const failures = (this.catalogFailures.get(scope)?.failures ?? 0) + 1;
+        this.catalogFailures.set(scope, { failures, retryAt: Date.now() + failureWindowMs(failures) });
+        return false;
+    }
+
+    /**
+     * Record a failed send and push the next attempt out exponentially:
+     * 3s, 6s, 12s … capped at 5 minutes. Reset on the first success.
+     */
+    private noteSendFailure(): void {
+        this.consecutiveFailures += 1;
+        const delay = Math.min(
+            RETRY_BACKOFF_BASE_MS * 2 ** (this.consecutiveFailures - 1),
+            RETRY_BACKOFF_MAX_MS,
+        );
+        this.retryNotBefore = Date.now() + delay;
+        this.debug.log(`Registration send failed (${this.consecutiveFailures}x); next attempt in ${delay}ms`);
+    }
+
+    private async updateTokens(keepalive = false): Promise<boolean> {
+        // The scheduled flush has now started, so release the scheduling latch.
+        // `flushScheduled` guards only the window between scheduling and
+        // execution — holding it until the POST resolves would swallow the
+        // follow-up flush this method schedules in its own `finally`.
+        this.flushScheduled = false;
+
+        // The 3s interval calls this unconditionally, so without a lock a call
+        // can start while a previous one is still awaiting its POST — which
+        // re-sends the same tokens (they aren't cleared until the response
+        // lands) and makes the "what did I actually send" bookkeeping below
+        // ill-defined.
+        // `keepalive` means this is the teardown flush, and neither of the two
+        // guards below applies to it. The in-flight request is about to die
+        // with the document and its batch is still queued, so deferring to it
+        // loses exactly the work teardown exists to save; and a backoff window
+        // is about waiting for a *later* attempt, of which there will be none.
+        // Re-sending is safe: registration is idempotent server-side (advisory
+        // lock plus ON CONFLICT), so a duplicate costs a request, while
+        // deferring costs the content.
+        const isTeardown = keepalive;
+
+        if (!isTeardown && this.updateInFlight) return false;
+        if (!this.missingTokens.length) {
+            // Disarm here as well as at the sites that empty the queue. Those
+            // are the immediate path; this is the structural one, so a future
+            // path that empties the queue without knowing about the backstop
+            // cannot leave it spinning.
+            this.stopBackstop();
+            return false;
+        }
+        if (!isTeardown && this.retryNotBefore && Date.now() < this.retryNotBefore) return false;
         if (!this.config.projectid || !this.config.key) return false;
-        if (this.config.key_type !== 'write') {
-            this.debug.log(`Skipping token updates (API key is ${this.config.key_type || 'unknown'})`);
+        // WIRE-4. Tokens queued before the fetch failed are HELD, not sent: the dedup
+        // below filters against the catalog, and there is no catalog to filter against.
+        // The next catalog that arrives lifts the hold and the dedup then drops whatever
+        // it already holds. Applies to the teardown flush too, which has no dedup either.
+        if (catalogUnavailable.get()) {
+            this.debug.log('Holding queued tokens: the catalog fetch failed, so they cannot be deduplicated');
+            return false;
+        }
+        // The same hold while a catalog fetch is still in flight. A write-enabled cold
+        // visit flushed its first misses after the debounce against a catalog that had
+        // not arrived, and POSTed phrases the backend already held whenever the fetch
+        // outlasted the debounce (measured at 1s and 5s, not at 300ms). A locale switch
+        // has the same window, because the new scope starts empty. Arrival schedules
+        // the flush, so nothing waits for the backstop.
+        if (this.catalogFetchesInFlight > 0) {
+            this.debug.log('Holding queued tokens until the catalog in flight arrives');
+            return false;
+        }
+        // A snapshot is not the catalog of record: deduplicating against it would
+        // register nothing it holds and re-register nothing it lacks correctly.
+        if (this.catalogFromSnapshot) {
+            this.debug.log('Holding queued tokens until the live catalog replaces the snapshot');
+            return false;
+        }
+        if (!this.canWrite()) {
+            this.debug.log('Skipping token updates (session is not write-enabled)', {
+                writeEnabled: writeEnabled.get(),
+                key_type: this.config.key_type || 'unknown',
+            });
             return false;
         }
 
@@ -317,7 +1145,7 @@ export class Translations {
             this.debug.log(`Sending ${this.missingTokens.length} tokens from SSR`);
         }
 
-        const currentData = sTranslations.get();
+        const currentData = pageCatalog();
         this.missingTokens = this.missingTokens.filter((tokenObj) => {
             tokenObj.projectid = this.config.projectid;
             // The server response keys null-category phrases under
@@ -325,7 +1153,13 @@ export class Translations {
             // bucket for the dedup check only. The queue itself keeps the
             // original (possibly empty) category for the wire payload.
             const lookupCat = tokenObj.category || '__uncategorized__';
-            if (lookupCat in currentData && tokenObj.token in currentData[lookupCat]) {
+            // hasOwnProperty, not `in` — same prototype-chain hazard as the
+            // lookup in `t()`. With `in`, a phrase named `toString` or
+            // `constructor` is queued by `t()` (which tests own properties) and
+            // then silently filtered out of every send here, so it re-queues
+            // forever and is never registered.
+            const bucket = currentData[lookupCat];
+            if (bucket && Object.prototype.hasOwnProperty.call(bucket, tokenObj.token)) {
                 this.debug.log('Missing token already exists! Skipping:', {
                     category: tokenObj.category,
                     token: tokenObj.token,
@@ -338,11 +1172,25 @@ export class Translations {
 
         if (!this.missingTokens.length) return false;
 
-        this.debug.log('CREATE MISSING TOKENS', this.missingTokens);
+        // Snapshot the batch. Everything below operates on THIS list and never
+        // on the live array, because `t()` keeps running during the awaits:
+        // a miss recorded mid-flight would otherwise be marked present in the
+        // catalog and wiped from the queue without ever having been in a
+        // payload — and since it then reads as already-registered, it would
+        // never be retried. Silent, permanent loss, and the window is every
+        // in-flight POST (a modal opening, a route change, lazy content
+        // resolving), worst on a first visit when the catalog is emptiest.
+        const batch = [...this.missingTokens];
+        let drained = false;
+
+        // The teardown flush deliberately doesn't take the lock — it ran past
+        // it above, so it must not clear a lock a live request still owns.
+        if (!isTeardown) this.updateInFlight = true;
+        this.debug.log('CREATE MISSING TOKENS', batch);
         try {
             // Wire boundary: empty category → null. '__uncategorized__' is
             // server-internal and is rejected as a client input.
-            const phraseItems = this.missingTokens.map((tokenObj) => ({
+            const phraseItems = batch.map((tokenObj) => ({
                 type: 'phrase',
                 phrase: tokenObj.token,
                 category: tokenObj.category || null,
@@ -350,57 +1198,161 @@ export class Translations {
 
             // /translatable-items caps each request (default 200 items); chunk so
             // a page registering many new phrases at once never overflows it.
-            const BATCH_SIZE = 200;
+            // Keepalive requests share a ~64KB budget across everything in
+            // flight, well below what 200 phrases can reach — and an oversized
+            // keepalive request is rejected by the browser, losing the batch at
+            // exactly the moment there is no retry left. So the teardown path
+            // really does chunk more conservatively than the normal one, which
+            // until now was only claimed in a comment.
+            const BATCH_SIZE = isTeardown ? Math.min(50, batchLimit.get()) : batchLimit.get();
             for (let offset = 0; offset < phraseItems.length; offset += BATCH_SIZE) {
+                // The page's queue, under the page's key, wherever the flush was scheduled (SRV-2).
                 const response: ResponseObject = await LangsysAppAPI.createTranslatableItems(
                     phraseItems.slice(offset, offset + BATCH_SIZE),
+                    { keepalive, credentials: LangsysAppAPI.moduleCredentials() },
                 );
                 if (!response.status) {
                     if (response.errors) {
-                        this.debug.log('TOKEN UPDATE FAIL', this.missingTokens);
+                        this.debug.log('TOKEN UPDATE FAIL', batch);
                         this.debug.error('Error updating project tokens', response.errors);
                     }
+                    // Leave the batch queued — a failed send must be retryable.
+                    this.noteSendFailure();
                     return false;
                 }
             }
 
-            this.missingTokens.forEach((tokenObj) => {
+            // Re-read: a catalog fetch may have replaced the store while we were
+            // in flight, and writing back the pre-await snapshot would clobber it.
+            const latest = pageCatalog();
+            batch.forEach((tokenObj) => {
                 // Same bucket normalization as the dedup check: write into
                 // the cats bucket that matches the server response shape.
                 const lookupCat = tokenObj.category || '__uncategorized__';
-                if (!currentData[lookupCat]) {
-                    currentData[lookupCat] = {
+                if (!latest[lookupCat]) {
+                    latest[lookupCat] = {
                         __category__: lookupCat,
                         __symbol__: lookupCat,
                     } as iTranslations;
                 }
-                currentData[lookupCat][tokenObj.token] = tokenObj.token;
-                currentData[lookupCat]['__category__'] = lookupCat;
+                // Known now, with no translation, as the API serves such a phrase (`null`), unless that
+                // catalog already holds it: a switch's catalog, published while the request was out,
+                // may carry its translation. Known by key presence, it is never sent again; `lookup`
+                // reads it as a miss, so an earlier key's translation still renders (TOK-1) and its
+                // source is never marked resolved (GATE-10).
+                if (!Object.prototype.hasOwnProperty.call(latest[lookupCat], tokenObj.token)) latest[lookupCat][tokenObj.token] = null as unknown as string;
+                latest[lookupCat]['__category__'] = lookupCat;
             });
-            sTranslations.set({ ...currentData });
-            this.missingTokens = [];
+            sTranslations.set({ ...latest });
+
+            // Remove exactly what was sent, never `= []`.
+            this.missingTokens = this.missingTokens.filter((queued) => !batch.some((s) => sameToken(s, queued)));
+            drained = true;
+            this.consecutiveFailures = 0;
+            this.retryNotBefore = 0;
             return true;
         } catch (err) {
-            this.debug.log('CREATE MISSING TOKEN FAILURE', this.missingTokens);
+            this.debug.log('CREATE MISSING TOKEN FAILURE', batch);
             this.debug.error('Error updating project tokens', err);
+            this.noteSendFailure();
             return false;
+        } finally {
+            if (!isTeardown) this.updateInFlight = false;
+            // Anything recorded during the flush is still queued. The browser's
+            // 3s timer would eventually take it, but SSR has no timer at all —
+            // without this the remainder would sit unsent for the process's life.
+            // Guarded on an actual successful drain, so a persistently failing
+            // send retries on the normal cadence rather than spinning here.
+            if (drained && this.missingTokens.length) this.scheduleTokenFlush();
+
+            // Nothing left to back off for. Placed here rather than on the tick
+            // so the debounced send disarms it too — otherwise the interval
+            // outlives its queue by up to one full period, every time.
+            if (!this.missingTokens.length) this.stopBackstop();
         }
     }
 
-    private async getTranslations(): Promise<void> {
+    /**
+     * WIRE-4: the catalog fetch failed. Settle `ready()` so consumers render their
+     * source text, and mark the catalog unusable for deciding what is missing.
+     *
+     * The second half is the one that needs saying. Measured before it existed, with
+     * write capability already granted: a network-failed fetch let `t()` misses queue
+     * and POST phrases that were already registered, and a failed locale switch did
+     * the same, because the new scope had just reset the catalog to empty.
+     */
+    private markCatalogUnavailable(): void {
+        catalogUnavailable.set(true);
+        this.readyResolve();
+    }
+
+    /**
+     * Fetch and publish the catalog for `this.locale`. Resolves false when it could not.
+     *
+     * The response publishes only while the locale and cache scope it was requested for are
+     * still current. A locale change while it is in flight supersedes it, and it is dropped
+     * when it lands: published, it would show the previous locale's catalog under the new
+     * one, persist it under the new locale's cache key, and stamp the new locale as loaded,
+     * so `change()` would not fetch that locale for another 60s. A superseded response still
+     * resolves true or false, which `fetchCatalog` records against its own pair (CACHE-2).
+     */
+    private async getTranslations(): Promise<boolean> {
         if (!LangsysAppAPI.config.projectid && this.config.projectid) {
             LangsysAppAPI.setup(this.config);
         }
 
-        const response: ResponseObject = await LangsysAppAPI.getTranslations(this.locale);
+        const locale = this.locale;
+        const scope = this.catalogScope(locale);
+        const current = () => locale === this.locale && scope === this.catalogScope(this.locale);
+
+        let response: ResponseObject;
+        try {
+            // The page's catalog, under the page's key, even when the change starts inside a scope (SRV-2).
+            response = await LangsysAppAPI.getTranslations(locale, { credentials: LangsysAppAPI.moduleCredentials() });
+        } catch (err) {
+            // `send()` already turns a network failure into an error envelope, so this
+            // is the client itself throwing. Still an expected condition (WIRE-4), and
+            // `change()` runs un-awaited from the locale subscription, where a
+            // rejection has no caller to land on.
+            this.debug.error('Catalog fetch threw', err);
+            if (current()) this.markCatalogUnavailable();
+            return false;
+        }
         this.debug.log('GET TRANSLATIONS API RESPONSE', response);
-        if (response.errors) {
-            this.debug.error('Error', response.errors[0]);
-            this.readyResolve();
-            return;
+
+        if (!current()) {
+            this.debug.log('Catalog response dropped: the locale changed while it was in flight', {
+                requested: locale,
+                current: this.locale,
+            });
+            return !response.errors;
         }
 
-        const trans = response.data as iCategories;
+        // Envelope-level, alongside `words` / `untranslated_words` — never
+        // inside `data`, which IS the category map. Refreshed on every catalog
+        // fetch so a capability change (a grant arriving, an IP allow-list
+        // edit) is picked up without re-running init.
+        this.applyWriteEnabled(answeredWriteDecision(response));
+
+        // Project policy, re-read on every fetch so a mid-session flip is picked up
+        // without re-running `init()`. A top-level sibling of `data` on both catalog
+        // routes, so it never reaches the cache. Absent or non-boolean means off: a
+        // server predating the field must not read as having turned it on.
+        if (typeof response.discovery_base_locale_only === 'boolean') {
+            discoveryBaseLocaleOnly.set(response.discovery_base_locale_only);
+        }
+
+        if (response.errors) {
+            this.debug.error('Error', response.errors[0]);
+            this.markCatalogUnavailable();
+            return false;
+        }
+
+        // An empty project serializes `data` as `[]`, not `{}`. Left as an
+        // array it would be persisted to localStorage by JSON.stringify with
+        // the seeded `__uncategorized__` bucket silently dropped (string
+        // properties on arrays don't survive serialization).
+        const trans = (isObject(response.data) ? response.data : {}) as iCategories;
 
         if (!isObject(trans['__uncategorized__'])) {
             trans['__uncategorized__'] = {
@@ -409,18 +1361,68 @@ export class Translations {
             } as iTranslations;
         }
 
+        // Drop anything in `data` that is not a category object before stamping
+        // it. On `/translations` the `data` member IS the category map, so a
+        // stray scalar sibling — a legacy envelope answering with
+        // `{key_type:'read', ...}`, an error shape, a future field — used to
+        // throw here (`Cannot create property '__category__' on string`). This
+        // runs inside an un-awaited `change()`, so the rejection was unhandled:
+        // it took down the caller's tick rather than degrading, and `npm test`
+        // exited non-zero while every test reported passing. `types/api.ts`
+        // already warns about exactly this shape.
         for (const cat of Object.keys(trans)) {
+            const value: unknown = trans[cat];
+            if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+                this.debug.warn(
+                    `Ignoring non-category member '${cat}' in the /translations payload — expected an object of ` +
+                        `phrases, got ${Array.isArray(value) ? 'an array' : typeof value}. The catalog is still usable.`
+                );
+                delete trans[cat];
+                continue;
+            }
             trans[cat]['__category__'] = cat;
         }
 
-        this.debug.log('GET TRANSLATIONS ' + this.locale, trans);
+        this.debug.log('GET TRANSLATIONS ' + locale, trans);
 
+        // Before publishing, so subscribers re-rendering off this catalog record their
+        // misses normally.
+        catalogUnavailable.set(false);
+        this.catalogFromSnapshot = false;
         sTranslations.set(trans);
-        // Small delay so consumers see translations + locale updates on the same tick.
-        setTimeout(() => currentlyLoadedLocale.set(this.locale), 100);
-        this.lastLoaded[this.locale] = new Date().getTime() / 1000;
+        // Small delay so consumers see translations + locale updates on the same tick. The
+        // locale is the one this catalog was fetched for, even if a switch has begun since.
+        setTimeout(() => currentlyLoadedLocale.set(locale), 100);
+        this.lastLoaded[locale] = new Date().getTime() / 1000;
         this.readyResolve();
+        return true;
     }
 }
 
 export default Translations;
+
+/** Whether `t` was called as a template tag: its first argument is the template's strings. */
+function isTemplateStrings(value: unknown): value is TemplateStringsArray {
+    return Array.isArray(value) && Array.isArray((value as unknown as { raw?: unknown }).raw);
+}
+
+/**
+ * A tagged template as a phrase and its params. A value written as a one-key
+ * object, `${{ name }}`, is named by its key (explicit, VAR-2); any other value
+ * cannot be named, and then there is no phrase, only the rendered text.
+ */
+function fromTaggedTemplate(strings: TemplateStringsArray, values: unknown[]): { phrase: string | null; params: Record<string, unknown>; text: string } {
+    const named = values.map((value) => {
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+        const keys = Object.keys(value);
+        return keys.length === 1 ? { key: keys[0]!, value: (value as Record<string, unknown>)[keys[0]!] } : null;
+    });
+    const shown = named.map((n, i) => String(n ? n.value : values[i]));
+    const text = strings.reduce((out, part, i) => out + part + (i < shown.length ? shown[i] : ''), '');
+    if (named.some((n) => n === null)) return { phrase: null, params: {}, text };
+    const names = derivePlaceholderNames(named.map((n) => ({ shape: { identifier: n!.key }, explicit: n!.key })));
+    const params: Record<string, unknown> = {};
+    names.forEach((name, i) => (params[name] = named[i]!.value));
+    const phrase = strings.reduce((out, part, i) => out + part + (i < names.length ? `{${names[i]}}` : ''), '');
+    return { phrase, params, text };
+}

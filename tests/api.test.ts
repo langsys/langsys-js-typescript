@@ -50,9 +50,21 @@ describe('LangsysAppAPI capability negotiation', () => {
         // Not the deprecated project-scoped route.
         expect(url).not.toContain('projects/proj-123/translations');
         expect(url).toContain('project_id=proj-123');
-        // Locale goes on the wire in BCP 47 canonical form regardless of
-        // the caller's casing — the CLDR backend keys catalogs by it.
-        expect(url).toContain('locale=es-ES');
+        // Locale goes on the wire in the SDK's single internal form —
+        // lowercase xx-yy — regardless of the caller's casing. That is what the
+        // backend stores and what its middleware produces, so it behaves
+        // identically on routes that do not mount that middleware.
+        expect(url).toContain('locale=es-es');
+    });
+
+    it('asks for a locale with a variant as the API holds it: en-US-POSIX is en-us-posix', async () => {
+        const fetchMock = mockFetchOnce();
+        configure();
+
+        await LangsysAppAPI.getTranslations('en-US-POSIX');
+
+        const [url] = fetchMock.mock.calls[0] as [string];
+        expect(new URL(url).searchParams.get('locale')).toBe('en-us-posix');
     });
 
     it('registers via the modern /translatable-items endpoint with the unified body', async () => {
@@ -69,5 +81,22 @@ describe('LangsysAppAPI capability negotiation', () => {
         const body = JSON.parse(init.body as string);
         expect(body.project_id).toBe('proj-123');
         expect(body.translatable_items[0]).toMatchObject({ type: 'phrase', phrase: 'Home', category: 'UI' });
+    });
+});
+
+describe('HINT-1: a discovery report carries a URL and nothing else', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('the body is exactly the project and page_url: no phrase, no category, no content', async () => {
+        const fetchMock = mockFetchOnce();
+        configure();
+
+        await LangsysAppAPI.postDiscoveryHint('https://site.local/page');
+
+        const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(url).toContain('/discovery/hint');
+        const body = JSON.parse(init.body as string);
+        expect(Object.keys(body).filter((k) => k !== 'project_id')).toEqual(['page_url']);
+        expect(body.page_url).toBe('https://site.local/page');
     });
 });

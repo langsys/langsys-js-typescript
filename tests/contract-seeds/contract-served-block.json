@@ -1,0 +1,575 @@
+{
+    "projects": [
+        {
+            "id": "75000400-0001-4000-8000-000000000000",
+            "title": "ts served base#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it-it",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "e7de321dc44ae4b886b883edbe72e577",
+                    "content": "<p>Pricing plans</p><p>Pick one</p><section data-ls-contentblock></section>",
+                    "phrases": [
+                        {
+                            "phrase": "Pricing plans",
+                            "translations": {
+                                "it-it": "Piani tariffari",
+                                "de-de": "Preispläne"
+                            }
+                        },
+                        {
+                            "phrase": "Pick one",
+                            "translations": {
+                                "it-it": "Scegline uno",
+                                "de-de": "Wähle einen"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "category": "UI",
+                    "custom_id": "ae9842ac779c6667522759ececb198d5",
+                    "content": "<h2>Inner title</h2><p>Inner body</p>",
+                    "phrases": [
+                        {
+                            "phrase": "Inner title",
+                            "translations": {
+                                "it-it": "Titolo interno",
+                                "de-de": "Innerer Titel"
+                            }
+                        },
+                        {
+                            "phrase": "Inner body",
+                            "translations": {
+                                "it-it": "Corpo interno",
+                                "de-de": "Innerer Text"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "101501|7ee9e9ac4641e5098a7cde081c3204c79a35fc42",
+                "device_id": "ts-served-1"
+            }
+        },
+        {
+            "id": "75000400-0002-4000-8000-000000000000",
+            "title": "ts served base#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it-it",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "e7de321dc44ae4b886b883edbe72e577",
+                    "content": "<p>Pricing plans</p><p>Pick one</p><section data-ls-contentblock></section>",
+                    "phrases": [
+                        {
+                            "phrase": "Pricing plans",
+                            "translations": {
+                                "it-it": "Piani tariffari",
+                                "de-de": "Preispläne"
+                            }
+                        },
+                        {
+                            "phrase": "Pick one",
+                            "translations": {
+                                "it-it": "Scegline uno",
+                                "de-de": "Wähle einen"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "category": "UI",
+                    "custom_id": "ae9842ac779c6667522759ececb198d5",
+                    "content": "<h2>Inner title</h2><p>Inner body</p>",
+                    "phrases": [
+                        {
+                            "phrase": "Inner title",
+                            "translations": {
+                                "it-it": "Titolo interno",
+                                "de-de": "Innerer Titel"
+                            }
+                        },
+                        {
+                            "phrase": "Inner body",
+                            "translations": {
+                                "it-it": "Corpo interno",
+                                "de-de": "Innerer Text"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "101502|8777c0797849ca74f3ccb90c0fc049f9036550ee",
+                "device_id": "ts-served-2"
+            }
+        },
+        {
+            "id": "75000400-0003-4000-8000-000000000000",
+            "title": "ts served base#3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it-it",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "e7de321dc44ae4b886b883edbe72e577",
+                    "content": "<p>Pricing plans</p><p>Pick one</p><section data-ls-contentblock></section>",
+                    "phrases": [
+                        {
+                            "phrase": "Pricing plans",
+                            "translations": {
+                                "it-it": "Piani tariffari",
+                                "de-de": "Preispläne"
+                            }
+                        },
+                        {
+                            "phrase": "Pick one",
+                            "translations": {
+                                "it-it": "Scegline uno",
+                                "de-de": "Wähle einen"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "category": "UI",
+                    "custom_id": "ae9842ac779c6667522759ececb198d5",
+                    "content": "<h2>Inner title</h2><p>Inner body</p>",
+                    "phrases": [
+                        {
+                            "phrase": "Inner title",
+                            "translations": {
+                                "it-it": "Titolo interno",
+                                "de-de": "Innerer Titel"
+                            }
+                        },
+                        {
+                            "phrase": "Inner body",
+                            "translations": {
+                                "it-it": "Corpo interno",
+                                "de-de": "Innerer Text"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "101503|62a48a2d14528862e104d8ced16fd74e090a6637",
+                "device_id": "ts-served-3"
+            }
+        },
+        {
+            "id": "75000400-0004-4000-8000-000000000000",
+            "title": "ts served base#4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it-it",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "e7de321dc44ae4b886b883edbe72e577",
+                    "content": "<p>Pricing plans</p><p>Pick one</p><section data-ls-contentblock></section>",
+                    "phrases": [
+                        {
+                            "phrase": "Pricing plans",
+                            "translations": {
+                                "it-it": "Piani tariffari",
+                                "de-de": "Preispläne"
+                            }
+                        },
+                        {
+                            "phrase": "Pick one",
+                            "translations": {
+                                "it-it": "Scegline uno",
+                                "de-de": "Wähle einen"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "category": "UI",
+                    "custom_id": "ae9842ac779c6667522759ececb198d5",
+                    "content": "<h2>Inner title</h2><p>Inner body</p>",
+                    "phrases": [
+                        {
+                            "phrase": "Inner title",
+                            "translations": {
+                                "it-it": "Titolo interno",
+                                "de-de": "Innerer Titel"
+                            }
+                        },
+                        {
+                            "phrase": "Inner body",
+                            "translations": {
+                                "it-it": "Corpo interno",
+                                "de-de": "Innerer Text"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "101504|0e82f2bdccc691bf0f072dba18b5ad506403c0b5",
+                "device_id": "ts-served-4"
+            }
+        },
+        {
+            "id": "75000400-0005-4000-8000-000000000000",
+            "title": "ts served new outer#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it-it",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "ae9842ac779c6667522759ececb198d5",
+                    "content": "<h2>Inner title</h2><p>Inner body</p>",
+                    "phrases": [
+                        {
+                            "phrase": "Inner title",
+                            "translations": {
+                                "it-it": "Titolo interno",
+                                "de-de": "Innerer Titel"
+                            }
+                        },
+                        {
+                            "phrase": "Inner body",
+                            "translations": {
+                                "it-it": "Corpo interno",
+                                "de-de": "Innerer Text"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "101505|6edc1692ed5609c284cb3924174cab4253c667cb",
+                "device_id": "ts-served-5"
+            }
+        },
+        {
+            "id": "75000400-0006-4000-8000-000000000000",
+            "title": "ts served new outer#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it-it",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "ae9842ac779c6667522759ececb198d5",
+                    "content": "<h2>Inner title</h2><p>Inner body</p>",
+                    "phrases": [
+                        {
+                            "phrase": "Inner title",
+                            "translations": {
+                                "it-it": "Titolo interno",
+                                "de-de": "Innerer Titel"
+                            }
+                        },
+                        {
+                            "phrase": "Inner body",
+                            "translations": {
+                                "it-it": "Corpo interno",
+                                "de-de": "Innerer Text"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "101506|97a0314d52d66045e371ab5da031837adccc5eec",
+                "device_id": "ts-served-6"
+            }
+        },
+        {
+            "id": "75000400-0007-4000-8000-000000000000",
+            "title": "ts served phrase-shaped block#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it-it",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "e7de321dc44ae4b886b883edbe72e577",
+                    "content": "<p>Pricing plans</p><p>Pick one</p><section data-ls-contentblock></section>",
+                    "phrases": [
+                        {
+                            "phrase": "Pricing plans",
+                            "translations": {
+                                "it-it": "Piani tariffari",
+                                "de-de": "Preispläne"
+                            }
+                        },
+                        {
+                            "phrase": "Pick one",
+                            "translations": {
+                                "it-it": "Scegline uno",
+                                "de-de": "Wähle einen"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "category": "UI",
+                    "custom_id": "ae9842ac779c6667522759ececb198d5",
+                    "content": "<h2>Inner title</h2><p>Inner body</p>",
+                    "phrases": [
+                        {
+                            "phrase": "Inner title",
+                            "translations": {
+                                "it-it": "Titolo interno",
+                                "de-de": "Innerer Titel"
+                            }
+                        },
+                        {
+                            "phrase": "Inner body",
+                            "translations": {
+                                "it-it": "Corpo interno",
+                                "de-de": "Innerer Text"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "category": "UI",
+                    "custom_id": "pricing-hero",
+                    "content": "<p>Pricing plans</p>",
+                    "phrases": [
+                        {
+                            "phrase": "Pricing plans",
+                            "translations": {
+                                "it-it": "Piani tariffari"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "101507|79e146149ead8fd2461cd458747638a267e15620",
+                "device_id": "ts-served-7"
+            }
+        },
+        {
+            "id": "75000400-0008-4000-8000-000000000000",
+            "title": "ts served no blocks#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it-it",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "blocks": [],
+            "user": {
+                "token": "101508|64cb603e7c5b5f38a95ef1c04e897528451202f6",
+                "device_id": "ts-served-8"
+            }
+        },
+        {
+            "id": "75000400-0009-4000-8000-000000000000",
+            "title": "ts served no blocks#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it-it",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "blocks": [],
+            "user": {
+                "token": "101509|6fdd6b83efd2a717fb0daaa896847e9636703bd2",
+                "device_id": "ts-served-9"
+            }
+        },
+        {
+            "id": "75000400-000a-4000-8000-000000000000",
+            "title": "ts served no blocks#3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it-it",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "blocks": [],
+            "user": {
+                "token": "101510|ae163b18a2c536a1e25760711a3712269dc14249",
+                "device_id": "ts-served-10"
+            }
+        },
+        {
+            "id": "75000400-000b-4000-8000-000000000000",
+            "title": "ts served no blocks#4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it-it",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "blocks": [],
+            "user": {
+                "token": "101511|9ecda35f5baf1717f0af30e4bf5efb64565af664",
+                "device_id": "ts-served-11"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "75000401-0001-4000-8000-000000000000",
+            "key": "ts-served-1-k-write",
+            "project": "75000400-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000401-0002-4000-8000-000000000000",
+            "key": "ts-served-1-k-read",
+            "project": "75000400-0001-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000401-0003-4000-8000-000000000000",
+            "key": "ts-served-2-k-write",
+            "project": "75000400-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000401-0004-4000-8000-000000000000",
+            "key": "ts-served-2-k-read",
+            "project": "75000400-0002-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000401-0005-4000-8000-000000000000",
+            "key": "ts-served-3-k-write",
+            "project": "75000400-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000401-0006-4000-8000-000000000000",
+            "key": "ts-served-3-k-read",
+            "project": "75000400-0003-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000401-0007-4000-8000-000000000000",
+            "key": "ts-served-4-k-write",
+            "project": "75000400-0004-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000401-0008-4000-8000-000000000000",
+            "key": "ts-served-4-k-read",
+            "project": "75000400-0004-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000401-0009-4000-8000-000000000000",
+            "key": "ts-served-5-k-write",
+            "project": "75000400-0005-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000401-000a-4000-8000-000000000000",
+            "key": "ts-served-5-k-read",
+            "project": "75000400-0005-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000401-000b-4000-8000-000000000000",
+            "key": "ts-served-6-k-write",
+            "project": "75000400-0006-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000401-000c-4000-8000-000000000000",
+            "key": "ts-served-6-k-read",
+            "project": "75000400-0006-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000401-000d-4000-8000-000000000000",
+            "key": "ts-served-7-k-write",
+            "project": "75000400-0007-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000401-000e-4000-8000-000000000000",
+            "key": "ts-served-7-k-read",
+            "project": "75000400-0007-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000401-000f-4000-8000-000000000000",
+            "key": "ts-served-8-k-write",
+            "project": "75000400-0008-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000401-0010-4000-8000-000000000000",
+            "key": "ts-served-8-k-read",
+            "project": "75000400-0008-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000401-0011-4000-8000-000000000000",
+            "key": "ts-served-9-k-write",
+            "project": "75000400-0009-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000401-0012-4000-8000-000000000000",
+            "key": "ts-served-9-k-read",
+            "project": "75000400-0009-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000401-0013-4000-8000-000000000000",
+            "key": "ts-served-10-k-write",
+            "project": "75000400-000a-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000401-0014-4000-8000-000000000000",
+            "key": "ts-served-10-k-read",
+            "project": "75000400-000a-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000401-0015-4000-8000-000000000000",
+            "key": "ts-served-11-k-write",
+            "project": "75000400-000b-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000401-0016-4000-8000-000000000000",
+            "key": "ts-served-11-k-read",
+            "project": "75000400-000b-4000-8000-000000000000",
+            "type": "read"
+        }
+    ]
+}

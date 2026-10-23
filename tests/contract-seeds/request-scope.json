@@ -1,0 +1,1062 @@
+{
+    "projects": [
+        {
+            "id": "75000a00-0001-4000-8000-000000000000",
+            "title": "ts scope base#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104501|fa6443b1c762cbdd7637c52d1727143a0365f4d5",
+                "device_id": "ts-scope-1"
+            }
+        },
+        {
+            "id": "75000a00-0002-4000-8000-000000000000",
+            "title": "ts scope base#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104502|add58522acdcd902865265ac4ae2293d4b2cd757",
+                "device_id": "ts-scope-2"
+            }
+        },
+        {
+            "id": "75000a00-0003-4000-8000-000000000000",
+            "title": "ts scope base#3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104503|60c87ca922c3c565167bad78840bc85d58ab09d0",
+                "device_id": "ts-scope-3"
+            }
+        },
+        {
+            "id": "75000a00-0004-4000-8000-000000000000",
+            "title": "ts scope base#4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104504|71adc10234cefdbe6f11055ba1a3e26405fff193",
+                "device_id": "ts-scope-4"
+            }
+        },
+        {
+            "id": "75000a00-0005-4000-8000-000000000000",
+            "title": "ts scope base#5 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104505|80912f654a5c0ca2c98657cb9aa21d3f2740dc95",
+                "device_id": "ts-scope-5"
+            }
+        },
+        {
+            "id": "75000a00-0006-4000-8000-000000000000",
+            "title": "ts scope base#6 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104506|47750c632addc81e7f01c4ae1e366513b32bcf8a",
+                "device_id": "ts-scope-6"
+            }
+        },
+        {
+            "id": "75000a00-0007-4000-8000-000000000000",
+            "title": "ts scope base#7 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104507|c1eb7486cd8778a38e6faadcda904bca877edab8",
+                "device_id": "ts-scope-7"
+            }
+        },
+        {
+            "id": "75000a00-0008-4000-8000-000000000000",
+            "title": "ts scope base#8 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104508|f2e958c7c7289097283129405f6be0fe74b3792e",
+                "device_id": "ts-scope-8"
+            }
+        },
+        {
+            "id": "75000a00-0009-4000-8000-000000000000",
+            "title": "ts scope base#9 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104509|56817a6176b15134076288f4a97418f5a96ec533",
+                "device_id": "ts-scope-9"
+            }
+        },
+        {
+            "id": "75000a00-000a-4000-8000-000000000000",
+            "title": "ts scope base#10 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104510|07f63bea4d08d9adf105d83023bfb09ededf1957",
+                "device_id": "ts-scope-10"
+            }
+        },
+        {
+            "id": "75000a00-000b-4000-8000-000000000000",
+            "title": "ts scope base#11 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104511|b3b56355b13c01ced5157b8fefae5848c00c2a01",
+                "device_id": "ts-scope-11"
+            }
+        },
+        {
+            "id": "75000a00-000c-4000-8000-000000000000",
+            "title": "ts scope base#12 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104512|34150e2acfebf2fbdbfe9e707d4d0ab0a2833064",
+                "device_id": "ts-scope-12"
+            }
+        },
+        {
+            "id": "75000a00-000d-4000-8000-000000000000",
+            "title": "ts scope base#13 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104513|3500c42a4c78fc2819c7f20940247e0ced4ad398",
+                "device_id": "ts-scope-13"
+            }
+        },
+        {
+            "id": "75000a00-000e-4000-8000-000000000000",
+            "title": "ts scope base#14 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104514|11a71245fbbeb1d738c13ec1eda9e416c7b48510",
+                "device_id": "ts-scope-14"
+            }
+        },
+        {
+            "id": "75000a00-000f-4000-8000-000000000000",
+            "title": "ts scope base#15 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104515|3d4ae5172143251634f785bec6a691ece7fe994b",
+                "device_id": "ts-scope-15"
+            }
+        },
+        {
+            "id": "75000a00-0010-4000-8000-000000000000",
+            "title": "ts scope base#16 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104516|5e2341da8599e1d65e66734c51ef21052d3f7d33",
+                "device_id": "ts-scope-16"
+            }
+        },
+        {
+            "id": "75000a00-0011-4000-8000-000000000000",
+            "title": "ts scope base#17 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104517|1649fd986de279b6b6dbdb0369e97293a986d397",
+                "device_id": "ts-scope-17"
+            }
+        },
+        {
+            "id": "75000a00-0012-4000-8000-000000000000",
+            "title": "ts scope base#18 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104518|21ec011cc2ac0f1164caa6c958845cf05b17f139",
+                "device_id": "ts-scope-18"
+            }
+        },
+        {
+            "id": "75000a00-0013-4000-8000-000000000000",
+            "title": "ts scope base#19 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104519|42ad8d02d45b48789445b7764a70ba78ba27964f",
+                "device_id": "ts-scope-19"
+            }
+        },
+        {
+            "id": "75000a00-0014-4000-8000-000000000000",
+            "title": "ts scope base#20 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104520|d627fa7321ac6934b59f4b928201b0e65c1a86c8",
+                "device_id": "ts-scope-20"
+            }
+        },
+        {
+            "id": "75000a00-0015-4000-8000-000000000000",
+            "title": "ts scope base#21 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104521|7c4242883c9b960305578b3d4d690ac5d8d5984b",
+                "device_id": "ts-scope-21"
+            }
+        },
+        {
+            "id": "75000a00-0016-4000-8000-000000000000",
+            "title": "ts scope base#22 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104522|4066b9d0139aaf67b29dafe6f5f068b1da1d7103",
+                "device_id": "ts-scope-22"
+            }
+        },
+        {
+            "id": "75000a00-0017-4000-8000-000000000000",
+            "title": "ts scope base#23 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104523|b94b4bfc410b6864dbe57e95ea065a5f486ed26c",
+                "device_id": "ts-scope-23"
+            }
+        },
+        {
+            "id": "75000a00-0018-4000-8000-000000000000",
+            "title": "ts scope base#24 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "de",
+                "it"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "de": "Hallo",
+                        "it": "Ciao"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Goodbye",
+                    "translations": {
+                        "de": "Tschüss",
+                        "it": "Arrivederci"
+                    }
+                }
+            ],
+            "user": {
+                "token": "104524|24399c3ff4f1430970597f71d40f146e55352b7e",
+                "device_id": "ts-scope-24"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "75000a01-0001-4000-8000-000000000000",
+            "key": "ts-scope-1-k-write",
+            "project": "75000a00-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0002-4000-8000-000000000000",
+            "key": "ts-scope-1-k-read",
+            "project": "75000a00-0001-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0003-4000-8000-000000000000",
+            "key": "ts-scope-2-k-write",
+            "project": "75000a00-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0004-4000-8000-000000000000",
+            "key": "ts-scope-2-k-read",
+            "project": "75000a00-0002-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0005-4000-8000-000000000000",
+            "key": "ts-scope-3-k-write",
+            "project": "75000a00-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0006-4000-8000-000000000000",
+            "key": "ts-scope-3-k-read",
+            "project": "75000a00-0003-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0007-4000-8000-000000000000",
+            "key": "ts-scope-4-k-write",
+            "project": "75000a00-0004-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0008-4000-8000-000000000000",
+            "key": "ts-scope-4-k-read",
+            "project": "75000a00-0004-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0009-4000-8000-000000000000",
+            "key": "ts-scope-5-k-write",
+            "project": "75000a00-0005-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-000a-4000-8000-000000000000",
+            "key": "ts-scope-5-k-read",
+            "project": "75000a00-0005-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-000b-4000-8000-000000000000",
+            "key": "ts-scope-6-k-write",
+            "project": "75000a00-0006-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-000c-4000-8000-000000000000",
+            "key": "ts-scope-6-k-read",
+            "project": "75000a00-0006-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-000d-4000-8000-000000000000",
+            "key": "ts-scope-7-k-write",
+            "project": "75000a00-0007-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-000e-4000-8000-000000000000",
+            "key": "ts-scope-7-k-read",
+            "project": "75000a00-0007-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-000f-4000-8000-000000000000",
+            "key": "ts-scope-8-k-write",
+            "project": "75000a00-0008-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0010-4000-8000-000000000000",
+            "key": "ts-scope-8-k-read",
+            "project": "75000a00-0008-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0011-4000-8000-000000000000",
+            "key": "ts-scope-9-k-write",
+            "project": "75000a00-0009-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0012-4000-8000-000000000000",
+            "key": "ts-scope-9-k-read",
+            "project": "75000a00-0009-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0013-4000-8000-000000000000",
+            "key": "ts-scope-10-k-write",
+            "project": "75000a00-000a-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0014-4000-8000-000000000000",
+            "key": "ts-scope-10-k-read",
+            "project": "75000a00-000a-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0015-4000-8000-000000000000",
+            "key": "ts-scope-11-k-write",
+            "project": "75000a00-000b-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0016-4000-8000-000000000000",
+            "key": "ts-scope-11-k-read",
+            "project": "75000a00-000b-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0017-4000-8000-000000000000",
+            "key": "ts-scope-12-k-write",
+            "project": "75000a00-000c-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0018-4000-8000-000000000000",
+            "key": "ts-scope-12-k-read",
+            "project": "75000a00-000c-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0019-4000-8000-000000000000",
+            "key": "ts-scope-13-k-write",
+            "project": "75000a00-000d-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-001a-4000-8000-000000000000",
+            "key": "ts-scope-13-k-read",
+            "project": "75000a00-000d-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-001b-4000-8000-000000000000",
+            "key": "ts-scope-14-k-write",
+            "project": "75000a00-000e-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-001c-4000-8000-000000000000",
+            "key": "ts-scope-14-k-read",
+            "project": "75000a00-000e-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-001d-4000-8000-000000000000",
+            "key": "ts-scope-15-k-write",
+            "project": "75000a00-000f-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-001e-4000-8000-000000000000",
+            "key": "ts-scope-15-k-read",
+            "project": "75000a00-000f-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-001f-4000-8000-000000000000",
+            "key": "ts-scope-16-k-write",
+            "project": "75000a00-0010-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0020-4000-8000-000000000000",
+            "key": "ts-scope-16-k-read",
+            "project": "75000a00-0010-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0021-4000-8000-000000000000",
+            "key": "ts-scope-17-k-write",
+            "project": "75000a00-0011-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0022-4000-8000-000000000000",
+            "key": "ts-scope-17-k-read",
+            "project": "75000a00-0011-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0023-4000-8000-000000000000",
+            "key": "ts-scope-18-k-write",
+            "project": "75000a00-0012-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0024-4000-8000-000000000000",
+            "key": "ts-scope-18-k-read",
+            "project": "75000a00-0012-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0025-4000-8000-000000000000",
+            "key": "ts-scope-19-k-write",
+            "project": "75000a00-0013-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0026-4000-8000-000000000000",
+            "key": "ts-scope-19-k-read",
+            "project": "75000a00-0013-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0027-4000-8000-000000000000",
+            "key": "ts-scope-20-k-write",
+            "project": "75000a00-0014-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0028-4000-8000-000000000000",
+            "key": "ts-scope-20-k-read",
+            "project": "75000a00-0014-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-0029-4000-8000-000000000000",
+            "key": "ts-scope-21-k-write",
+            "project": "75000a00-0015-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-002a-4000-8000-000000000000",
+            "key": "ts-scope-21-k-read",
+            "project": "75000a00-0015-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-002b-4000-8000-000000000000",
+            "key": "ts-scope-22-k-write",
+            "project": "75000a00-0016-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-002c-4000-8000-000000000000",
+            "key": "ts-scope-22-k-read",
+            "project": "75000a00-0016-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-002d-4000-8000-000000000000",
+            "key": "ts-scope-23-k-write",
+            "project": "75000a00-0017-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-002e-4000-8000-000000000000",
+            "key": "ts-scope-23-k-read",
+            "project": "75000a00-0017-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000a01-002f-4000-8000-000000000000",
+            "key": "ts-scope-24-k-write",
+            "project": "75000a00-0018-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000a01-0030-4000-8000-000000000000",
+            "key": "ts-scope-24-k-read",
+            "project": "75000a00-0018-4000-8000-000000000000",
+            "type": "read"
+        }
+    ]
+}

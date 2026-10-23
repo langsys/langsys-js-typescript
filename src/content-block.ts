@@ -25,43 +25,51 @@
  *      and render via your framework's templating.
  */
 
-import { LangsysAppAPI } from './api.js';
+import { LangsysAppAPI, type ApiCredentials } from './api.js';
+import { activeCatalog, activeScope } from './scope-context.js';
+import { recordMissForDiscovery } from './discovery.js';
 import { normalizeMarkupPlaceholders } from './interpolate.js';
+import { canonicalizeLocale } from './locale.js';
 import { logger } from './logger.js';
-import { config as configStore, sTranslations } from './stores.js';
+import { catalogUnavailable, config as configStore, configured, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations, writeEnabled } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
-import { md5, md5Legacy } from './utils.js';
+import { groupRuns, isMarkerOnly, runNodes, runSource, runToken, runValues, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
+import {
+    blockContentMatches,
+    CONTENT_BLOCK_MARKER_ATTRS,
+    isTranslationExcluded,
+    NON_TRANSLATABLE_ELEMENTS,
+    normalizeTokenText,
+    PHRASE_MARKER_ATTRS,
+    RESOLVED_MARKER_ATTRS,
+    TRANSLATABLE_ATTRIBUTES,
+} from './identity.js';
 
 /**
- * HTML attributes whose values should be harvested for translation.
- *
- * `langsys-php` harvests a superset of this list. The overlap is deliberate,
- * the difference is not accidental: standard attributes carrying user-visible
- * text belong in both SDKs, because on SSR handoff an attribute only one side
- * harvests is translated by that side and left untranslated by the other — a
- * coverage hole rather than a conflict. Framework-convention attributes
- * (Bootstrap `data-bs-*`, Rails `data-confirm`, and similar) are deliberately
- * NOT mirrored: they're written by server-rendered templates, and a JS app
- * renders those strings through its own components instead.
+ * The identity contract now lives in `identity.ts`, which has no DOM and no
+ * module-scope side effects so a server can import it. Re-exported here because
+ * this was its address for several releases and every binding imports from it.
  */
-export const TRANSLATABLE_ATTRIBUTES = [
-    'placeholder',
-    'alt',
-    'title',
-    'label', // <option>, <optgroup>, <track> — the text a user reads in the picker
-    'aria-label',
-    'aria-placeholder',
-    'aria-description',
-    'aria-valuetext', // the spoken value of a slider/meter
-    'aria-roledescription',
-    'data-error',
-    'data-error-message',
-    'data-validation-message',
-    'data-invalid-message',
-    'data-required-message',
-    'data-pattern-message',
-];
+export {
+    canonicalContentBlockJson,
+    CONTENT_BLOCK_MARKER_ATTR,
+    CONTENT_BLOCK_MARKER_ATTR_LEGACY,
+    CONTENT_BLOCK_MARKER_ATTRS,
+    generateCustomId,
+    generateLegacyCustomId,
+    isTranslationExcluded,
+    NON_TRANSLATABLE_ELEMENTS,
+    normalizeTokenText,
+    PHRASE_MARKER_ATTR,
+    PHRASE_MARKER_ATTR_LEGACY,
+    PHRASE_MARKER_ATTRS,
+    RESOLVED_MARKER_ATTR,
+    RESOLVED_MARKER_ATTR_LEGACY,
+    RESOLVED_MARKER_ATTRS,
+    TRANSLATABLE_ATTRIBUTES,
+} from './identity.js';
+
 
 /**
  * Attributes that mark a subtree as a self-managed "keep-together" phrase,
@@ -78,35 +86,7 @@ export const TRANSLATABLE_ATTRIBUTES = [
  * re-tokenizes a subtree PHP deliberately kept whole. Recognising both is
  * additive — `data-langsys-phrase` never appears in DOM our components emit.
  */
-export const PHRASE_MARKER_ATTRS = ['data-ls-phrase', 'data-langsys-phrase'] as const;
 
-/**
- * True when an element opts out of translation entirely — it and its subtree
- * are skipped by the tokenizer.
- *
- * Mirrors `langsys-php`'s `HtmlParser::isTranslationExcluded()` exactly:
- *  - `translate="no"` — the HTML standard attribute, matched case-insensitively.
- *  - `data-notrans` — PHP's author-facing alias, for hosts whose templating
- *    strips unknown bare attributes or where `translate` collides with another
- *    tool. Presence is intent; an explicit `"false"`/`"0"` opts out of the
- *    opt-out, compared after trimming.
- *
- * Honoring PHP's alias matters for the same reason as the phrase marker: on SSR
- * handoff there is ONE DOM, and content an author marked "do not translate"
- * must not be extracted and registered by whichever SDK happens to walk it.
- *
- * Both this and `isPhraseMarked` trim before comparing. They briefly differed
- * — PHP's phrase check predated the trim its exclusion check gained — and the
- * gap was resolved by asking rather than tidying: mirror exactly, flag the
- * wart, let the owner decide. Divergence-by-tidying is the same failure class
- * as divergence-by-oversight, just better intentioned.
- */
-export function isTranslationExcluded(element: Element): boolean {
-    if ((element.getAttribute('translate') ?? '').toLowerCase() === 'no') return true;
-    if (!element.hasAttribute('data-notrans')) return false;
-    const value = (element.getAttribute('data-notrans') ?? '').trim().toLowerCase();
-    return value !== 'false' && value !== '0';
-}
 
 /**
  * True when an element is marked as a self-managed phrase by either SDK.
@@ -124,6 +104,87 @@ export function isPhraseMarked(element: Element): boolean {
         const value = (element.getAttribute(attr) ?? '').trim().toLowerCase();
         return value !== 'false' && value !== '0';
     });
+}
+
+/**
+ * True when an element is a content-block host: it carries `data-ls-contentblock` or PHP's
+ * `data-langsys-contentblock` with any value other than `false` or `0` (MARK-3). A stamped id
+ * and a bare declaration both count; `false` and `0` opt out, trimmed and case-insensitive —
+ * the convention every marker attribute in the fleet shares.
+ *
+ * Such an element is a unit of its own, so an enclosing walk excises it (MARK-4): it
+ * contributes no tokens to the enclosing block, the enclosing render does not write into it,
+ * and it does not count toward the enclosing unit's single text node.
+ */
+export function isContentBlockMarked(element: Element): boolean {
+    return readContentBlockMarker(element) !== null;
+}
+
+/** What a content-block marker says (MARK-3), or null for no marker or an opt-out. */
+export type ContentBlockMarker = { kind: 'declaration' } | { kind: 'identity'; id: string };
+
+/** The values that declare a block rather than name one. No md5 `custom_id` is one of these words. */
+const DECLARATION_VALUES = ['', 'true', '1', 'yes'];
+
+/**
+ * Read a content-block marker in either spelling (MARK-2, MARK-3), its value
+ * trimmed and compared case-insensitively:
+ *
+ * - bare, empty, `true`, `1` or `yes` declares a block: register this element as
+ *   one block under the id its tokens derive;
+ * - `false` or `0` opts out, and the element is ordinary markup (null);
+ * - anything else is an identity: the `custom_id` a renderer stamped (MARK-1),
+ *   under which the host renders and registers nothing.
+ *
+ * The canonical spelling is read first, and an opted-out spelling does not hide
+ * the other one.
+ */
+export function readContentBlockMarker(element: Element): ContentBlockMarker | null {
+    for (const attr of CONTENT_BLOCK_MARKER_ATTRS) {
+        if (!element.hasAttribute(attr)) continue;
+        const value = (element.getAttribute(attr) ?? '').trim();
+        const lower = value.toLowerCase();
+        if (lower === 'false' || lower === '0') continue;
+        return DECLARATION_VALUES.includes(lower) ? { kind: 'declaration' } : { kind: 'identity', id: value };
+    }
+    return null;
+}
+
+/** The attributes a nested host names its own category with, canonical first. */
+export const CATEGORY_MARKER_ATTRS = ['data-ls-category', 'data-langsys-category'];
+
+/** A host's own category, from `data-ls-category` (or `data-langsys-category`), or null. */
+export function hostCategory(element: Element): string | null {
+    for (const attr of CATEGORY_MARKER_ATTRS) {
+        const value = element.getAttribute(attr);
+        if (value !== null) return value.trim();
+    }
+    return null;
+}
+
+/**
+ * True when an element sits inside a scope a producer marked as already resolved.
+ *
+ * Inherited, and the NEAREST marked ancestor decides — so a document marked at `<html>`
+ * can be opted back out of on a subtree with `="false"` or `="0"`. That inheritance is
+ * what makes the attribute usable at all on the paths that need it: text a server printed
+ * inline has no element of its own to carry a marker, so the only place a producer can
+ * state the fact is an ancestor it does own, usually the document root.
+ *
+ * Both spellings are read (MARK-2), and the first marked ancestor's value decides even if
+ * an outer one disagrees.
+ */
+export function isInResolvedScope(element: Element | null | undefined): boolean {
+    let el: Element | null = element ?? null;
+    while (el) {
+        for (const attr of RESOLVED_MARKER_ATTRS) {
+            if (!el.hasAttribute(attr)) continue;
+            const value = (el.getAttribute(attr) ?? '').trim().toLowerCase();
+            return value !== 'false' && value !== '0';
+        }
+        el = el.parentElement;
+    }
+    return false;
 }
 
 export const VALUE_TRANSLATABLE_ELEMENTS = ['button'];
@@ -148,40 +209,6 @@ export const SEMANTIC_STYLE_PROPERTIES = [
     'cursor',
 ];
 
-/**
- * Compute the deterministic content-block id from a `(category, tokens)` pair.
- *
- * JSON-stringifies the tuple so each token is unambiguously delimited
- * (the previous `tokens.join('-')` was collision-prone for tokens
- * containing a hyphen, e.g. `'e-mail'`).
- *
- * Pure function — same inputs always produce the same id. Exported so
- * framework wrappers can compute the id themselves before deciding
- * whether to call `registerContentBlock`.
- */
-export function generateCustomId(category: string, tokens: string[]): string {
-    return md5(JSON.stringify([category, tokens]));
-}
-
-/**
- * The id this block would have had before the 0.6.0 MD5 fix.
- *
- * **Lookup only — never register under this.** Blocks registered by an older
- * SDK are keyed by it, so `Translate` falls back to it when the corrected id
- * misses, which keeps existing translations resolving instead of orphaning
- * them. Registering under it would keep minting ids from a hash that both
- * diverges across SDKs and can collide.
- *
- * Note the collision is a property of the FINAL hashed string, not the phrase:
- * `JSON.stringify` shifts every character's offset, so the same phrase pair can
- * collide standalone and not collide here — and changing `category` moves every
- * character into different lanes. Always reason at this level, not at `md5()`.
- *
- * @deprecated Migration aid; will be removed once catalogs have been rebased.
- */
-export function generateLegacyCustomId(category: string, tokens: string[]): string {
-    return md5Legacy(JSON.stringify([category, tokens]));
-}
 
 /**
  * True iff the local translations cache already has the content block
@@ -192,60 +219,252 @@ export function generateLegacyCustomId(category: string, tokens: string[]): stri
  * matching the convention the server uses in its GET /translations response.
  */
 export function isContentBlockKnown(category: string, customId: string): boolean {
-    const cats = sTranslations.get();
+    const cats = activeCatalog();
     const lookupCat = category || '__uncategorized__';
     const cbData = cats[lookupCat]?.[customId];
     return typeof cbData === 'object' && cbData !== null;
 }
 
 /**
- * POST a content block to the backend, then stamp its custom_id into the
- * local translations cache so subsequent mounts in this session — and
- * subsequent reloads, since the cache is persisted — skip the POST.
+ * Resolve a content block under a historical id, verified on content.
  *
- * Mirrors the standalone-phrase path's cache writeback semantics. Respects
- * `key_type === 'write'`: read-only keys silently no-op (resolves with
- * `{ status: true }` so the caller can still render the cached translation).
+ * Walks `candidates` (from `historicalCustomIds`, most likely first) and returns the
+ * first id whose stored block holds this block's phrases. A stored block whose
+ * phrases differ is a collision, not a match, and is declined. A block cached by
+ * this session's own registration is `{}` with no phrases to compare, so it can
+ * never be verified and is declined as well.
  *
- * Errors are logged via the SDK's logger and returned as `{ status: false }`
- * — never thrown. Callers can decide whether to surface to UI or swallow.
+ * The failure direction is deliberate (CID-4): a false positive attaches the wrong
+ * text, while a false negative silently restores nothing and looks like "this block
+ * had no legacy id". So both outcomes are logged when debug is on, matching
+ * langsys-python.
  */
-export async function registerContentBlock(
-    contentBlock: iContentBlock,
-): Promise<{ status: boolean; errors?: unknown[] }> {
-    if (configStore.key_type !== 'write') {
-        if (configStore.debug) {
-            logger.log(`Skipping content block save (API key is ${configStore.key_type || 'unknown'})`);
+export function resolveHistoricalBlockId(
+    category: string,
+    candidates: readonly string[],
+    tokens: readonly string[]
+): string | null {
+    const bucket = activeCatalog()[category || '__uncategorized__'] as unknown as Record<string, unknown> | undefined;
+    if (!bucket) return null;
+    for (const id of candidates) {
+        const stored = bucket[id];
+        if (typeof stored !== 'object' || stored === null) continue;
+        if (!blockContentMatches(Object.keys(stored), tokens)) {
+            if (configStore.debug) {
+                logger.log(
+                    `Historical content-block id ${id} resolved to a block whose phrases differ; declining it ` +
+                        'rather than attaching to the wrong text.'
+                );
+            }
+            continue;
         }
-        return { status: true };
+        if (configStore.debug) {
+            logger.log(
+                `Content block resolved under a historical id (${id}). Its translations still apply; it is never ` +
+                    're-keyed and never registered under that id.'
+            );
+        }
+        return id;
+    }
+    return null;
+}
+
+/**
+ * Why a registration did not reach the server, or did not take (REG-10).
+ *
+ * - `not-configured`: the client has no credentials, so nothing can be sent
+ *   (WIRE-4);
+ * - `not-write-enabled`: the session may not write, so the block was handed to
+ *   the discovery lane instead;
+ * - `catalog-unavailable`: the catalog fetch failed, so an unknown block cannot
+ *   be told from a registered one (WIRE-4);
+ * - `base-locale-gate`: the project registers only at its base locale (GATE-9);
+ * - `deferred`: the block was found inside a request scope, which holds it for its
+ *   flush after the response (SRV-3, SRV-7);
+ * - `client-strategy`: the SSR token strategy leaves collection to the client
+ *   (SSR-1), or a write grant made capability per-user (SSR-2);
+ * - `refused`: the server answered the request with a failure;
+ * - `failed`: the request did not complete.
+ */
+export type RegistrationReason =
+    | 'not-configured'
+    | 'not-write-enabled'
+    | 'catalog-unavailable'
+    | 'base-locale-gate'
+    | 'deferred'
+    | 'client-strategy'
+    | 'refused'
+    | 'failed';
+
+/**
+ * What a registration did. Success only when the server stored the block. A
+ * write skipped on purpose is `{ status: false, skipped: true, reason }`, and one
+ * that failed is `{ status: false, reason, errors }`, so a caller can tell them
+ * apart and neither reads as success.
+ */
+export type RegistrationResult =
+    | { status: true }
+    | { status: false; skipped: true; reason: 'not-configured' | 'not-write-enabled' | 'catalog-unavailable' | 'base-locale-gate' | 'deferred' | 'client-strategy' }
+    | { status: false; skipped?: false; reason: 'refused' | 'failed'; errors?: unknown[] };
+
+/** Resolves once the session's write capability is known: `writeEnabled` is true or false. */
+function capabilityKnown(): Promise<void> {
+    return new Promise((resolve) => {
+        let settled = false;
+        let unsubscribe: (() => void) | null = null;
+        unsubscribe = writeEnabled.subscribe((value) => {
+            if (value === undefined || settled) return;
+            settled = true;
+            resolve();
+            queueMicrotask(() => unsubscribe?.());
+        });
+    });
+}
+
+/** Each block's registration request while it is unanswered, by the credentials it went out under, its category and its id. */
+const registrationsInFlight = new Map<string, Promise<RegistrationResult>>();
+
+/**
+ * POST a content block to the backend, then stamp its custom_id into the local
+ * translations cache, so later mounts in this session, and later reloads since
+ * the cache is persisted, skip the POST.
+ *
+ * A block has one request in flight at a time under one set of credentials
+ * (REG-7). A call for a block whose request has not answered yet resolves with
+ * that request's result and sends nothing: a binding calls `registerBlock` on
+ * every change `t` goes through, and a page load makes several of those before
+ * the first request returns. Once it answers, the block is known, or, refused or
+ * failed, may be sent again. A request answers only for the project and key it
+ * went out under, so a call under others, after a re-init, sends its own.
+ *
+ * One behaviour on every path (REG-10): never throws, always logs, and never
+ * reports success for work that did not happen. A skipped write returns a
+ * non-success result naming its reason.
+ */
+export async function registerContentBlock(contentBlock: iContentBlock): Promise<RegistrationResult> {
+    // WIRE-4: a client without credentials reports the skipped write rather than throwing,
+    // because a component reaches this and a component path never throws.
+    // A scope with credentials of its own is configured whatever the module is (SRV-2).
+    const scope = activeScope();
+    if (configured.get() === false && !scope?.credentials) return { status: false, skipped: true, reason: 'not-configured' };
+
+    // Inside a request scope (SRV-7) nothing is sent on the request path: the scope holds
+    // the block and its close() decides, after the response, whether to send it (SRV-3).
+    if (scope) {
+        scope.recordBlock(contentBlock);
+        return { status: false, skipped: true, reason: 'deferred' };
     }
 
-    try {
-        const response = await LangsysAppAPI.createTranslatableItems([
-            {
-                type: 'content_block',
+    // WIRE-4. After a failed catalog fetch every block looks unregistered, because
+    // there is no catalog to find it in. Registering on that basis re-POSTs blocks
+    // the backend already holds, on every page an outage touches. Record nothing,
+    // on either lane: a discovery miss for a block that may well be registered is
+    // the same mistake made read-only.
+    if (catalogUnavailable.get()) {
+        if (configStore.debug) {
+            logger.log('Skipping content block registration: the catalog fetch failed, so an unknown block cannot be told from a registered one', {
                 custom_id: contentBlock.custom_id,
-                category: contentBlock.category,
-                content: contentBlock.content,
-                label: contentBlock.label,
-                phrases: contentBlock.tokens.map((phrase) => ({ phrase })),
-            },
-        ]);
+            });
+        }
+        return { status: false, skipped: true, reason: 'catalog-unavailable' };
+    }
+
+    // GATE-9 on the content-block path, as on the `t()` miss path: with the project setting
+    // on, a block is neither registered nor reported unless the loaded locale is the base
+    // locale. Before the first catalog publishes, the locale being requested stands in.
+    if (discoveryBaseLocaleOnly.get()) {
+        const loaded = currentlyLoadedLocale.get() || canonicalizeLocale(configStore.sUserLocale?.get() ?? '');
+        if (loaded !== canonicalizeLocale(configStore.baseLocale || '')) {
+            if (configStore.debug) {
+                logger.log('Skipping content block: discovery is limited to the base locale', { custom_id: contentBlock.custom_id, loaded });
+            }
+            return { status: false, skipped: true, reason: 'base-locale-gate' };
+        }
+    }
+
+    // GATE-2: in the browser, a capability not known yet is not a refusal. A block
+    // mounted before `init()` answers (a hydrated page seeds its catalog, which
+    // settles `ready()`, and components mount before the app initialises) waits for
+    // the server's answer, then decides every gate again. Under SSR the signal is
+    // never written, and the SSR strategies decide there.
+    if (writeEnabled.get() === undefined && typeof window !== 'undefined' && !LangsysAppAPI.hasWriteGrant()) {
+        await capabilityKnown();
+        return registerContentBlock(contentBlock);
+    }
+
+    // Server-computed capability, never inferred from `key_type`. This is the
+    // lane the discovery renderer depends on most: it exists for dynamic
+    // content, which is disproportionately content blocks rather than bare
+    // `t()` calls, and it runs with an `ip_write` key that a
+    // `key_type === 'write'` test would have rejected outright.
+    if (writeEnabled.get() !== true) {
+        // Hand the page to the discovery lane instead of dropping it.
+        //
+        // Without this, a page whose untranslated content lives entirely in
+        // multi-token `Translate` blocks is invisible to discovery: those
+        // tokens resolve through `lookupContent`, which registers nothing, so
+        // they never reach `t()` and never reach the miss recorder. The block
+        // was only discovered when some unrelated `t()` call happened to miss
+        // on the same page — and content blocks are disproportionately what the
+        // renderer exists to find, so the gap was worst where it mattered most.
+        //
+        // Carries no phrase payload: the recorder takes the block's identity
+        // only to dedup, and the hint itself is URL-only.
+        recordMissForDiscovery(contentBlock.category, contentBlock.custom_id);
+
+        if (configStore.debug) {
+            logger.log('Skipping content block save (session is not write-enabled)', {
+                writeEnabled: writeEnabled.get(),
+                key_type: configStore.key_type || 'unknown',
+            });
+        }
+        return { status: false, skipped: true, reason: 'not-write-enabled' };
+    }
+
+    const credentials = LangsysAppAPI.moduleCredentials();
+    const key = [credentials.projectid, credentials.key, contentBlock.category, contentBlock.custom_id].join('\0');
+    const inFlight = registrationsInFlight.get(key);
+    if (inFlight) return inFlight;
+    const request = sendContentBlock(contentBlock, credentials).finally(() => registrationsInFlight.delete(key));
+    registrationsInFlight.set(key, request);
+    return request;
+}
+
+/** The registration request itself: success only once the server stored the block, under the credentials it went out under. */
+async function sendContentBlock(contentBlock: iContentBlock, credentials: ApiCredentials): Promise<RegistrationResult> {
+    try {
+        // The page's lane, under the page's key (SRV-2): a scope holds its blocks for close().
+        const response = await LangsysAppAPI.createTranslatableItems(
+            [
+                {
+                    type: 'content_block',
+                    custom_id: contentBlock.custom_id,
+                    category: contentBlock.category,
+                    content: contentBlock.content,
+                    label: contentBlock.label,
+                    phrases: contentBlock.tokens.map((phrase) => ({ phrase })),
+                },
+            ],
+            { credentials }
+        );
         if (!response.status) {
             logger.error('Could not save content block', response.errors);
-            return { status: false, errors: response.errors as unknown[] | undefined };
+            return { status: false, reason: 'refused', errors: response.errors as unknown[] | undefined };
         }
-        _writeKnownContentBlockToCache(contentBlock.category, contentBlock.custom_id);
+        // The answer is the project's that the request went out under. After a re-init under
+        // others, the catalog held now is theirs, and they do not hold the block.
+        const current = LangsysAppAPI.moduleCredentials();
+        if (current.projectid === credentials.projectid && current.key === credentials.key) _writeKnownContentBlockToCache(contentBlock.category, contentBlock.custom_id);
         return { status: true };
     } catch (err) {
         logger.error('Could not save content block', err);
-        return { status: false, errors: [err] };
+        return { status: false, reason: 'failed', errors: [err] };
     }
 }
 
 /**
  * Walk an `HTMLElement`, collecting tokens for translation and producing a
- * cloned-and-stylized snapshot of its outerHTML for the Translation Manager.
+ * cloned-and-stylized snapshot of its content for the Translation Manager.
  *
  * Tokens harvested:
  *  - text-node content (whitespace-normalized, trimmed)
@@ -254,19 +473,61 @@ export async function registerContentBlock(
  *
  * Skips subtrees marked with `translate="no"`.
  *
- * The returned `content` is a string snapshot — the live element is not
- * mutated. Computed semantic styles (color, font, spacing, etc.) are inlined
- * onto the clone so translators see content styled the way end-users do.
+ * The returned `content` is a string snapshot of the element's children, as the
+ * tree path registers a block's nodes: the host is the unit, not part of its
+ * content. The live element is not mutated. Computed semantic styles (color,
+ * font, spacing, etc.) are inlined onto the clone so translators see content
+ * styled the way end-users do. It holds no value and no nested unit's content
+ * (`scrubContent`).
  *
  * Requires that `element` is mounted in the document so `getComputedStyle`
  * can read its style. For SSR / pre-mount callers, the style capture step
  * silently no-ops and the snapshot is plain (without inlined styles).
  */
-export function tokenizeElement(element: HTMLElement): { tokens: string[]; content: string } {
+export function tokenizeElement(element: HTMLElement): { tokens: string[]; content: string; vars: UnitVars } {
     const tokens: string[] = [];
+    const vars: UnitVars = { values: {}, runs: [], markerOnly: [] };
     const clone = element.cloneNode(true) as HTMLElement;
-    _walkForTokens(element, Array.from(clone.childNodes), tokens, [], false, true);
-    return { tokens, content: normalizeMarkupPlaceholders(clone.outerHTML) };
+    _walkForTokens(element, Array.from(clone.childNodes), tokens, [], false, true, undefined, vars);
+    scrubContent(clone.childNodes as unknown as ArrayLike<MarkerNode>, {
+        empty: (host) => (host as unknown as Element).replaceChildren(),
+        replace: (_siblings, nodes, text) => {
+            const first = nodes[0] as unknown as ChildNode;
+            first.parentNode!.insertBefore(first.ownerDocument!.createTextNode(text), first);
+            for (const node of nodes) (node as unknown as ChildNode).remove();
+        },
+    });
+    return { tokens, content: normalizeMarkupPlaceholders(clone.innerHTML), vars };
+}
+
+/** How `scrubContent` edits a copy of a unit's content, on the DOM or on a tree's view. */
+export interface ContentEdits<N> {
+    /** Remove an element's children. */
+    empty(host: N): void;
+    /** Put one text node holding `text` where `nodes`, consecutive among `siblings`, are. */
+    replace(siblings: ArrayLike<N>, nodes: N[], text: string): void;
+}
+
+/**
+ * Rewrite a copy of a unit's content into the `content` it registers with. Each
+ * marked run becomes one text node, the run's text with `{NAME}` where each value
+ * was, the marker and the value gone, whichever form marked it and wherever it
+ * sits, inside a `translate="no"` element included (VAR-1, VAR-3). A nested
+ * phrase or block host keeps its element and attributes and loses its content
+ * (MARK-4): it is a unit of its own, and what it shows is rendered, with its own
+ * values.
+ */
+export function scrubContent<N extends MarkerNode>(nodes: ArrayLike<N>, edit: ContentEdits<N>): void {
+    for (const item of groupRuns(nodes)) {
+        if ('run' in item) {
+            edit.replace(nodes, runNodes(item.run), runSource(item.run));
+            continue;
+        }
+        if (item.node.nodeType !== ELEMENT_NODE) continue;
+        const element = item.node as unknown as Element;
+        if (isPhraseMarked(element) || isContentBlockMarked(element)) edit.empty(item.node);
+        else scrubContent(item.node.childNodes as ArrayLike<N>, edit);
+    }
 }
 
 /**
@@ -305,7 +566,12 @@ function _writeKnownContentBlockToCache(category: string, customId: string): voi
                 __symbol__: lookupCat,
             } as iTranslations;
         }
-        (current[lookupCat] as unknown as Record<string, unknown>)[customId] = {};
+        // The record says only that the server holds the block. A catalog published while the
+        // request was out, a locale switch's, may already hold it with its translations, and
+        // the record never replaces them.
+        const bucket = current[lookupCat] as unknown as Record<string, unknown>;
+        if (typeof bucket[customId] === 'object' && bucket[customId] !== null) return current;
+        bucket[customId] = {};
         return { ...current };
     });
 }
@@ -369,6 +635,120 @@ function _writeKnownContentBlockToCache(category: string, customId: string): voi
  * the thing to update — see `generateLegacyCustomId` for what an id change
  * actually costs.
  */
+/**
+ * Whether an element and everything inside it are left out of the unit being
+ * walked: an author's `translate="no"` or `data-notrans`, code and notation
+ * (`NON_TRANSLATABLE_ELEMENTS`), a phrase host (its own rich phrase) and a nested
+ * content-block host (a unit of its own, MARK-4).
+ *
+ * The one predicate for "not this unit's text". The tokenizer skips these, and
+ * so must every question asked about the same unit afterwards — whether its one
+ * token is its one text node (TOK-6), where a translation is written — or the
+ * two disagree about the unit's shape and it registers under the wrong one.
+ */
+export function isExcisedFromUnit(el: Element): boolean {
+    return (
+        isTranslationExcluded(el) ||
+        NON_TRANSLATABLE_ELEMENTS.includes(el.tagName.toLowerCase()) ||
+        isPhraseMarked(el) ||
+        isContentBlockMarked(el)
+    );
+}
+
+// Node types by number, not `Node.*`: the walk runs on a server too, over trees
+// shaped like the DOM (see `block-tree.ts`), where there is no `Node` global.
+const ELEMENT_NODE = 1;
+const TEXT_NODE = 3;
+
+/** The node shape the walks need: the DOM's, or a tree's that imitates it. */
+export interface WalkNode {
+    nodeType: number;
+    nodeValue: string | null;
+    childNodes: ArrayLike<WalkNode>;
+    hasChildNodes(): boolean;
+}
+
+/**
+ * The tokens of a unit's content, with no DOM required: `nodes` are the unit's
+ * children, DOM nodes or anything shaped like them. The same walk as
+ * `tokenizeElement`, without the style snapshot, so a tree and the DOM it
+ * mirrors yield the same tokens and the same id.
+ */
+export function tokenizeNodes(nodes: ArrayLike<WalkNode>, duplicateSelectOptions = false): string[] {
+    const tokens: string[] = [];
+    _walkForTokens(null as unknown as HTMLElement, Array.from(nodes) as unknown as ChildNode[], tokens, [], duplicateSelectOptions, false);
+    return tokens;
+}
+
+/** What the walk learns from value markers (VAR-3), alongside the tokens. */
+export interface UnitVars {
+    /** Each marker's value, by name: the params the unit renders with, unless the caller names them. */
+    values: Record<string, string>;
+    /** The indices of tokens that are marked runs. */
+    runs: number[];
+    /** The indices of tokens made only of markers, with no text of their own. */
+    markerOnly: number[];
+}
+
+/**
+ * The tokens of a unit and what its value markers say (VAR-3): the same walk as
+ * `tokenizeNodes`, reporting which tokens came from marked runs and each
+ * marker's value.
+ */
+export function tokenizeUnit(nodes: ArrayLike<WalkNode>): { tokens: string[]; vars: UnitVars } {
+    const tokens: string[] = [];
+    const vars: UnitVars = { values: {}, runs: [], markerOnly: [] };
+    _walkForTokens(null as unknown as HTMLElement, Array.from(nodes) as unknown as ChildNode[], tokens, [], false, false, undefined, vars);
+    return { tokens, vars };
+}
+
+/** A unit made only of markers has no text of its own, and registers nothing (VAR-3). */
+export function isMarkerOnlyUnit(tokens: readonly string[], vars: UnitVars): boolean {
+    return tokens.length > 0 && vars.markerOnly.length === tokens.length;
+}
+
+/** Where a unit's token sits: a text node, an attribute of an element, or a marked run (VAR-3). */
+export type TokenSlot =
+    | { node: Node; attr?: undefined; run?: undefined }
+    | { node: Element; attr: string; run?: undefined }
+    | { node: Node; run: VarRun<Node>; attr?: undefined };
+
+/**
+ * The places a unit's tokens come from, one per token and in token order: the
+ * same walk as `tokenizeNodes`, so the i-th slot holds the i-th token. What lets
+ * a reader pair a block's served text with the source tokens it was rendered from.
+ */
+export function tokenSlots(nodes: ArrayLike<Node>): TokenSlot[] {
+    const slots: TokenSlot[] = [];
+    _walkForTokens(null as unknown as HTMLElement, Array.from(nodes) as ChildNode[], [], [], false, false, slots);
+    return slots;
+}
+
+/**
+ * The unit's one non-whitespace text node, or null when it has none or more
+ * than one (TOK-6). What the tokenizer leaves out of the unit (`isExcisedFromUnit`)
+ * is not the unit's text, so it neither counts nor is searched.
+ */
+export function findSingleTextNode<N extends WalkNode>(root: { childNodes: ArrayLike<N> }): N | null {
+    let found: N | null = null;
+    const walk = (parent: { childNodes: ArrayLike<N> }): boolean => {
+        for (const child of Array.from(parent.childNodes)) {
+            if (child.nodeType === TEXT_NODE) {
+                if (normalizeTokenText(child.nodeValue ?? '')) {
+                    if (found) return false;
+                    found = child;
+                }
+            } else if (child.nodeType === ELEMENT_NODE && isExcisedFromUnit(child as unknown as Element)) {
+                continue;
+            } else if (!walk(child as unknown as { childNodes: ArrayLike<N> })) {
+                return false;
+            }
+        }
+        return true;
+    };
+    return walk(root) ? found : null;
+}
+
 function _walkForTokens(
     liveRoot: HTMLElement,
     cloneNodes: ChildNode[],
@@ -376,59 +756,80 @@ function _walkForTokens(
     indices: number[],
     duplicateSelectOptions: boolean,
     applyStyles: boolean,
+    slots?: TokenSlot[],
+    vars?: UnitVars,
 ): void {
-    cloneNodes.forEach((node, index) => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-            const el = node as HTMLElement;
-            if (isTranslationExcluded(el)) return;
-            // A <Phrase> subtree is its own self-managed rich phrase — skip it
-            // here so the content block doesn't tokenize its inner text.
-            if (isPhraseMarked(el)) return;
+    for (const item of groupRuns(cloneNodes as unknown as MarkerNode[]) as unknown as RunItem<ChildNode>[]) {
+        if ('run' in item) {
+            // A marked run is one token, `{NAME}` in place of each value (VAR-3).
+            const token = runToken(item.run);
+            if (vars) {
+                if (isMarkerOnly(item.run)) vars.markerOnly.push(tokens.length);
+                vars.runs.push(tokens.length);
+                vars.values = { ...runValues(item.run), ...vars.values };
+            }
+            tokens.push(token);
+            const first = item.run.parts[0]!;
+            slots?.push({ node: 'text' in first ? first.text : first.marker.frame[0]!, run: item.run as unknown as VarRun<Node> });
+            continue;
+        }
+        const node = item.node;
+        const index = cloneNodes.indexOf(node);
+        if (node.nodeType === ELEMENT_NODE) {
+            // Code and notation are never prose (`<style>`, `<script>` and `<math>`
+            // content was registered and machine-translated before this), a phrase
+            // host is its own rich phrase, and a nested block host is its own unit,
+            // whose words would otherwise register in both blocks. See
+            // `isExcisedFromUnit` and `NON_TRANSLATABLE_ELEMENTS`.
+            if (isExcisedFromUnit(node as HTMLElement)) continue;
         }
 
         if (applyStyles && node.hasChildNodes()) {
             _applyStylesToClone(liveRoot, node as HTMLElement, [...indices, index]);
         }
 
-        if (node.nodeType === Node.ELEMENT_NODE) {
-            _tokenizeAttributes(node as HTMLElement, tokens, duplicateSelectOptions);
+        if (node.nodeType === ELEMENT_NODE) {
+            _tokenizeAttributes(node as HTMLElement, tokens, duplicateSelectOptions, slots);
         }
 
-        const contentToken = node.nodeValue?.replace(/\s+/g, ' ').trim();
-        if (node.nodeType === Node.TEXT_NODE && contentToken) {
+        const contentToken = node.nodeValue ? normalizeTokenText(node.nodeValue) : undefined;
+        if (node.nodeType === TEXT_NODE && contentToken) {
             tokens.push(normalizeMarkupPlaceholders(contentToken));
-            return;
+            slots?.push({ node });
+            continue;
         }
 
-        if (!node.hasChildNodes()) return;
-        _walkForTokens(liveRoot, Array.from(node.childNodes), tokens, [...indices, index], duplicateSelectOptions, applyStyles);
-    });
+        if (!node.hasChildNodes()) continue;
+        _walkForTokens(liveRoot, Array.from(node.childNodes), tokens, [...indices, index], duplicateSelectOptions, applyStyles, slots, vars);
+    }
 }
 
-function _tokenizeAttributes(element: HTMLElement, tokens: string[], duplicateSelectOptions: boolean): void {
+function _tokenizeAttributes(element: HTMLElement, tokens: string[], duplicateSelectOptions: boolean, slots?: TokenSlot[]): void {
     const tagName = element.tagName.toLowerCase();
 
-    if (tagName === 'img') {
+    // On a clone only: `tokenSlots` walks the live DOM, which a token read never writes.
+    if (tagName === 'img' && !slots) {
         const img = element as HTMLImageElement;
         if (img.src) element.setAttribute('src', img.src);
     }
 
-    for (const attr of TRANSLATABLE_ATTRIBUTES) {
-        const value = element.getAttribute(attr)?.trim();
-        if (value) tokens.push(normalizeMarkupPlaceholders(value));
-    }
+    // `normalizeTokenText`, not `.trim()`. Attributes used to keep their
+    // internal whitespace while text nodes collapsed theirs, so the same
+    // authored sentence produced two different ids depending on where it sat —
+    // and put this SDK on different ids from langsys-php for the same markup.
+    const push = (attr: string) => {
+        const value = normalizeTokenText(element.getAttribute(attr) ?? '');
+        if (!value) return;
+        tokens.push(normalizeMarkupPlaceholders(value));
+        slots?.push({ node: element, attr });
+    };
+    for (const attr of TRANSLATABLE_ATTRIBUTES) push(attr);
 
-    if (VALUE_TRANSLATABLE_ELEMENTS.includes(tagName)) {
-        const value = element.getAttribute('value')?.trim();
-        if (value) tokens.push(normalizeMarkupPlaceholders(value));
-    }
+    if (VALUE_TRANSLATABLE_ELEMENTS.includes(tagName)) push('value');
 
     if (tagName === 'input') {
         const inputType = element.getAttribute('type')?.toLowerCase();
-        if (inputType && VALUE_TRANSLATABLE_INPUT_TYPES.includes(inputType)) {
-            const value = element.getAttribute('value')?.trim();
-            if (value) tokens.push(normalizeMarkupPlaceholders(value));
-        }
+        if (inputType && VALUE_TRANSLATABLE_INPUT_TYPES.includes(inputType)) push('value');
     }
 
     // <option> text is NOT harvested here in the current path: it arrives via
@@ -444,7 +845,7 @@ function _tokenizeAttributes(element: HTMLElement, tokens: string[], duplicateSe
     if (duplicateSelectOptions && tagName === 'select') {
         const options = element.querySelectorAll('option');
         options.forEach((option) => {
-            const optionText = option.textContent?.trim();
+            const optionText = normalizeTokenText(option.textContent ?? '');
             if (optionText) tokens.push(normalizeMarkupPlaceholders(optionText));
         });
     }
@@ -455,11 +856,17 @@ function _applyStylesToClone(liveRoot: HTMLElement, cloneNode: HTMLElement, indi
     const domNode = _findNode(Array.from(liveRoot.childNodes), indices);
     if (!domNode) return;
 
+    // The defaults are a bare element of the same tag, carrying no style of its own:
+    // a hidden or positioned reference would differ from every element on the
+    // properties it sets (`visibility`, and `display`, which absolute positioning
+    // turns to `block`), so each would be inlined everywhere. Its container is
+    // `display: none`, which keeps it out of the layout and leaves its own computed
+    // `display` and `visibility` the tag's defaults.
     const tagName = (domNode as HTMLElement).tagName.toLowerCase();
-    const reference = document.createElement(tagName);
-    reference.style.visibility = 'hidden';
-    reference.style.position = 'absolute';
-    document.body.appendChild(reference);
+    const container = document.createElement('div');
+    container.style.display = 'none';
+    const reference = container.appendChild(document.createElement(tagName));
+    document.body.appendChild(container);
 
     const computed = window.getComputedStyle(domNode as HTMLElement);
     const defaults = window.getComputedStyle(reference);
@@ -472,7 +879,7 @@ function _applyStylesToClone(liveRoot: HTMLElement, cloneNode: HTMLElement, indi
         }
     }
 
-    document.body.removeChild(reference);
+    document.body.removeChild(container);
     cloneNode.removeAttribute('class');
 }
 

@@ -20,7 +20,8 @@ export {
     type RichSlot,
     type EncodedRichText,
 } from './richtext.js';
-export { LangsysAppAPI } from './api.js';
+export { LangsysAppAPI, LangsysConfigurationError } from './api.js';
+export type { ApiCredentials, SendOptions } from './api.js';
 
 // Content-block helpers (framework-agnostic — for React/Vue/Angular/other
 // wrappers that own their own DOM rendering and only need the registration
@@ -35,26 +36,130 @@ export {
     PHRASE_MARKER_ATTRS,
     registerContentBlock,
     tokenizeElement,
+    type RegistrationReason,
+    type RegistrationResult,
 } from './content-block.js';
+
+// Marker constants. Every one `/pure` exports is exported here too, with the same
+// value. The content-block set used to be `/pure`-only while the phrase one was here,
+// and a binding importing `CONTENT_BLOCK_MARKER_ATTR` from this entry got `undefined`:
+// its served-bytes assertion then looked for an attribute named "undefined" and could
+// not fail (found by the Svelte lane). Pinned by `marker-exports`.
+export {
+    CONTENT_BLOCK_MARKER_ATTR,
+    CONTENT_BLOCK_MARKER_ATTR_LEGACY,
+    CONTENT_BLOCK_MARKER_ATTRS,
+    PHRASE_MARKER_ATTR_LEGACY,
+    RESOLVED_MARKER_ATTR,
+    RESOLVED_MARKER_ATTR_LEGACY,
+    RESOLVED_MARKER_ATTRS,
+} from './identity.js';
 
 // Reactive primitives
 export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber, type Updater } from './signal.js';
-export { persist } from './persist.js';
+export { persist, setPersistStorage, type PersistStorage } from './persist.js';
+export { setTeardownSignal, type TeardownSubscribe } from './teardown.js';
+export {
+    applyRendered,
+    blockNodesOf,
+    registerBlock,
+    renderBlock,
+    serializeTree,
+    tokenizeTree,
+    warnUnrenderedBlock,
+    type BlockNode,
+    type BlockOptions,
+    type BlockShape,
+    type RenderedBlock,
+    type RenderedNode,
+    type SeededBlock,
+    type SeededPhrase,
+    type RequestSeed,
+} from './block-tree.js';
+export {
+    clearSharedCatalogs,
+    createRequestScope,
+    currentRequestScope,
+    scopeFromSeed,
+    type RequestScope,
+    type RequestScopeOptions,
+    type ScopeMiss,
+} from './request-scope.js';
+export { setRequestScopeStorage, type ScopeStorage } from './scope-context.js';
+// Variables in registered text: the unregistered notice (VAR-7), placeholder names (VAR-2)
+// and the value marker (VAR-3).
+export { warnUnregistered } from './notices.js';
+export { derivePlaceholderNames, snakeCase, type ExpressionShape, type NamedExpression } from './var-names.js';
+export { VAR_PARAM_ATTR } from './var-markers.js';
+export {
+    SNAPSHOT_FORMAT,
+    SNAPSHOT_VERSION,
+    SnapshotError,
+    buildSnapshot,
+    canonicalSnapshotJson,
+    parseSnapshot,
+    snapshotChecksum,
+    type CatalogSnapshot,
+    type SnapshotCatalog,
+    type SnapshotCategory,
+    type SnapshotPayload,
+    type SnapshotRefusal,
+} from './snapshot.js';
+export {
+    LEGACY_FORMATS,
+    SUPPORTED_LEGACY_FORMATS,
+    convertLegacyCall,
+    convertLegacyPluralForms,
+    convertLegacyValue,
+    type LegacyConversion,
+    type LegacyEntryPoint,
+    type LegacyFormat,
+} from './legacy-value.js';
+export {
+    LegacyFormatError,
+    createLegacyKeys,
+    type LegacyKeyFile,
+    type LegacyKeyHit,
+    type LegacyKeyProblem,
+    type LegacyKeys,
+} from './legacy-keys.js';
+export {
+    DEFAULT_SERVER_MESSAGE_CATEGORY,
+    fillTemplate,
+    resolveServerMessages,
+    templateMarkers,
+    toServerMessage,
+    type ResolveServerMessagesOptions,
+    type ServerMessagePieces,
+    type ServerMessage,
+} from './server-messages.js';
 
 // Stores (advanced usage — direct subscription to translations / locale)
-export { sTranslations, currentlyLoadedLocale } from './stores.js';
+// `writeEnabled` is the server-computed write capability for this session and
+// the single source of truth for every write decision — never infer it from
+// `key_type`. TRI-STATE, and the states must not be collapsed: `undefined` =
+// not yet authorized (hold), `true` = registering, `false` = read-only. It is
+// browser-authoritative — never written during SSR — so it legitimately reads
+// `undefined` on the server and resolves after hydration. Bindings using
+// `useSyncExternalStore` should pin `getServerSnapshot` to `undefined` so the
+// hydration render matches the server markup.
+//
+// `autoDiscovery` is the server-set POLICY for whether this key may report page
+// URLs — deliberately independent of `writeEnabled` and never merged with it.
+// The canonical public site is `writeEnabled: false` AND `autoDiscovery: true`.
+export { sTranslations, currentlyLoadedLocale, writeEnabled, autoDiscovery } from './stores.js';
 
 // Logger
 export { Logger, logger } from './logger.js';
 
 // Utility exports
 export { md5, md5Legacy, isEmpty } from './utils.js';
-export { findUnusedParamKeys, interpolate, isICU, normalizeMarkupPlaceholders } from './interpolate.js';
+export { defaultedArguments, findUnusedParamKeys, interpolate, isICU, normalizeMarkupPlaceholders, type InterpolateOptions } from './interpolate.js';
 export { canonicalizeLocale } from './locale.js';
 
 // Type re-exports
 export type { ResponseObject as iLangsysResponse } from './types/api.js';
-export type { iLangsysConfig, iLangsysInitConfig, LocaleSource } from './types/config.js';
+export type { iLangsysConfig, iLangsysInitConfig, LocaleSource, WriteGrant } from './types/config.js';
 export type { iContentBlock } from './types/content-block.js';
 export type { iCountry, iCountryDialCode, iCountryList } from './types/countries.js';
 export type { iCurrency, iCurrencyList } from './types/currencies.js';
@@ -75,6 +180,8 @@ export type { iCategories, iTranslations } from './types/translations.js';
 // reactive primitive frameworks bind to.
 import { LangsysApp as _LangsysApp } from './langsys-app.js';
 import type { TFunction } from './types/translation-fn.js';
+import type { WriteGrant as WriteGrantType } from './types/config.js';
+import type { ServerMessage as ServerMessageType } from './server-messages.js';
 
 export const t: TFunction = ((phrase: string, ...rest: unknown[]): string => {
     // Forward all args verbatim; the underlying TFunction implementation
@@ -84,3 +191,33 @@ export const t: TFunction = ((phrase: string, ...rest: unknown[]): string => {
 }) as TFunction;
 
 export const tSignal = _LangsysApp.Translations.tSignal;
+
+/**
+ * Tell the SDK the route changed (HINT-13). Call it from your router's after-navigation hook,
+ * so content that stays mounted across routes — a persistent layout — is looked up again and
+ * its misses are recorded for the new URL. Framework bindings wire this for you.
+ */
+export const notifyNavigation = (): void => _LangsysApp.Translations.notifyNavigation();
+
+/**
+ * The header that asks your own API for the user's language (FRM-6):
+ * `fetch(url, { headers: { ...localeHeaders() } })`. See `LangsysApp.localeHeaders`.
+ */
+export const localeHeaders = (): Record<string, string> => _LangsysApp.localeHeaders();
+
+/**
+ * Render a server message entry (MSG-5): its template through `t()` under the
+ * messages category, or the entry's `message` when there is no translation.
+ * Standalone alias for `LangsysApp.renderServerMessage`.
+ */
+export const renderServerMessage = (entry: ServerMessageType, category?: string): string =>
+    _LangsysApp.renderServerMessage(entry, category);
+
+/**
+ * Standalone alias for `LangsysApp.setWriteGrant` — supply the write grant
+ * after `init()`, e.g. once the user logs in. Not the refresh path: the token
+ * is resolved fresh before every request and never cached, so pass a provider
+ * function and let your auth layer decide when to mint.
+ */
+export const setWriteGrant = (grant: WriteGrantType | undefined): Promise<void> =>
+    _LangsysApp.setWriteGrant(grant);

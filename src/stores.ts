@@ -1,5 +1,5 @@
-import { createSignal } from './signal.js';
-import { persist } from './persist.js';
+import { createSignal, type Signal } from './signal.js';
+import { persistScoped } from './persist.js';
 import type { iCategories } from './types/translations.js';
 import type { iLangsysConfig } from './types/config.js';
 
@@ -10,9 +10,107 @@ const initialTranslations: iCategories = {
     },
 };
 
-export const sTranslations = persist<iCategories>('translations', initialTranslations);
+/**
+ * The translation catalog, cached in localStorage for a warm start.
+ *
+ * Keyed by PROJECT and LOCALE (CACHE-1), and hydrated only once `init()` knows
+ * both. The key used to be a bare `translations` with neither, which meant a
+ * page load restored whatever catalog was there and served it before anything
+ * could check whose it was: a visitor who used the app in French saw French
+ * until the English fetch landed, and two projects sharing an origin
+ * overwrote and then served each other's content. Both failed silently.
+ *
+ * `persist` cannot express this because it reads its key at module load, and
+ * neither project nor locale exists then — see `persistScoped`.
+ *
+ * The two superseded keys are removed when identity first arrives; they can
+ * never be read again, and a stale catalog sitting in localStorage forever is
+ * not something anyone goes looking for.
+ */
+const catalogCache = persistScoped<iCategories>('langsys:translations', initialTranslations, [
+    'translations',
+    'langsys:translations',
+]);
 
-export const currentlyLoadedLocale = createSignal<string>('');
+/**
+ * The request scope the current code renders in, as the two signals below need
+ * it (SRV-7). Registered by `scope-context.ts`, so this module imports nothing
+ * from the scope and has no cycle.
+ */
+let activeScopeView: () => { catalog: iCategories; locale: string } | undefined = () => undefined;
+
+/** @internal Called once by `scope-context.ts`. */
+export function _followRequestScope(resolver: () => { catalog: iCategories; locale: string } | undefined): void {
+    activeScopeView = resolver;
+}
+
+/**
+ * A page signal whose reads follow the active request scope. `get()`, and the
+ * synchronous first emission of `subscribe(run)`, answer with the scope's value:
+ * a Svelte `$store` read on a server IS a subscription, so the first emission is
+ * the read. Later emissions, and `set` and `update`, are the page's.
+ */
+function followScope<T>(page: Signal<T>, pick: (scope: { catalog: iCategories; locale: string }) => T): Signal<T> {
+    return {
+        ...page,
+        get: () => {
+            const scope = activeScopeView();
+            return scope ? pick(scope) : page.get();
+        },
+        subscribe: (run) => {
+            const scope = activeScopeView();
+            if (!scope) return page.subscribe(run);
+            let first = true;
+            return page.subscribe((value) => {
+                if (first) {
+                    first = false;
+                    run(pick(scope));
+                    return;
+                }
+                run(value);
+            });
+        },
+    };
+}
+
+/**
+ * The catalog. Inside a request scope `get()` answers with the scope's catalog,
+ * as `t()` does, so a binding that reads the catalog through this signal on a
+ * server renders the visitor's, never another request's. `set`, `update` and
+ * `subscribe` are the page's.
+ */
+export const sTranslations: Signal<iCategories> = followScope(catalogCache.signal, (scope) => scope.catalog);
+
+/** The page's own catalog, whatever scope is current: for the page's flush and write-back. */
+export const pageCatalog = (): iCategories => catalogCache.signal.get();
+
+/**
+ * Point the catalog cache at a `<projectid>:<locale>` scope. Called by `init()`
+ * as soon as it holds both, and by `Translations.change()` before a fetch, so a
+ * hit warms and a miss simply misses — never serves another scope's catalog.
+ */
+export const scopeCatalogCache = catalogCache.scope;
+
+/**
+ * Whether the client has credentials (WIRE-4): `undefined` until `init()` runs, `false` when
+ * `init()` was refused for a missing project id, API key or locale store, `true` once it
+ * accepted them. `LangsysApp.isConfigured()` reports it.
+ */
+export const configured = createSignal<boolean | undefined>(undefined);
+
+/** The scope a project and locale's catalog is cached, fetched and failure-tracked under (CACHE-1). */
+export const catalogScopeOf = (projectid: string, locale: string): string => `${projectid}:${locale}`;
+
+const pageLocaleSignal = createSignal<string>('');
+
+/**
+ * The locale the catalog is for. Inside a request scope `get()` answers with the
+ * scope's locale (SRV-7), for the same reason as `sTranslations`.
+ */
+export const currentlyLoadedLocale: Signal<string> = followScope(pageLocaleSignal, (scope) => scope.locale);
+
+/** The page's own loaded locale, whatever scope is current. */
+export const pageLocale = (): string => pageLocaleSignal.get();
 
 export const config: iLangsysConfig = {
     projectid: '',
@@ -22,3 +120,114 @@ export const config: iLangsysConfig = {
     debug: false,
     key_type: 'read',
 };
+
+/**
+ * Server-computed write capability for THIS session. The single source of
+ * truth for every write decision — never infer it from `key_type`, which
+ * cannot express `ip_write` (read-only everywhere except from allow-listed
+ * IPs, which is exactly how the discovery renderer registers content).
+ *
+ * Tri-state, and the three states are genuinely distinct:
+ *   - `undefined` — not yet authorized. HOLD: neither register nor hint.
+ *     Collapsing this to `false` would drop every miss that lands before
+ *     `validate()` resolves and fire a spurious discovery hint for it.
+ *   - `true`  — register missing tokens (never hint).
+ *   - `false` — never attempt a write (no 403 churn); hint instead.
+ *
+ * Refreshed from `authorize-project` at init and from every catalog fetch.
+ *
+ * BROWSER-AUTHORITATIVE: only ever written when `window` exists. Write
+ * capability is per-session (it varies by requester IP and by write grant),
+ * while this module is a process-wide singleton — in a long-lived SSR server
+ * shared across every request and every user, caching one request's answer
+ * here would apply it to every later visitor. Under SSR it stays `undefined`,
+ * which is the honest answer rather than a leaked one.
+ */
+export const writeEnabled = createSignal<boolean | undefined>(undefined);
+
+/**
+ * Whether the most recent catalog fetch FAILED (WIRE-4). While true, the catalog
+ * cannot tell a miss from a hit, so nothing may be recorded against it: no
+ * registration queued or sent, no content block registered, no discovery miss.
+ * Cleared by the next catalog that actually arrives, fetched or seeded.
+ *
+ * Internal, and deliberately not exported from the package: it describes the state
+ * of `sTranslations`, which is equally module-global, and a binding has no decision
+ * to make with it.
+ */
+export const catalogUnavailable = createSignal<boolean>(false);
+
+/**
+ * Whether this API key is permitted to report page URLs for content discovery.
+ *
+ * A POLICY, not a capability — deliberately independent of `writeEnabled`, and
+ * the two must not be collapsed. `writeEnabled` answers "can this session write
+ * from here"; this answers "may this key report at all". The canonical public
+ * website is `writeEnabled: false` **and** `autoDiscovery: true` — read-only,
+ * and permitted to report — which is exactly the case a single merged flag
+ * would break.
+ *
+ * It exists because the SDK cannot tell whether it is running on a public
+ * website. A mobile app holding a read key would otherwise report "page URLs"
+ * that are not pages, and no heuristic settles it — our own URL heuristic is
+ * already defeated by a routerless SPA. Beyond that, a customer may simply not
+ * want visitors' page paths leaving the browser, whatever the SDK infers.
+ *
+ * Plain boolean rather than the tri-state `writeEnabled` uses, and false until
+ * known. That is only safe because it is evaluated where the report is SENT
+ * rather than where the miss is recorded: by then authorization has long since
+ * resolved, and if it somehow hasn't, not reporting is the correct conservative
+ * default. Checked at collection time instead, false-until-known would silently
+ * drop early misses for keys that do permit reporting.
+ */
+export const autoDiscovery = createSignal<boolean | undefined>(undefined);
+
+/**
+ * Project setting: while true, a miss is recorded only when the loaded locale IS the
+ * base locale. It gates BOTH lanes — the registration queue and the discovery hint.
+ *
+ * The catalog is keyed by source text, and a server SDK renders a page in the visitor's
+ * language, so every string in that page is a translation. Without this, a write-enabled
+ * session browsing in Spanish files Spanish sentences as new SOURCE phrases, and a
+ * read-only one hints a localized URL, which sends the renderer to the same translated
+ * text. Legacy servers already send translated text and cannot be made to stop.
+ *
+ * Delivered in the handshake — `authorize-project` beside `key_type`, and the catalog
+ * envelope beside `words` — and honoured with no local override, so there is one source
+ * of truth. Absent or non-boolean means off, which is also the state until a backend
+ * ships the field. A PROJECT setting rather than a key-derived one like `autoDiscovery`,
+ * so it is the same answer for every key on the project.
+ *
+ * Off by default because it has a real cost: with it on, an English fallback appearing on
+ * a localized page is no longer discovered from that page.
+ */
+export const discoveryBaseLocaleOnly = createSignal<boolean>(false);
+
+/**
+ * Server-authoritative cap on items per `/translatable-items` request, from
+ * `langsys_settings.translatable_items.batch_limit` on the authorization
+ * response. Never hardcode it: if the server lowers its limit, an SDK sending
+ * its own idea of a batch has every oversized request rejected, and those
+ * phrases are never registered — silently, for every writing session.
+ *
+ * The default matches the server's own default so behaviour is unchanged
+ * against a backend that doesn't send it.
+ */
+export const batchLimit = createSignal<number>(200);
+
+/**
+ * Advanced by `notifyNavigation()` (HINT-13). The core's own DOM classes subscribe to it and
+ * re-enter their lookup, as a re-render would, while their host is attached to the document.
+ * Bindings need nothing from it: the same call publishes a fresh `t` through `tSignal`.
+ */
+export const navigationEpoch = createSignal<number>(0);
+
+/**
+ * Record the server's write decision. No-ops during SSR — see the
+ * browser-authoritative note on `writeEnabled`.
+ */
+export function setWriteEnabled(value: boolean | undefined): void {
+    if (typeof window === 'undefined') return;
+    if (typeof value !== 'boolean') return;
+    if (writeEnabled.get() !== value) writeEnabled.set(value);
+}

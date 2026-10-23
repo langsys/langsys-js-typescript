@@ -36,15 +36,68 @@ RELEASE_DATE=""
 # Non-interactive mode: `publish.sh <version> --yes` (or -y) skips every
 # prompt — version prompt, publish confirmation — and auto-rolls-back on
 # error. With no args the script stays fully interactive.
+# `publish.sh <version> --notes-only` prints the GitHub release notes it would
+# send for that version and exits, changing nothing.
 VERSION_ARG=""
 ASSUME_YES=false
+NOTES_ONLY=false
 for arg in "$@"; do
     case "$arg" in
         -y|--yes) ASSUME_YES=true ;;
+        --notes-only) NOTES_ONLY=true ;;
         -*) log_error "Unknown option: $arg"; exit 1 ;;
         *) VERSION_ARG="$arg" ;;
     esac
 done
+
+# The GitHub release notes: how to install, the version's CHANGELOG section, and
+# a link to the diff since the previous version. GitHub refuses a release body
+# over 125,000 characters, and the release is created after the tag is pushed,
+# so the notes are built and checked before anything is changed: a version
+# with no CHANGELOG section, or one too long, is refused there.
+GITHUB_RELEASE_BODY_LIMIT=125000
+release_notes() {
+    local version="$1" previous="$2" section notes length
+    # The section under `## <version> - <date or "unreleased">`, up to the next
+    # version's heading, without leading blank lines.
+    section=$(awk -v heading="## $version - " '
+        index($0, heading) == 1 { inside = 1; next }
+        inside && /^## / { exit }
+        inside { print }
+    ' CHANGELOG.md | sed '/./,$!d')
+    if [ -z "$(printf '%s' "$section" | tr -d '[:space:]')" ]; then
+        log_error "CHANGELOG.md has no section for $version: write one under \`## $version - unreleased\`" >&2
+        return 1
+    fi
+    notes="## Installation
+
+\`\`\`bash
+npm install langsys-js-typescript@$version
+\`\`\`
+
+$section
+
+**Full changelog:** https://github.com/langsys/langsys-js-typescript/compare/v$previous...v$version"
+    # JavaScript's length counts UTF-16 code units, never fewer than the characters GitHub counts.
+    length=$(printf '%s' "$notes" | node -e 'let s = ""; process.stdin.setEncoding("utf8").on("data", (d) => (s += d)).on("end", () => console.log(s.length))')
+    if [ "$length" -gt "$GITHUB_RELEASE_BODY_LIMIT" ]; then
+        log_error "The release notes for $version are $length characters, over GitHub's $GITHUB_RELEASE_BODY_LIMIT: shorten its CHANGELOG section" >&2
+        return 1
+    fi
+    printf '%s\n' "$notes"
+}
+
+if [ "$NOTES_ONLY" = true ]; then
+    if [ -z "$VERSION_ARG" ]; then
+        log_error "--notes-only needs the version: publish.sh <version> --notes-only"
+        exit 1
+    fi
+    PREVIOUS_VERSION=$(node -p "require('./package.json').version")
+    NOTES=$(release_notes "$VERSION_ARG" "$PREVIOUS_VERSION") || exit 1
+    printf '%s\n' "$NOTES"
+    log_info "$(printf '%s' "$NOTES" | node -e 'let s = ""; process.stdin.setEncoding("utf8").on("data", (d) => (s += d)).on("end", () => console.log(s.length))') characters, of GitHub's $GITHUB_RELEASE_BODY_LIMIT. Nothing was changed." >&2
+    exit 0
+fi
 
 # Function to rollback changes
 rollback() {
@@ -233,6 +286,11 @@ if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
     handle_error "Version v$NEW_VERSION already exists as a tag"
 fi
 
+# The release notes, built and checked before anything is changed or tagged.
+RELEASE_NOTES_FILE=$(mktemp)
+release_notes "$NEW_VERSION" "$ORIGINAL_VERSION" > "$RELEASE_NOTES_FILE" || handle_error "The release notes for $NEW_VERSION cannot be built (above)"
+log_success "Release notes built from the CHANGELOG section for $NEW_VERSION"
+
 # Confirm before proceeding
 if [ "$ASSUME_YES" = true ]; then
     log_info "Non-interactive mode: publishing version $NEW_VERSION"
@@ -286,8 +344,6 @@ if grep -q "^## $NEW_VERSION - unreleased$" CHANGELOG.md 2>/dev/null; then
     fi
     log_success "Stamped CHANGELOG date for $NEW_VERSION as $RELEASE_DATE"
     git add CHANGELOG.md
-elif ! grep -q "^## $NEW_VERSION - " CHANGELOG.md 2>/dev/null; then
-    log_warning "No CHANGELOG section for $NEW_VERSION — add one before or after release"
 fi
 
 git add package.json package-lock.json
@@ -315,47 +371,9 @@ TAG_PUSHED=true
 # Create GitHub release
 log_info "Creating GitHub release..."
 
-COMMIT_MESSAGES=""
-if git rev-parse "v$ORIGINAL_VERSION" >/dev/null 2>&1; then
-    COMMITS=$(git log --oneline "v$ORIGINAL_VERSION"..HEAD --reverse)
-else
-    COMMITS=$(git log --oneline --reverse)
-fi
-
-if [ -n "$COMMITS" ]; then
-    COMMIT_MESSAGES="
-
-## Changes in this release
-
-"
-    while IFS= read -r commit; do
-        if [ -n "$commit" ]; then
-            COMMIT_HASH=$(echo "$commit" | cut -d' ' -f1)
-            COMMIT_MSG=$(echo "$commit" | cut -d' ' -f2-)
-            FULL_COMMIT_MSG=$(git log --format=%B -n 1 "$COMMIT_HASH")
-            COMMIT_MESSAGES="$COMMIT_MESSAGES- [\`$COMMIT_HASH\`](https://github.com/langsys/langsys-js-typescript/commit/$COMMIT_HASH)
-  $FULL_COMMIT_MSG
-
-"
-        fi
-    done <<< "$COMMITS"
-fi
-
-RELEASE_NOTES="Release v$NEW_VERSION
-
-## Installation
-
-\`\`\`bash
-npm install langsys-js-typescript@$NEW_VERSION
-\`\`\`$COMMIT_MESSAGES
-
-## Full Changelog
-
-See the [commit history](https://github.com/langsys/langsys-js-typescript/compare/v$ORIGINAL_VERSION...v$NEW_VERSION) for the complete diff."
-
 gh release create "v$NEW_VERSION" \
     --title "v$NEW_VERSION" \
-    --notes "$RELEASE_NOTES"
+    --notes-file "$RELEASE_NOTES_FILE"
 
 echo
 log_success "🎉 GitHub release v$NEW_VERSION created!"

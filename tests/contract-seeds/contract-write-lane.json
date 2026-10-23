@@ -1,0 +1,1855 @@
+{
+    "projects": [
+        {
+            "id": "75000200-0001-4000-8000-000000000000",
+            "title": "ts write base#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100501|a2338418590b7af0c11294389fbfb1955463bf4b",
+                "device_id": "ts-write-1"
+            }
+        },
+        {
+            "id": "75000200-0002-4000-8000-000000000000",
+            "title": "ts write base#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100502|e81bed3b5963760c52d0fe928da131fa374c2831",
+                "device_id": "ts-write-2"
+            }
+        },
+        {
+            "id": "75000200-0003-4000-8000-000000000000",
+            "title": "ts write base#3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100503|6b379ed16b3e009a2c6255c44d0829561006124b",
+                "device_id": "ts-write-3"
+            }
+        },
+        {
+            "id": "75000200-0004-4000-8000-000000000000",
+            "title": "ts write base#4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100504|cfa932f029a97aa3ad1799de42cafb08f760e3a3",
+                "device_id": "ts-write-4"
+            }
+        },
+        {
+            "id": "75000200-0005-4000-8000-000000000000",
+            "title": "ts write base#5 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100505|c412c40a12d6125acda8161d6e7d4fda37c6e2c7",
+                "device_id": "ts-write-5"
+            }
+        },
+        {
+            "id": "75000200-0006-4000-8000-000000000000",
+            "title": "ts write base#6 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100506|fbfb4f722d7c473309f65ffd49dab5c8247fbcb6",
+                "device_id": "ts-write-6"
+            }
+        },
+        {
+            "id": "75000200-0007-4000-8000-000000000000",
+            "title": "ts write base#7 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100507|71b67281157577e8478443c97593413f18001b78",
+                "device_id": "ts-write-7"
+            }
+        },
+        {
+            "id": "75000200-0008-4000-8000-000000000000",
+            "title": "ts write base#8 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100508|e227ae9af5155dd79220a5489fcba44be5b9ac46",
+                "device_id": "ts-write-8"
+            }
+        },
+        {
+            "id": "75000200-0009-4000-8000-000000000000",
+            "title": "ts write base#9 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100509|8ec4ac95e4ed09e9e5924efcce59656dbd922123",
+                "device_id": "ts-write-9"
+            }
+        },
+        {
+            "id": "75000200-000a-4000-8000-000000000000",
+            "title": "ts write base#10 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100510|5617d0c4b18e554cc1f9df1d09ae17e805673c29",
+                "device_id": "ts-write-10"
+            }
+        },
+        {
+            "id": "75000200-000b-4000-8000-000000000000",
+            "title": "ts write base#11 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100511|3f7e214d3e25e4a9762b44a8895abf7fda94f5ad",
+                "device_id": "ts-write-11"
+            }
+        },
+        {
+            "id": "75000200-000c-4000-8000-000000000000",
+            "title": "ts write base#12 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100512|fcfe5b5f7646e303d7d2ca8ef3755ae230bf9cf5",
+                "device_id": "ts-write-12"
+            }
+        },
+        {
+            "id": "75000200-000d-4000-8000-000000000000",
+            "title": "ts write base#13 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100513|cb116778b2134f6490d1e90eb6321faa289cb38b",
+                "device_id": "ts-write-13"
+            }
+        },
+        {
+            "id": "75000200-000e-4000-8000-000000000000",
+            "title": "ts write base#14 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100514|113e37fcd02ccf936f5eb0b15c39b7328eab1861",
+                "device_id": "ts-write-14"
+            }
+        },
+        {
+            "id": "75000200-000f-4000-8000-000000000000",
+            "title": "ts write base#15 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100515|6a82e0518ccbd2b5556c8902ff01102623900bdc",
+                "device_id": "ts-write-15"
+            }
+        },
+        {
+            "id": "75000200-0010-4000-8000-000000000000",
+            "title": "ts write base#16 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100516|c5cef7f4274276df55ab117b2f9e01aad57a3682",
+                "device_id": "ts-write-16"
+            }
+        },
+        {
+            "id": "75000200-0011-4000-8000-000000000000",
+            "title": "ts write base#17 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100517|3041b3ee178d64878b12556cc5eaa5393e89e4fa",
+                "device_id": "ts-write-17"
+            }
+        },
+        {
+            "id": "75000200-0012-4000-8000-000000000000",
+            "title": "ts write base#18 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100518|e9e829143eb6ce8837dbd5c8eb42965a01ccc6cc",
+                "device_id": "ts-write-18"
+            }
+        },
+        {
+            "id": "75000200-0013-4000-8000-000000000000",
+            "title": "ts write base#19 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100519|111c5589210c3d2cae185de755216a54a5ef9927",
+                "device_id": "ts-write-19"
+            }
+        },
+        {
+            "id": "75000200-0014-4000-8000-000000000000",
+            "title": "ts write base#20 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100520|1574be055fc711c9f0c26fe3fcef66ab58081a92",
+                "device_id": "ts-write-20"
+            }
+        },
+        {
+            "id": "75000200-0015-4000-8000-000000000000",
+            "title": "ts write base#21 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100521|6ed89e8475b32e62d85e863a0f470af544bb4fa1",
+                "device_id": "ts-write-21"
+            }
+        },
+        {
+            "id": "75000200-0016-4000-8000-000000000000",
+            "title": "ts write base#22 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100522|6443e5195779192646a86a59d782f09f7ed4f05b",
+                "device_id": "ts-write-22"
+            }
+        },
+        {
+            "id": "75000200-0017-4000-8000-000000000000",
+            "title": "ts write base#23 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100523|9c566192e04d8e6f317767ac77c6ff0d80c4d22f",
+                "device_id": "ts-write-23"
+            }
+        },
+        {
+            "id": "75000200-0018-4000-8000-000000000000",
+            "title": "ts write base#24 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100524|869f6ffadbe821a55882446407d596f84d586786",
+                "device_id": "ts-write-24"
+            }
+        },
+        {
+            "id": "75000200-0019-4000-8000-000000000000",
+            "title": "ts write base#25 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100525|ea6cb8c41cd4adc54679619566430312eb841777",
+                "device_id": "ts-write-25"
+            }
+        },
+        {
+            "id": "75000200-001a-4000-8000-000000000000",
+            "title": "ts write base#26 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100526|fd580856d035dd11d1c78cc871ef2365ceaf47ab",
+                "device_id": "ts-write-26"
+            }
+        },
+        {
+            "id": "75000200-001b-4000-8000-000000000000",
+            "title": "ts write base#27 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100527|c4b852e53cd2d64e08b1857410013afe84faab24",
+                "device_id": "ts-write-27"
+            }
+        },
+        {
+            "id": "75000200-001c-4000-8000-000000000000",
+            "title": "ts write base#28 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100528|20fd45f2dedbe63e12e8e28bca406bd740d7dd74",
+                "device_id": "ts-write-28"
+            }
+        },
+        {
+            "id": "75000200-001d-4000-8000-000000000000",
+            "title": "ts write base#29 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100529|7016b8752ab0fcd96586218aa920b1d7fb2441b1",
+                "device_id": "ts-write-29"
+            }
+        },
+        {
+            "id": "75000200-001e-4000-8000-000000000000",
+            "title": "ts write base#30 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100530|ec7def3ab36d19e8df980f58425820a6ccbd30e2",
+                "device_id": "ts-write-30"
+            }
+        },
+        {
+            "id": "75000200-001f-4000-8000-000000000000",
+            "title": "ts write base#31 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100531|c7785ac3483980f34f157ba0941d0d3d63158731",
+                "device_id": "ts-write-31"
+            }
+        },
+        {
+            "id": "75000200-0020-4000-8000-000000000000",
+            "title": "ts write base#32 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100532|9d2357cdcc981dae9f5c73b1eb60b9476543c76d",
+                "device_id": "ts-write-32"
+            }
+        },
+        {
+            "id": "75000200-0021-4000-8000-000000000000",
+            "title": "ts write base#33 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100533|f8aeb592ebafc677f5f4db91ed51091cda898b50",
+                "device_id": "ts-write-33"
+            }
+        },
+        {
+            "id": "75000200-0022-4000-8000-000000000000",
+            "title": "ts write ipw elsewhere#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100534|e6e859baabf36c1357fb5f8947b4214956bbe0f7",
+                "device_id": "ts-write-34"
+            }
+        },
+        {
+            "id": "75000200-0023-4000-8000-000000000000",
+            "title": "ts write ipw elsewhere#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100535|be5a84524afa37cb11e811bc78a80adcdb34eec0",
+                "device_id": "ts-write-35"
+            }
+        },
+        {
+            "id": "75000200-0024-4000-8000-000000000000",
+            "title": "ts write gated#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "discovery_base_locale_only": true,
+            "user": {
+                "token": "100536|a5be26d94c349e9bb3e60bdee1f37d2f79eeb427",
+                "device_id": "ts-write-36"
+            }
+        },
+        {
+            "id": "75000200-0025-4000-8000-000000000000",
+            "title": "ts write gated#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "discovery_base_locale_only": true,
+            "user": {
+                "token": "100537|116634238a32e5f9c156746ca7a4863595f90e47",
+                "device_id": "ts-write-37"
+            }
+        },
+        {
+            "id": "75000200-0026-4000-8000-000000000000",
+            "title": "ts write gated#3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "discovery_base_locale_only": true,
+            "user": {
+                "token": "100538|9948aac9a6f9fd6e76a97a4cfeee0a6fdf3097a5",
+                "device_id": "ts-write-38"
+            }
+        },
+        {
+            "id": "75000200-0027-4000-8000-000000000000",
+            "title": "ts write gated#4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "discovery_base_locale_only": true,
+            "user": {
+                "token": "100539|4dace9c0d4eef99aed916dc06b144a6e634ee4e9",
+                "device_id": "ts-write-39"
+            }
+        },
+        {
+            "id": "75000200-0028-4000-8000-000000000000",
+            "title": "ts write two projects#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100540|6b50e1bff68a44ea2d7bac447b1a3e4265a370fc",
+                "device_id": "ts-write-40"
+            }
+        },
+        {
+            "id": "75000200-0029-4000-8000-000000000000",
+            "title": "ts write two projects#1 p2",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100541|71dbf67045ebdcf2e90d7a1e6d30a40c0f7f0180",
+                "device_id": "ts-write-41"
+            }
+        },
+        {
+            "id": "75000200-002a-4000-8000-000000000000",
+            "title": "ts write two projects#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100542|e205790341e62639be16f67857671140aafa6b2e",
+                "device_id": "ts-write-42"
+            }
+        },
+        {
+            "id": "75000200-002b-4000-8000-000000000000",
+            "title": "ts write two projects#2 p2",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100543|1d5ae2290ef82240207a7782ed100c118bcf2aaf",
+                "device_id": "ts-write-43"
+            }
+        },
+        {
+            "id": "75000200-002c-4000-8000-000000000000",
+            "title": "ts write two projects#3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100544|adecd8730cf6bec871b4fdac2c622468204bf41a",
+                "device_id": "ts-write-44"
+            }
+        },
+        {
+            "id": "75000200-002d-4000-8000-000000000000",
+            "title": "ts write two projects#3 p2",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
+            "user": {
+                "token": "100545|0cee1a9439c9b7b3a20907ac5a34c372d8a7a40b",
+                "device_id": "ts-write-45"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "75000201-0001-4000-8000-000000000000",
+            "key": "ts-write-1-k-write",
+            "project": "75000200-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0002-4000-8000-000000000000",
+            "key": "ts-write-1-k-read",
+            "project": "75000200-0001-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0003-4000-8000-000000000000",
+            "key": "ts-write-1-k-ipw",
+            "project": "75000200-0001-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.1"
+            ]
+        },
+        {
+            "id": "75000201-0004-4000-8000-000000000000",
+            "key": "ts-write-2-k-write",
+            "project": "75000200-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0005-4000-8000-000000000000",
+            "key": "ts-write-2-k-read",
+            "project": "75000200-0002-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0006-4000-8000-000000000000",
+            "key": "ts-write-2-k-ipw",
+            "project": "75000200-0002-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.2"
+            ]
+        },
+        {
+            "id": "75000201-0007-4000-8000-000000000000",
+            "key": "ts-write-3-k-write",
+            "project": "75000200-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0008-4000-8000-000000000000",
+            "key": "ts-write-3-k-read",
+            "project": "75000200-0003-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0009-4000-8000-000000000000",
+            "key": "ts-write-3-k-ipw",
+            "project": "75000200-0003-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.3"
+            ]
+        },
+        {
+            "id": "75000201-000a-4000-8000-000000000000",
+            "key": "ts-write-4-k-write",
+            "project": "75000200-0004-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-000b-4000-8000-000000000000",
+            "key": "ts-write-4-k-read",
+            "project": "75000200-0004-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-000c-4000-8000-000000000000",
+            "key": "ts-write-4-k-ipw",
+            "project": "75000200-0004-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.4"
+            ]
+        },
+        {
+            "id": "75000201-000d-4000-8000-000000000000",
+            "key": "ts-write-5-k-write",
+            "project": "75000200-0005-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-000e-4000-8000-000000000000",
+            "key": "ts-write-5-k-read",
+            "project": "75000200-0005-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-000f-4000-8000-000000000000",
+            "key": "ts-write-5-k-ipw",
+            "project": "75000200-0005-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.5"
+            ]
+        },
+        {
+            "id": "75000201-0010-4000-8000-000000000000",
+            "key": "ts-write-6-k-write",
+            "project": "75000200-0006-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0011-4000-8000-000000000000",
+            "key": "ts-write-6-k-read",
+            "project": "75000200-0006-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0012-4000-8000-000000000000",
+            "key": "ts-write-6-k-ipw",
+            "project": "75000200-0006-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.6"
+            ]
+        },
+        {
+            "id": "75000201-0013-4000-8000-000000000000",
+            "key": "ts-write-7-k-write",
+            "project": "75000200-0007-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0014-4000-8000-000000000000",
+            "key": "ts-write-7-k-read",
+            "project": "75000200-0007-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0015-4000-8000-000000000000",
+            "key": "ts-write-7-k-ipw",
+            "project": "75000200-0007-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.7"
+            ]
+        },
+        {
+            "id": "75000201-0016-4000-8000-000000000000",
+            "key": "ts-write-8-k-write",
+            "project": "75000200-0008-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0017-4000-8000-000000000000",
+            "key": "ts-write-8-k-read",
+            "project": "75000200-0008-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0018-4000-8000-000000000000",
+            "key": "ts-write-8-k-ipw",
+            "project": "75000200-0008-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.8"
+            ]
+        },
+        {
+            "id": "75000201-0019-4000-8000-000000000000",
+            "key": "ts-write-9-k-write",
+            "project": "75000200-0009-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-001a-4000-8000-000000000000",
+            "key": "ts-write-9-k-read",
+            "project": "75000200-0009-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-001b-4000-8000-000000000000",
+            "key": "ts-write-9-k-ipw",
+            "project": "75000200-0009-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.9"
+            ]
+        },
+        {
+            "id": "75000201-001c-4000-8000-000000000000",
+            "key": "ts-write-10-k-write",
+            "project": "75000200-000a-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-001d-4000-8000-000000000000",
+            "key": "ts-write-10-k-read",
+            "project": "75000200-000a-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-001e-4000-8000-000000000000",
+            "key": "ts-write-10-k-ipw",
+            "project": "75000200-000a-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.10"
+            ]
+        },
+        {
+            "id": "75000201-001f-4000-8000-000000000000",
+            "key": "ts-write-11-k-write",
+            "project": "75000200-000b-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0020-4000-8000-000000000000",
+            "key": "ts-write-11-k-read",
+            "project": "75000200-000b-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0021-4000-8000-000000000000",
+            "key": "ts-write-11-k-ipw",
+            "project": "75000200-000b-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.11"
+            ]
+        },
+        {
+            "id": "75000201-0022-4000-8000-000000000000",
+            "key": "ts-write-12-k-write",
+            "project": "75000200-000c-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0023-4000-8000-000000000000",
+            "key": "ts-write-12-k-read",
+            "project": "75000200-000c-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0024-4000-8000-000000000000",
+            "key": "ts-write-12-k-ipw",
+            "project": "75000200-000c-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.12"
+            ]
+        },
+        {
+            "id": "75000201-0025-4000-8000-000000000000",
+            "key": "ts-write-13-k-write",
+            "project": "75000200-000d-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0026-4000-8000-000000000000",
+            "key": "ts-write-13-k-read",
+            "project": "75000200-000d-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0027-4000-8000-000000000000",
+            "key": "ts-write-13-k-ipw",
+            "project": "75000200-000d-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.13"
+            ]
+        },
+        {
+            "id": "75000201-0028-4000-8000-000000000000",
+            "key": "ts-write-14-k-write",
+            "project": "75000200-000e-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0029-4000-8000-000000000000",
+            "key": "ts-write-14-k-read",
+            "project": "75000200-000e-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-002a-4000-8000-000000000000",
+            "key": "ts-write-14-k-ipw",
+            "project": "75000200-000e-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.14"
+            ]
+        },
+        {
+            "id": "75000201-002b-4000-8000-000000000000",
+            "key": "ts-write-15-k-write",
+            "project": "75000200-000f-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-002c-4000-8000-000000000000",
+            "key": "ts-write-15-k-read",
+            "project": "75000200-000f-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-002d-4000-8000-000000000000",
+            "key": "ts-write-15-k-ipw",
+            "project": "75000200-000f-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.15"
+            ]
+        },
+        {
+            "id": "75000201-002e-4000-8000-000000000000",
+            "key": "ts-write-16-k-write",
+            "project": "75000200-0010-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-002f-4000-8000-000000000000",
+            "key": "ts-write-16-k-read",
+            "project": "75000200-0010-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0030-4000-8000-000000000000",
+            "key": "ts-write-16-k-ipw",
+            "project": "75000200-0010-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.16"
+            ]
+        },
+        {
+            "id": "75000201-0031-4000-8000-000000000000",
+            "key": "ts-write-17-k-write",
+            "project": "75000200-0011-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0032-4000-8000-000000000000",
+            "key": "ts-write-17-k-read",
+            "project": "75000200-0011-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0033-4000-8000-000000000000",
+            "key": "ts-write-17-k-ipw",
+            "project": "75000200-0011-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.17"
+            ]
+        },
+        {
+            "id": "75000201-0034-4000-8000-000000000000",
+            "key": "ts-write-18-k-write",
+            "project": "75000200-0012-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0035-4000-8000-000000000000",
+            "key": "ts-write-18-k-read",
+            "project": "75000200-0012-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0036-4000-8000-000000000000",
+            "key": "ts-write-18-k-ipw",
+            "project": "75000200-0012-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.18"
+            ]
+        },
+        {
+            "id": "75000201-0037-4000-8000-000000000000",
+            "key": "ts-write-19-k-write",
+            "project": "75000200-0013-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0038-4000-8000-000000000000",
+            "key": "ts-write-19-k-read",
+            "project": "75000200-0013-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0039-4000-8000-000000000000",
+            "key": "ts-write-19-k-ipw",
+            "project": "75000200-0013-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.19"
+            ]
+        },
+        {
+            "id": "75000201-003a-4000-8000-000000000000",
+            "key": "ts-write-20-k-write",
+            "project": "75000200-0014-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-003b-4000-8000-000000000000",
+            "key": "ts-write-20-k-read",
+            "project": "75000200-0014-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-003c-4000-8000-000000000000",
+            "key": "ts-write-20-k-ipw",
+            "project": "75000200-0014-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.20"
+            ]
+        },
+        {
+            "id": "75000201-003d-4000-8000-000000000000",
+            "key": "ts-write-21-k-write",
+            "project": "75000200-0015-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-003e-4000-8000-000000000000",
+            "key": "ts-write-21-k-read",
+            "project": "75000200-0015-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-003f-4000-8000-000000000000",
+            "key": "ts-write-21-k-ipw",
+            "project": "75000200-0015-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.21"
+            ]
+        },
+        {
+            "id": "75000201-0040-4000-8000-000000000000",
+            "key": "ts-write-22-k-write",
+            "project": "75000200-0016-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0041-4000-8000-000000000000",
+            "key": "ts-write-22-k-read",
+            "project": "75000200-0016-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0042-4000-8000-000000000000",
+            "key": "ts-write-22-k-ipw",
+            "project": "75000200-0016-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.22"
+            ]
+        },
+        {
+            "id": "75000201-0043-4000-8000-000000000000",
+            "key": "ts-write-23-k-write",
+            "project": "75000200-0017-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0044-4000-8000-000000000000",
+            "key": "ts-write-23-k-read",
+            "project": "75000200-0017-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0045-4000-8000-000000000000",
+            "key": "ts-write-23-k-ipw",
+            "project": "75000200-0017-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.23"
+            ]
+        },
+        {
+            "id": "75000201-0046-4000-8000-000000000000",
+            "key": "ts-write-24-k-write",
+            "project": "75000200-0018-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0047-4000-8000-000000000000",
+            "key": "ts-write-24-k-read",
+            "project": "75000200-0018-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0048-4000-8000-000000000000",
+            "key": "ts-write-24-k-ipw",
+            "project": "75000200-0018-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.24"
+            ]
+        },
+        {
+            "id": "75000201-0049-4000-8000-000000000000",
+            "key": "ts-write-25-k-write",
+            "project": "75000200-0019-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-004a-4000-8000-000000000000",
+            "key": "ts-write-25-k-read",
+            "project": "75000200-0019-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-004b-4000-8000-000000000000",
+            "key": "ts-write-25-k-ipw",
+            "project": "75000200-0019-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.25"
+            ]
+        },
+        {
+            "id": "75000201-004c-4000-8000-000000000000",
+            "key": "ts-write-26-k-write",
+            "project": "75000200-001a-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-004d-4000-8000-000000000000",
+            "key": "ts-write-26-k-read",
+            "project": "75000200-001a-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-004e-4000-8000-000000000000",
+            "key": "ts-write-26-k-ipw",
+            "project": "75000200-001a-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.26"
+            ]
+        },
+        {
+            "id": "75000201-004f-4000-8000-000000000000",
+            "key": "ts-write-27-k-write",
+            "project": "75000200-001b-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0050-4000-8000-000000000000",
+            "key": "ts-write-27-k-read",
+            "project": "75000200-001b-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0051-4000-8000-000000000000",
+            "key": "ts-write-27-k-ipw",
+            "project": "75000200-001b-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.27"
+            ]
+        },
+        {
+            "id": "75000201-0052-4000-8000-000000000000",
+            "key": "ts-write-28-k-write",
+            "project": "75000200-001c-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0053-4000-8000-000000000000",
+            "key": "ts-write-28-k-read",
+            "project": "75000200-001c-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0054-4000-8000-000000000000",
+            "key": "ts-write-28-k-ipw",
+            "project": "75000200-001c-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.28"
+            ]
+        },
+        {
+            "id": "75000201-0055-4000-8000-000000000000",
+            "key": "ts-write-29-k-write",
+            "project": "75000200-001d-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0056-4000-8000-000000000000",
+            "key": "ts-write-29-k-read",
+            "project": "75000200-001d-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0057-4000-8000-000000000000",
+            "key": "ts-write-29-k-ipw",
+            "project": "75000200-001d-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.29"
+            ]
+        },
+        {
+            "id": "75000201-0058-4000-8000-000000000000",
+            "key": "ts-write-30-k-write",
+            "project": "75000200-001e-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0059-4000-8000-000000000000",
+            "key": "ts-write-30-k-read",
+            "project": "75000200-001e-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-005a-4000-8000-000000000000",
+            "key": "ts-write-30-k-ipw",
+            "project": "75000200-001e-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.30"
+            ]
+        },
+        {
+            "id": "75000201-005b-4000-8000-000000000000",
+            "key": "ts-write-31-k-write",
+            "project": "75000200-001f-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-005c-4000-8000-000000000000",
+            "key": "ts-write-31-k-read",
+            "project": "75000200-001f-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-005d-4000-8000-000000000000",
+            "key": "ts-write-31-k-ipw",
+            "project": "75000200-001f-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.31"
+            ]
+        },
+        {
+            "id": "75000201-005e-4000-8000-000000000000",
+            "key": "ts-write-32-k-write",
+            "project": "75000200-0020-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-005f-4000-8000-000000000000",
+            "key": "ts-write-32-k-read",
+            "project": "75000200-0020-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0060-4000-8000-000000000000",
+            "key": "ts-write-32-k-ipw",
+            "project": "75000200-0020-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.32"
+            ]
+        },
+        {
+            "id": "75000201-0061-4000-8000-000000000000",
+            "key": "ts-write-33-k-write",
+            "project": "75000200-0021-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0062-4000-8000-000000000000",
+            "key": "ts-write-33-k-read",
+            "project": "75000200-0021-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0063-4000-8000-000000000000",
+            "key": "ts-write-33-k-ipw",
+            "project": "75000200-0021-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.33"
+            ]
+        },
+        {
+            "id": "75000201-0064-4000-8000-000000000000",
+            "key": "ts-write-34-k-write",
+            "project": "75000200-0022-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0065-4000-8000-000000000000",
+            "key": "ts-write-34-k-read",
+            "project": "75000200-0022-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0066-4000-8000-000000000000",
+            "key": "ts-write-34-k-ipw",
+            "project": "75000200-0022-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.104.34"
+            ]
+        },
+        {
+            "id": "75000201-0067-4000-8000-000000000000",
+            "key": "ts-write-35-k-write",
+            "project": "75000200-0023-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0068-4000-8000-000000000000",
+            "key": "ts-write-35-k-read",
+            "project": "75000200-0023-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0069-4000-8000-000000000000",
+            "key": "ts-write-35-k-ipw",
+            "project": "75000200-0023-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.104.35"
+            ]
+        },
+        {
+            "id": "75000201-006a-4000-8000-000000000000",
+            "key": "ts-write-36-k-write",
+            "project": "75000200-0024-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-006b-4000-8000-000000000000",
+            "key": "ts-write-36-k-read",
+            "project": "75000200-0024-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-006c-4000-8000-000000000000",
+            "key": "ts-write-36-k-ipw",
+            "project": "75000200-0024-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.36"
+            ]
+        },
+        {
+            "id": "75000201-006d-4000-8000-000000000000",
+            "key": "ts-write-37-k-write",
+            "project": "75000200-0025-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-006e-4000-8000-000000000000",
+            "key": "ts-write-37-k-read",
+            "project": "75000200-0025-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-006f-4000-8000-000000000000",
+            "key": "ts-write-37-k-ipw",
+            "project": "75000200-0025-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.37"
+            ]
+        },
+        {
+            "id": "75000201-0070-4000-8000-000000000000",
+            "key": "ts-write-38-k-write",
+            "project": "75000200-0026-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0071-4000-8000-000000000000",
+            "key": "ts-write-38-k-read",
+            "project": "75000200-0026-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0072-4000-8000-000000000000",
+            "key": "ts-write-38-k-ipw",
+            "project": "75000200-0026-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.38"
+            ]
+        },
+        {
+            "id": "75000201-0073-4000-8000-000000000000",
+            "key": "ts-write-39-k-write",
+            "project": "75000200-0027-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0074-4000-8000-000000000000",
+            "key": "ts-write-39-k-read",
+            "project": "75000200-0027-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000201-0075-4000-8000-000000000000",
+            "key": "ts-write-39-k-ipw",
+            "project": "75000200-0027-4000-8000-000000000000",
+            "type": "ip_write",
+            "ip_allowlist": [
+                "10.75.4.39"
+            ]
+        },
+        {
+            "id": "75000201-0076-4000-8000-000000000000",
+            "key": "ts-write-40-k-write",
+            "project": "75000200-0028-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0077-4000-8000-000000000000",
+            "key": "ts-write-40-k-write-2",
+            "project": "75000200-0029-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0078-4000-8000-000000000000",
+            "key": "ts-write-41-k-write",
+            "project": "75000200-002a-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-0079-4000-8000-000000000000",
+            "key": "ts-write-41-k-write-2",
+            "project": "75000200-002b-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-007a-4000-8000-000000000000",
+            "key": "ts-write-42-k-write",
+            "project": "75000200-002c-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000201-007b-4000-8000-000000000000",
+            "key": "ts-write-42-k-write-2",
+            "project": "75000200-002d-4000-8000-000000000000",
+            "type": "write"
+        }
+    ]
+}

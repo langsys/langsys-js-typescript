@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { interpolate, isICU } from '../src/interpolate.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { defaultedArguments, findUnusedParamKeys, interpolate, isICU, warnUnmatchedParams } from '../src/interpolate.js';
+import { logger } from '../src/logger.js';
 
 describe('isICU', () => {
     it('detects plural', () => {
@@ -144,6 +145,32 @@ describe('interpolate — mixed ICU + simple slots', () => {
         expect(interpolate(tpl, { name: 'Sarah', n: 1 }, 'en')).toBe('Hello Sarah, 1 alert');
         expect(interpolate(tpl, { name: 'Sarah', n: 5 }, 'en')).toBe('Hello Sarah, 5 alerts');
     });
+
+    it('writes a Date or a boolean in a plain argument as the simple path does, as one string', () => {
+        const d = new Date('2026-05-27T12:00:00.000Z');
+        const tpl = '{n, plural, one {# alert} other {# alerts}} since {d}; muted {a}, pinned {b}';
+        const out = interpolate(tpl, { n: 2, d, a: true, b: false }, 'de-DE');
+        expect(out).toBe(`2 alerts since ${interpolate('{d}', { d }, 'de-DE')}; muted true, pinned false`);
+        expect(typeof out).toBe('string');
+    });
+
+    it('the same where an argument is recovered: one the caller does not pass, and a null one', () => {
+        const d = new Date('2026-05-27T12:00:00.000Z');
+        const medium = interpolate('{d}', { d }, 'es-ES');
+        expect(interpolate('{g, select, f {Ella} other {Elle}} desde {d}, fijado {b}', { d, b: false }, 'es-ES')).toBe(`Elle desde ${medium}, fijado false`);
+        expect(interpolate('{n, plural, one {# item} other {# items}} since {d}, pinned {b}', { n: null, d, b: true }, 'es-ES')).toBe(`{n} items since ${medium}, pinned true`);
+    });
+
+    it('a Date that is the whole output of its branch is written as the simple path writes it', () => {
+        const d = new Date('2026-05-27T12:00:00.000Z');
+        expect(interpolate('{s, select, done {{d}} other {pending}}', { s: 'done', d }, 'de-DE')).toBe(interpolate('{d}', { d }, 'de-DE'));
+    });
+
+    it('control: a boolean still selects its branch', () => {
+        const tpl = '{a, select, true {on} false {off} other {?}} {n, plural, one {# item} other {# items}}';
+        expect(interpolate(tpl, { a: true, n: 1 }, 'en')).toBe('on 1 item');
+        expect(interpolate(tpl, { a: false, n: 1 }, 'en')).toBe('off 1 item');
+    });
 });
 
 describe('interpolate — malformed ICU fallback', () => {
@@ -163,5 +190,361 @@ describe('interpolate — malformed ICU fallback', () => {
         const malformed = '{n, plural, one {one #}';
         const out = interpolate(malformed, { n: 1 }, 'en');
         expect(out).toBe(malformed);
+    });
+});
+
+describe('interpolate — missing select arguments fall back to `other`', () => {
+    // The ICU promoter in langsys-ai introduces a select argument the source
+    // phrase never carried (`{name}` → `{name_gender, select, …}` in the
+    // gendered target locales), so apps that don't know their user's gender
+    // can't supply it. Those apps must get the neutral branch, not raw ICU.
+    const welcome =
+        '{name_gender, select, male {Bienvenido, {name}!} female {Bienvenida, {name}!} other {Te damos la bienvenida, {name}!}}';
+
+    it('uses the supplied branch when the argument is present', () => {
+        expect(interpolate(welcome, { name: 'Laura', name_gender: 'female' }, 'es')).toBe('Bienvenida, Laura!');
+        expect(interpolate(welcome, { name: 'Diego', name_gender: 'male' }, 'es')).toBe('Bienvenido, Diego!');
+    });
+
+    it('falls back to `other` when the argument is absent', () => {
+        expect(interpolate(welcome, { name: 'Laura' }, 'es')).toBe('Te damos la bienvenida, Laura!');
+    });
+
+    it('treats null and undefined as absent', () => {
+        expect(interpolate(welcome, { name: 'Laura', name_gender: null }, 'es')).toBe('Te damos la bienvenida, Laura!');
+        expect(interpolate(welcome, { name: 'Laura', name_gender: undefined }, 'es')).toBe(
+            'Te damos la bienvenida, Laura!'
+        );
+    });
+
+    it('routes an unrecognized value to `other` (ICU select semantics)', () => {
+        expect(interpolate(welcome, { name: 'Laura', name_gender: 'nonbinary' }, 'es')).toBe(
+            'Te damos la bienvenida, Laura!'
+        );
+    });
+
+    it('fills only the missing argument when several selects are present', () => {
+        const tpl = '{a_gender, select, female {Ella} other {Elle}} y {b_gender, select, female {ella} other {elle}}';
+        expect(interpolate(tpl, { a_gender: 'female' }, 'es')).toBe('Ella y elle');
+    });
+
+    it('fills selects nested inside a plural branch', () => {
+        const tpl = '{n, plural, one {{g, select, female {Una invitada} other {Un invitado}}} other {# invitados}}';
+        expect(interpolate(tpl, { n: 1 }, 'es')).toBe('Un invitado');
+        expect(interpolate(tpl, { n: 1, g: 'female' }, 'es')).toBe('Una invitada');
+    });
+
+    it('fills plurals nested inside a select branch', () => {
+        const tpl =
+            '{g, select, female {Ella tiene {n, plural, one {# mensaje} other {# mensajes}}} other {Tiene {n, plural, one {# mensaje} other {# mensajes}}}}';
+        expect(interpolate(tpl, { n: 3 }, 'es')).toBe('Tiene 3 mensajes');
+        expect(interpolate(tpl, { n: 3, g: 'female' }, 'es')).toBe('Ella tiene 3 mensajes');
+    });
+
+    it('leaves plural-only templates untouched (no select args to fill)', () => {
+        const tpl = '{n, plural, one {# mensaje} other {# mensajes}}';
+        expect(interpolate(tpl, { n: 1 }, 'es')).toBe('1 mensaje');
+    });
+
+    it('still recovers rather than throwing when a plural argument is missing', () => {
+        const tpl = '{n, plural, one {# mensaje} other {# mensajes}}';
+        expect(() => interpolate(tpl, {}, 'es')).not.toThrow();
+    });
+});
+
+describe('interpolate — a recovered argument survives the format call', () => {
+    // Cross-leg hole PHP hit live: if recovery rewrites the missing nodes but
+    // the ORIGINAL params object still reaches the formatter, a
+    // present-but-null argument gets substituted as an EMPTY STRING, erasing
+    // the `{argName}` literal the rewrite just produced. Their fixture row went
+    // from '{count} items' to ' items'.
+    //
+    // This leg is safe by a different mechanism than theirs, and the mechanism
+    // is the thing worth pinning: recovery REPLACES the argument node with a
+    // literal, so no node bearing that name survives for the formatter to
+    // substitute. Nothing is withheld from `params` — there is simply nothing
+    // left to bind. An implementation that instead left the node in place and
+    // filtered `params` would pass every other test in this file.
+    //
+    // The discriminating vector is a null-VALUED argument. An absent one does
+    // not expose it, which is why the control below sits next to it.
+    it('does not erase a recovered plain argument whose value is null', () => {
+        expect(interpolate('{name} has {count, plural, one {# item} other {# items}}', { name: null, count: 2 }, 'en')).toBe(
+            '{name} has 2 items'
+        );
+    });
+
+    it('does not erase a recovered plural count whose value is null', () => {
+        expect(interpolate('{count, plural, one {# item} other {# items}}', { count: null }, 'en')).toBe('{count} items');
+    });
+
+    it('reaches a null argument nested inside a SUPPLIED select branch', () => {
+        expect(interpolate('{g, select, female {Ella {n}} other {Elle {n}}}', { g: 'female', n: null }, 'en')).toBe(
+            'Ella {n}'
+        );
+    });
+
+    it('covers number and date arguments, not only plain ones', () => {
+        expect(interpolate('{amt, number} due', { amt: null }, 'en')).toBe('{amt} due');
+        expect(interpolate('{when, date} due', { when: null }, 'en')).toBe('{when} due');
+    });
+
+    it('control: an ABSENT argument behaves identically', () => {
+        // If this and the null cases ever diverge, ICU-2's "null is missing"
+        // has stopped holding somewhere in the path.
+        expect(interpolate('{name} has {count, plural, one {# item} other {# items}}', { count: 2 }, 'en')).toBe(
+            '{name} has 2 items'
+        );
+    });
+});
+
+describe('interpolate — debug notice for defaulted arguments', () => {
+    // The fallback above is silent by design in production, which is also what
+    // makes the argument undiscoverable: it never appears in the source phrase,
+    // so nothing tells a developer that `{name}` became `{name_gender, select,
+    // …}` in Spanish and that their app could be supplying it.
+    //
+    // Each test uses its own template because the notice is deduped per
+    // template+locale for the process lifetime.
+    const template = (branch: string) =>
+        `{u_gender, select, male {Invitado ${branch}} female {Invitada ${branch}} other {Invitado/a ${branch}}}`;
+
+    function captureWarnings(run: () => void): string[] {
+        const seen: string[] = [];
+        const spy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+            seen.push(args.map(String).join(' '));
+        });
+        try {
+            run();
+        } finally {
+            spy.mockRestore();
+        }
+        return seen;
+    }
+
+    afterEach(() => {
+        logger.debugEnabled = false;
+    });
+
+    it('names the missing argument when debug is on', () => {
+        logger.debugEnabled = true;
+        const warnings = captureWarnings(() => interpolate(template('a'), {}, 'es'));
+
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toContain('u_gender');
+        expect(warnings[0]).toContain('es');
+    });
+
+    it('says nothing in production', () => {
+        expect(captureWarnings(() => interpolate(template('b'), {}, 'es'))).toHaveLength(0);
+    });
+
+    it('says nothing when the argument was supplied', () => {
+        logger.debugEnabled = true;
+        expect(captureWarnings(() => interpolate(template('c'), { u_gender: 'female' }, 'es'))).toHaveLength(0);
+    });
+
+    it('warns once per template, not once per render', () => {
+        logger.debugEnabled = true;
+        const tpl = template('d');
+
+        const warnings = captureWarnings(() => {
+            for (let i = 0; i < 5; i++) interpolate(tpl, {}, 'es');
+        });
+
+        expect(warnings).toHaveLength(1);
+    });
+
+    it('warns separately for each locale', () => {
+        logger.debugEnabled = true;
+        const tpl = template('e');
+
+        const warnings = captureWarnings(() => {
+            interpolate(tpl, {}, 'es');
+            interpolate(tpl, {}, 'fr');
+        });
+
+        expect(warnings).toHaveLength(2);
+    });
+
+    it('also names a defaulted plural argument, not only selects', () => {
+        logger.debugEnabled = true;
+        const tpl = '{msg_count, plural, one {# mensaje nuevo} other {# mensajes nuevos}}';
+
+        const warnings = captureWarnings(() => interpolate(tpl, {}, 'es'));
+
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toContain('msg_count');
+    });
+});
+
+describe('findUnusedParamKeys agrees with what interpolate actually resolves', () => {
+    /**
+     * The predicate and `adoptPercentPlaceholders` are two halves of one rule:
+     * "is this key a placeholder in this text". They disagreed. The predicate
+     * accepted the brace spellings only, on the documented assumption that texts
+     * arrive canonical (post-`normalizeMarkupPlaceholders`) — which is still true
+     * of both internal callers, `<Translate>` normalizing its tokens at capture
+     * and `<Phrase>`'s string coming out of `encodeRichText` already rewritten.
+     *
+     * It stopped being true of the exported function once `interpolate` began
+     * adopting `%name%` at RENDER time. Then a caller holding a raw stored
+     * translation got the key reported unused for a param that renders
+     * perfectly, and `warnUnmatchedParams` advised them to "write %name%
+     * instead" — the spelling they had used. Reported by the JS Server lane,
+     * which consumes the predicate from `/pure` over server-rendered text.
+     */
+    it('reports nothing for a param spelled %name% in the text', () => {
+        expect(findUnusedParamKeys(['Hi %name%'], { name: 'Ada' })).toEqual([]);
+    });
+
+    it('and interpolate does resolve that text, which is why', () => {
+        // The pairing is the point: a key the renderer substitutes must never be
+        // reported unused. One assertion per half, same input.
+        expect(interpolate('Hi %name%', { name: 'Ada' }, 'en')).toBe('Hi Ada');
+        expect(findUnusedParamKeys(['Hi %name%'], { name: 'Ada' })).toEqual([]);
+    });
+
+    it('still reports a key that appears in neither spelling', () => {
+        // The warning has to keep working — this is the case it exists for.
+        expect(findUnusedParamKeys(['Hi {name}'], { name: 'Ada', count: 2 })).toEqual(['count']);
+        expect(findUnusedParamKeys(['Hi there'], { name: 'Ada' })).toEqual(['name']);
+    });
+
+    it('accepts the brace spellings exactly as before', () => {
+        expect(findUnusedParamKeys(['Hi {name}'], { name: 'Ada' })).toEqual([]);
+        expect(findUnusedParamKeys(['{n, plural, one {#} other {#}}'], { n: 1 })).toEqual([]);
+        expect(findUnusedParamKeys(['Hi { name }'], { name: 'Ada' })).toEqual([]);
+    });
+
+    it('does NOT accept %key% for a key that could never resolve that way', () => {
+        // `adoptPercentPlaceholders` only rewrites identifiers, so `%a.b%` never
+        // becomes a placeholder. Accepting it here would suppress a warning that
+        // is correct — a false negative is worse than the false positive fixed
+        // above, because it hides a real mistake instead of misdirecting it.
+        expect(interpolate('Hi %a.b%', { 'a.b': 'x' }, 'en')).toBe('Hi %a.b%');
+        expect(findUnusedParamKeys(['Hi %a.b%'], { 'a.b': 'x' })).toEqual(['a.b']);
+    });
+
+    it('but a dotted key in BRACE form is still accepted', () => {
+        // The control on the other side of the gate, from the JS Server lane.
+        // Restricting the PERCENT spelling to identifiers must not turn into
+        // "reject every dotted key" — that is the same error pointing the other
+        // way, and it would report a key that resolves perfectly as unused.
+        expect(interpolate('Hi {a.b}', { 'a.b': 'X' }, 'en')).toBe('Hi X');
+        expect(findUnusedParamKeys(['Hi {a.b}'], { 'a.b': 'X' })).toEqual([]);
+    });
+
+    it('does not treat a percent run in prose as a placeholder', () => {
+        expect(findUnusedParamKeys(['Save 20% to 30%'], { off: 1 })).toEqual(['off']);
+    });
+
+    it('matches a key across the multi-text join without bleeding over it', () => {
+        // Texts are joined on NUL; a key must match within one text, not across
+        // two. `%` + NUL + `name%` must not count as `%name%`.
+        expect(findUnusedParamKeys(['ends with %', 'name% starts'], { name: 'Ada' })).toEqual(['name']);
+    });
+});
+
+describe('interpolate — notices routed to the caller (ICU-4 and ICU-6 for a host with its own logger)', () => {
+    // A server with a per-instance debug setting cannot reach this module's
+    // process-wide logger. These show the notices reach its handlers instead,
+    // on every occurrence, and that the core logger then stays silent.
+    afterEach(() => {
+        logger.debugEnabled = false;
+        vi.restoreAllMocks();
+    });
+
+    const SELECT = (tag: string) => `{g, select, male {He ${tag}} other {They ${tag}}} left {count, plural, one {# day} other {# days}} ago`;
+
+    it('onDefaulted receives every defaulted name once, the template and the locale, on every call', () => {
+        const calls: unknown[][] = [];
+        const template = SELECT('a');
+        for (let i = 0; i < 2; i++) interpolate(template, {}, 'es', { onDefaulted: (...args) => calls.push(args) });
+        expect(calls).toEqual([
+            [['g', 'count'], template, 'es'],
+            [['g', 'count'], template, 'es'],
+        ]);
+    });
+
+    it('with a handler, the core logger stays silent even with debug on', () => {
+        logger.debugEnabled = true;
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        interpolate(SELECT('b'), {}, 'es', { onDefaulted: () => {} });
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('control: without a handler the core notice still fires under debug', () => {
+        logger.debugEnabled = true;
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        interpolate(SELECT('c'), {}, 'es');
+        expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('nothing is reported when every argument is supplied', () => {
+        const onDefaulted = vi.fn();
+        interpolate(SELECT('d'), { g: 'male', count: 2 }, 'es', { onDefaulted });
+        expect(onDefaulted).not.toHaveBeenCalled();
+    });
+
+    it('defaultedArguments names exactly what the render defaulted, null counting as missing', () => {
+        const cases: Array<[string, Record<string, unknown>]> = [
+            [SELECT('e'), {}],
+            [SELECT('e'), { g: 'male' }],
+            [SELECT('e'), { g: null, count: 3 }],
+            [SELECT('e'), { g: 'x', count: 1 }],
+            ['{name} has {n, plural, one {# car} other {# cars}}', { name: 'Ada' }],
+            ['Plain {name} text', {}],
+            ['{broken, select, ', {}],
+        ];
+        for (const [template, params] of cases) {
+            let reported: string[] = [];
+            interpolate(template, params, 'en', { onDefaulted: (names) => (reported = names) });
+            expect(defaultedArguments(template, params, 'en'), template).toEqual(reported);
+        }
+        expect(defaultedArguments(SELECT('e'), {})).toEqual(['g', 'count']);
+        expect(defaultedArguments(SELECT('e'), { g: null, count: 3 })).toEqual(['g']);
+        expect(defaultedArguments('Plain {name} text', {})).toEqual([]);
+    });
+});
+
+describe('a <name>_gender companion counts as used wherever name is a placeholder', () => {
+    /**
+     * Langsys promotes `{username}` to `{username_gender, select, …}` in gendered target
+     * locales, so an app passes `username_gender` beside `username` (issue #5). The source
+     * text never names it, and a debug session at the base locale was told to write
+     * `%username_gender%`, a placeholder that does not exist.
+     */
+    const SOURCE = '{username} has been invited';
+    const GENDERED = '{username_gender, select, female {{username} ha sido invitada} other {{username} ha sido invitado}}';
+
+    it('is not reported beside its placeholder, in either spelling', () => {
+        expect(findUnusedParamKeys([SOURCE], { username: 'Ada', username_gender: 'female' })).toEqual([]);
+        expect(findUnusedParamKeys(['%username% has been invited'], { username: 'Ada', username_gender: 'female' })).toEqual([]);
+    });
+
+    it('and the gendered translation does select on it, which is why', () => {
+        expect(interpolate(GENDERED, { username: 'Ada', username_gender: 'female' }, 'es')).toBe('Ada ha sido invitada');
+        expect(findUnusedParamKeys([GENDERED], { username: 'Ada', username_gender: 'female' })).toEqual([]);
+    });
+
+    it('is still reported when the text has no such placeholder', () => {
+        expect(findUnusedParamKeys([SOURCE], { username: 'Ada', team_gender: 'female' })).toEqual(['team_gender']);
+        expect(findUnusedParamKeys(['Welcome back'], { username_gender: 'female' })).toEqual(['username_gender']);
+    });
+
+    it('warnUnmatchedParams stays quiet for it under debug, and still names a real stray', () => {
+        logger.debugEnabled = true;
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            warnUnmatchedParams('<Translate>', [SOURCE], { username: 'Ada', username_gender: 'female' });
+            expect(warn).not.toHaveBeenCalled();
+            warnUnmatchedParams('<Translate>', [SOURCE], { username: 'Ada', team_gender: 'female' });
+            expect(warn).toHaveBeenCalledTimes(1);
+            expect(String(warn.mock.calls[0]!.join(' '))).toContain('%team_gender%');
+        } finally {
+            warn.mockRestore();
+            logger.debugEnabled = false;
+        }
     });
 });

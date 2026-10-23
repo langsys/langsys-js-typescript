@@ -1,0 +1,57 @@
+{
+    "$comment": "Credential-shaped parameters hidden in the URL FRAGMENT, where searchParams cannot see them.",
+
+    "intent": "Documentation of intent, NOT a byte-enforcement contract. The decline predicate is a boolean gate on an unmodified URL: a URL that passes is byte-identical no matter which leg's parser matched, so legs cannot disagree about bytes — only about which of them declines. The effective guard is the UNION of every leg's predicate, and stricter is safe. A leg that fails to decline one of these shapes is not broken; it is contributing less than the others, and that is a gap worth closing rather than a test worth arguing with. NORMALIZATION is the opposite case and must stay identical across legs — see HINT-6.",
+
+    "query_vs_fragment_asymmetry": "A valueless `?email` DECLINES while `#contact-email` CARRIES, and that difference is correct rather than an inconsistency to tidy away. The `?` has already established parameter space, so a bare name inside it is a flag-style parameter and `email` is credential-shaped. A fragment with no `?` carries no parameter-space signal at all; reading it as a parameter list would be an assumption, not a parse. Both unification directions are wrong: unifying toward the query side reintroduces the `#contact-email` false positive, and unifying toward the fragment side stops declining a genuine credential-shaped parameter.",
+
+
+    "cases": [
+        {
+            "id": "route-fragment-oauth-tail",
+            "url": "https://a.com/app#/cb?code=abc&state=xyz",
+            "expect": "decline",
+            "why": "Hash-router route carrying a real OAuth callback in its query tail. Invisible to searchParams; the fragment is preserved by normalization, so without this check the grant leaves the browser verbatim."
+        },
+        {
+            "id": "implicit-flow-bare-fragment",
+            "url": "https://a.com/cb#access_token=xyz&token_type=bearer",
+            "expect": "decline",
+            "why": "OAuth implicit flow. No '?' anywhere, so a parser that only reads a '?' tail misses it silently. This is the shape where reasonable implementations most plausibly differ, which is why it is written down."
+        },
+        {
+            "id": "hash-route-plain",
+            "url": "https://a.com/p#/pricing",
+            "expect": "carry",
+            "expected_url": "https://a.com/p#/pricing",
+            "why": "Control. A route, not a pair list — no '=' anywhere, so nothing is read as a parameter name."
+        },
+        {
+            "id": "anchor",
+            "url": "https://a.com/p#section",
+            "expect": "carry",
+            "expected_url": "https://a.com/p",
+            "why": "Control. An in-page anchor, dropped by normalization as before. Must not be read as a parameter name."
+        },
+        {
+            "id": "hash-route-benign-tail",
+            "url": "https://a.com/p#/path?view=grid",
+            "expect": "carry",
+            "expected_url": "https://a.com/p#/path?view=grid",
+            "why": "Control. A fragment query tail carrying an ordinary view selector — the shape the decline rule must NOT over-catch, or every hash-router app with a filtered list becomes undiscoverable."
+        },
+        {
+            "id": "valueless-query-param",
+            "url": "https://a.com/p?email",
+            "expect": "decline",
+            "why": "The pair to `anchor-named-like-a-credential` below, and the reason the two must not be unified. The `?` established parameter space, so a bare name is a flag-style parameter — see query_vs_fragment_asymmetry."
+        },
+        {
+            "id": "anchor-named-like-a-credential",
+            "url": "https://a.com/p#contact-email",
+            "expect": "carry",
+            "expected_url": "https://a.com/p",
+            "why": "Control. Contains 'email', but has no '=' and therefore no value to leak. Matching it would decline an ordinary page to protect nothing."
+        }
+    ]
+}

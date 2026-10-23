@@ -1,0 +1,409 @@
+import { LangsysAppAPI, LangsysConfigurationError, type ApiCredentials } from './api.js';
+import { registerContentBlock, type RegistrationResult } from './content-block.js';
+import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
+import { LangsysApp } from './langsys-app.js';
+import { canonicalizeLocale } from './locale.js';
+import { activeScope, enterScope, runInScope, runOutsideScopes, type ActiveScope } from './scope-context.js';
+import { batchLimit, config as configStore } from './stores.js';
+import { AUTO_SSR_FLUSH_THRESHOLD, answeredWriteDecision, noticeSsrGrantDegradation, type CatalogView } from './translations.js';
+import type { RequestSeed, SeededBlock } from './block-tree.js';
+import type { iContentBlock } from './types/content-block.js';
+import type { TFunction } from './types/translation-fn.js';
+import type { iCategories, iTranslations } from './types/translations.js';
+
+/**
+ * Request scopes (spec SRV-7): rendering on a server without one visitor's
+ * state reaching the next.
+ *
+ * The core keeps one catalog, one locale and one miss queue in module state,
+ * which is right for a page and wrong for a server process rendering for many
+ * visitors at once. A scope holds its own: its locale, its view of the catalog,
+ * the misses its render records, and the seed its page hands the client. A
+ * binding opens one in its framework's request hook, renders inside `run()`,
+ * serialises `seed()` into the page, and calls `close()` after the response.
+ *
+ * A catalog is fetched at most once per request, and shared read-only (frozen)
+ * with scopes rendering the same locale under the same credentials within a
+ * minute, so a busy locale costs one fetch rather than one per visitor. Nothing a
+ * scope writes is visible to another scope or to the page.
+ *
+ * A scope may carry its own project id and API key (SRV-2), for a process that
+ * renders for more than one project: every request the scope makes goes out under
+ * them, and a scope given none sends under the module-wide ones `init()` set.
+ */
+
+export interface RequestScopeOptions {
+    /** The request's locale, as the framework or SRV-6 resolved it. */
+    locale: string;
+    /** A catalog already in hand (a snapshot, an upstream fetch); otherwise it is fetched. */
+    catalog?: iCategories;
+    /** The page's URL, for the records this scope keeps. */
+    url?: string;
+    /**
+     * The project id and API key this scope's requests send under, with the write grant
+     * that goes with them (SRV-2): its catalog fetch, its `close()`, and every request a
+     * render inside it makes. Without them the scope sends under the module-wide ones.
+     * Never part of `seed()`.
+     *
+     * Its key's write capability is the one its catalog fetch reports, so a scope handed
+     * both a catalog and credentials of its own has no answer for its key and sends
+     * nothing at `close()`; the client registers what it missed.
+     */
+    credentials?: ApiCredentials;
+}
+
+/** A phrase a scope's render missed. */
+export interface ScopeMiss {
+    category: string;
+    phrase: string;
+}
+
+export interface RequestScope {
+    readonly locale: string;
+    /** `t()` over this scope's catalog; its misses are this scope's. */
+    readonly t: TFunction;
+    /**
+     * Run `fn` inside the scope: top-level `t()`, `LangsysApp.t`, `tSignal.get()`,
+     * and the lookups and registrations `Translate` and `Phrase` make, resolve to
+     * it. Across `await` only once `setRequestScopeStorage` has an
+     * `AsyncLocalStorage`; otherwise only code that finishes inside `fn`.
+     *
+     * The `t` that `tSignal.get()` returns reads the catalog when it is CALLED, not
+     * when it was taken: kept and called after `fn` returns, it reads the page's.
+     * A host wrapping `t` for its components returns `scope.t`, which is this
+     * scope's wherever it is called.
+     */
+    run<R>(fn: () => R): R;
+    /**
+     * Make the scope current for the rest of the current async context, where the
+     * render cannot be wrapped in `run()`. Requires `setRequestScopeStorage` to
+     * have been given an `AsyncLocalStorage`; throws otherwise.
+     *
+     * It holds only in the continuation that itself performs the render: called
+     * inside a function the host awaits and returns from (a Nuxt plugin, a Nitro
+     * request hook, an awaited helper), the scope is gone when that function
+     * returns, before or after its own `await` alike. So call `enter()` in the
+     * function that renders, `run()` everywhere else, and hand the scope to the
+     * app through the framework's own injection when the host awaits you.
+     */
+    enter(): void;
+    /**
+     * The hydration seed (SRV-4): on the client, `LangsysApp.seedCatalog(seed.catalog,
+     * seed.locale, seed)` before hydration. `blocks` names every block the scope
+     * rendered through `renderBlock`, by id, with its category, source tokens and
+     * shape, for a client that cannot recover a block's source from DOM already
+     * holding the translation; hand each to `registerBlock` after `init()`.
+     * `phrases` lists the phrases the render missed. A block or phrase the scope
+     * sends itself at `close()` is marked `collected`, and the client never
+     * registers it.
+     */
+    seed(): RequestSeed;
+    /** The phrases this scope's render missed. */
+    misses(): readonly ScopeMiss[];
+    /**
+     * After the response (SRV-3): send what the render missed, when the key the
+     * scope sends under may write and the SSR strategy collects on the server,
+     * then stop recording. Resolves what happened; never throws. Calling it
+     * again resolves the first result.
+     */
+    close(): Promise<RegistrationResult>;
+}
+
+const SHARE_MS = 60_000;
+const shared = new Map<string, { at: number; catalog: Promise<FetchedCatalog | null> }>();
+
+/**
+ * Open a request scope. Resolves once its catalog is in hand: the one passed,
+ * one fetched within the last minute for the same credentials and locale, or a
+ * fresh fetch. A fetch that fails leaves the scope rendering source text and
+ * recording nothing, as the page does while its catalog is unavailable
+ * (WIRE-4). Credentials without both a project id and a key reject with
+ * `LangsysConfigurationError`, before anything is sent.
+ */
+export async function createRequestScope(options: RequestScopeOptions): Promise<RequestScope> {
+    const credentials = options.credentials === undefined ? undefined : checkedCredentials(options.credentials);
+    const locale = canonicalizeLocale(options.locale);
+    const fetched = options.catalog ? null : await sharedCatalog(locale, credentials);
+    const catalog = options.catalog ? freeze(normalizeCatalog(clone(options.catalog))) : (fetched?.catalog ?? null);
+    return new Scope(locale, catalog ?? freeze(normalizeCatalog({} as iCategories)), catalog !== null, false, credentials, fetched?.writeEnabled);
+}
+
+/**
+ * SRV-2: a scope's own credentials are a project id and a key together. Anything less is
+ * refused rather than read as none, since none means the module-wide key, and that is
+ * another project's for a host passing a project of its own.
+ */
+function checkedCredentials(credentials: ApiCredentials): ApiCredentials {
+    const { projectid, key, writeGrant } = credentials ?? ({} as Partial<ApiCredentials>);
+    if (typeof projectid !== 'string' || !projectid || typeof key !== 'string' || !key) {
+        throw new LangsysConfigurationError(
+            'createRequestScope() was given credentials without both a project id and an API key. Pass both, or leave credentials out to send under the module-wide ones.'
+        );
+    }
+    return Object.freeze({ projectid, key, writeGrant });
+}
+
+/**
+ * The request scope a server rendered, rebuilt on the client from its seed, at
+ * once and synchronously: for a host whose client render must run inside the
+ * same scope as the server's (React's hydration render, which reads the server
+ * snapshot), and whose provider cannot await. Its `t` reads the seed's catalog
+ * in the seed's locale, so the hydration render produces the served text.
+ *
+ * It sends nothing itself: the server's scope decided at its own `close()`. What
+ * its render misses, and the blocks it registers, go to the page's lanes as a
+ * render outside any scope would, which skip what the seed marks `collected`
+ * (the seed's blocks and phrases are remembered here, as `seedCatalog` remembers
+ * them), so under the `client` strategy the client still registers them.
+ *
+ * A host that wraps `t` for its components returns `scope.t`, never a `t` taken
+ * from `tSignal.get()` inside `run()`: that one reads the catalog when it is
+ * called, and called later in the render, outside `run()`, it reads the page's.
+ */
+export function scopeFromSeed(seed: RequestSeed): RequestScope {
+    for (const block of Object.values(seed.blocks ?? {})) rememberSeededBlock(block);
+    for (const phrase of seed.phrases ?? []) rememberSeededPhrase(phrase);
+    const scope = new Scope(canonicalizeLocale(seed.locale), freeze(normalizeCatalog(clone(seed.catalog ?? ({} as iCategories)))), true, true);
+    for (const block of Object.values(seed.blocks ?? {})) scope.recordRendered(block);
+    return scope;
+}
+
+/** The request scope the current code runs in, if any. */
+export function currentRequestScope(): RequestScope | undefined {
+    const scope = activeScope();
+    return scope instanceof Scope ? scope : undefined;
+}
+
+/** Forget every shared catalog, so the next scope for each locale fetches afresh. */
+export function clearSharedCatalogs(): void {
+    shared.clear();
+}
+
+/** Test hook: how many catalogs are held for sharing. */
+export function _sharedCatalogCount(): number {
+    return shared.size;
+}
+
+class Scope implements RequestScope, ActiveScope {
+    /**
+     * Set in the constructor as a non-enumerable own property, so a host serialising a scope
+     * never ships its key, while a Proxy over the scope (a reactive store holding it) still
+     * reads it, as it would not a value keyed to the real instance (Design invariant 4a).
+     */
+    declare readonly credentials: ApiCredentials | undefined;
+    private readonly phraseMisses = new Map<string, ScopeMiss>();
+    private readonly blockMisses = new Map<string, iContentBlock>();
+    private readonly rendered = new Map<string, SeededBlock>();
+    private closing: Promise<RegistrationResult> | null = null;
+
+    private readonly view: CatalogView = {
+        catalog: () => this.catalog,
+        locale: () => this.locale,
+        miss: (category, key) => {
+            if (!this.available || this.closing) return;
+            // A scope rebuilt from a seed records on the page's lanes (see `scopeFromSeed`).
+            if (this.fromSeed) return LangsysApp.Translations.recordPageMiss(category, key);
+            this.phraseMisses.set(`${category}\0${key}`, { category, phrase: key });
+        },
+        fromSnapshot: () => false,
+    };
+
+    readonly t: TFunction = ((phrase: string, ...rest: unknown[]) =>
+        LangsysApp.Translations.renderWith(this.view, phrase, rest)) as TFunction;
+
+    constructor(
+        readonly locale: string,
+        readonly catalog: iCategories,
+        private readonly available: boolean,
+        private readonly fromSeed = false,
+        credentials: ApiCredentials | undefined = undefined,
+        /** What this scope's own key may do, as its catalog fetch reported (SRV-2). */
+        private readonly keyWriteEnabled: boolean | undefined = undefined
+    ) {
+        Object.defineProperty(this, 'credentials', { value: credentials, enumerable: false });
+    }
+
+    run<R>(fn: () => R): R {
+        return runInScope(this, fn);
+    }
+
+    enter(): void {
+        enterScope(this);
+    }
+
+    seed(): RequestSeed {
+        // A block this scope will send itself at `close()` is marked `collected`, so the
+        // client never sends it again (SSR-1, SSR-2): the decision `flush` makes, taken now.
+        const collects = this.serverCollects(this.phraseMisses.size + this.blockMisses.size) && this.mayWrite();
+        const blocks: Record<string, SeededBlock> = {};
+        for (const [id, block] of this.rendered) {
+            const held =
+                block.shape === 'phrase'
+                    ? this.phraseMisses.has(`${block.category}\0${block.tokens[0]}`)
+                    : this.blockMisses.has(`${block.category}\0${id}`);
+            // A block the scope sends itself, or one its catalog holds, needs no content in the
+            // seed: the client never registers it from there.
+            const { content: _content, ...withoutContent } = block;
+            const entry = this.catalog[block.category || '__uncategorized__']?.[id];
+            const known = typeof entry === 'object' && entry !== null;
+            blocks[id] = collects && held ? { ...withoutContent, collected: true } : known ? withoutContent : { ...block };
+        }
+        const phrases = [...this.phraseMisses.values()].map(({ category, phrase }) => (collects ? { category, phrase, collected: true } : { category, phrase }));
+        return { locale: this.locale, catalog: clone(this.catalog), blocks: clone(blocks), phrases };
+    }
+
+    /** SSR-1 and SSR-2: whether the server sends a scope's misses, for a list this long. */
+    private serverCollects(count: number): boolean {
+        const strategy = configStore.ssrTokenStrategy || 'client';
+        // A grant belongs to the key it was issued with: a scope's own, or the module's.
+        if (this.credentials?.writeGrant) {
+            if (strategy !== 'client') noticeSsrGrantDegradation(strategy);
+            return false;
+        }
+        if (!this.credentials && LangsysAppAPI.hasWriteGrant()) return false;
+        return strategy === 'server' || (strategy === 'auto' && count < AUTO_SSR_FLUSH_THRESHOLD);
+    }
+
+    /** SRV-3 with SRV-2: whether the key this scope sends under may write. */
+    private mayWrite(): boolean {
+        return this.credentials ? this.keyWriteEnabled === true : LangsysApp.Translations.mayWrite();
+    }
+
+    /** The credentials this scope's own requests go out under, wherever they are made. */
+    private sendsUnder(): ApiCredentials {
+        return this.credentials ?? LangsysAppAPI.moduleCredentials();
+    }
+
+    recordRendered(block: SeededBlock): void {
+        this.rendered.set(block.customId, block);
+    }
+
+    misses(): readonly ScopeMiss[] {
+        return [...this.phraseMisses.values()];
+    }
+
+    recordBlock(block: iContentBlock): void {
+        if (!this.available || this.closing) return;
+        if (this.fromSeed) {
+            // On the page's lane, once the render that holds this scope has returned, and
+            // outside it: under an AsyncLocalStorage the task would otherwise run inside this
+            // scope again and hand the block straight back.
+            queueMicrotask(() => void runOutsideScopes(() => registerContentBlock(block)));
+            return;
+        }
+        this.blockMisses.set(`${block.category}\0${block.custom_id}`, block);
+    }
+
+    close(): Promise<RegistrationResult> {
+        this.closing ??= this.flush();
+        return this.closing;
+    }
+
+    private async flush(): Promise<RegistrationResult> {
+        const items: Array<Record<string, unknown>> = [
+            ...[...this.phraseMisses.values()].map((m) => ({ type: 'phrase', phrase: m.phrase, category: m.category || null })),
+            ...[...this.blockMisses.values()].map((b) => ({
+                type: 'content_block',
+                custom_id: b.custom_id,
+                category: b.category || null,
+                content: b.content,
+                label: b.label,
+                phrases: b.tokens.map((phrase) => ({ phrase })),
+            })),
+        ];
+        if (items.length === 0) return { status: true };
+
+        // SSR-1 and SSR-2: the server collects only under the `server` strategy, or `auto`
+        // for a short list, and never when a grant makes capability per-user. Otherwise the
+        // client registers these misses itself after hydration.
+        if (!this.serverCollects(items.length)) return { status: false, skipped: true, reason: 'client-strategy' };
+        // SRV-3: a read-only key pushes nothing.
+        if (!this.mayWrite()) return { status: false, skipped: true, reason: 'not-write-enabled' };
+
+        try {
+            const size = batchLimit.get();
+            // Named, not ambient: close() may run inside another scope, or in none (SRV-2).
+            const credentials = this.sendsUnder();
+            for (let offset = 0; offset < items.length; offset += size) {
+                const response = await LangsysAppAPI.createTranslatableItems(items.slice(offset, offset + size), { credentials });
+                if (!response.status) return { status: false, reason: 'refused', errors: response.errors as unknown[] | undefined };
+            }
+            return { status: true };
+        } catch (err) {
+            return { status: false, reason: 'failed', errors: [err] };
+        }
+    }
+}
+
+/** A catalog a scope fetched, with the write capability its key was answered with. */
+interface FetchedCatalog {
+    catalog: iCategories;
+    writeEnabled: boolean | undefined;
+}
+
+/**
+ * The catalog for a locale: shared within the minute if another scope fetched it under the
+ * same credentials, else fetched once. Never shared across keys (SRV-2): the write
+ * decision that comes back with a catalog is the key's that asked.
+ */
+function sharedCatalog(locale: string, credentials: ApiCredentials | undefined): Promise<FetchedCatalog | null> {
+    const under = credentials ?? LangsysAppAPI.moduleCredentials();
+    // A grant changes what the key may write, so a fetch made with one is shared only with scopes holding one.
+    const key = `${under.projectid}\0${under.key}\0${under.writeGrant ? 'grant' : ''}\0${locale}`;
+    const now = Date.now();
+    // Dropped once past the minute, so a process rendering for many projects keeps only the live ones.
+    for (const [held, entry] of shared) if (now - entry.at >= SHARE_MS) shared.delete(held);
+    const hit = shared.get(key);
+    if (hit) return hit.catalog;
+    const catalog = fetchCatalog(locale, credentials).then((result) => {
+        // A failure is not shared: the next scope tries again.
+        if (result === null) shared.delete(key);
+        return result;
+    });
+    shared.set(key, { at: now, catalog });
+    return catalog;
+}
+
+async function fetchCatalog(locale: string, credentials: ApiCredentials | undefined): Promise<FetchedCatalog | null> {
+    try {
+        const response = await LangsysAppAPI.getTranslations(locale, { credentials: credentials ?? LangsysAppAPI.moduleCredentials() });
+        // Under the module-wide key the answer is the process's write capability, as the
+        // page's fetch records it. A scope's own key answers for that scope alone.
+        if (!credentials) LangsysApp.Translations.applyWriteEnabled(answeredWriteDecision(response));
+        if (response.errors) return null;
+        return {
+            catalog: freeze(normalizeCatalog((isRecord(response.data) ? response.data : {}) as iCategories)),
+            writeEnabled: answeredWriteDecision(response),
+        };
+    } catch {
+        return null;
+    }
+}
+
+/** The catalog shape the page publishes: an `__uncategorized__` bucket, every category stamped, nothing else. */
+function normalizeCatalog(catalog: iCategories): iCategories {
+    for (const category of Object.keys(catalog)) {
+        if (!isRecord(catalog[category])) delete catalog[category];
+        else catalog[category]!.__category__ = category;
+    }
+    if (!isRecord(catalog.__uncategorized__)) {
+        catalog.__uncategorized__ = { __category__: '__uncategorized__', __symbol__: '__uncategorized__' } as iTranslations;
+    }
+    return catalog;
+}
+
+function freeze<T>(value: T): T {
+    if (isRecord(value)) {
+        for (const child of Object.values(value)) freeze(child);
+        Object.freeze(value);
+    }
+    return value;
+}
+
+function clone<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}

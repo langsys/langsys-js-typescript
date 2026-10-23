@@ -1,0 +1,272 @@
+{
+    "projects": [
+        {
+            "id": "75000500-0001-4000-8000-000000000000",
+            "title": "ts content empty#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102001|70a82c84325da9d3d57424036b475611ee142d2a",
+                "device_id": "ts-content-1"
+            }
+        },
+        {
+            "id": "75000500-0002-4000-8000-000000000000",
+            "title": "ts content empty#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102002|2c3b0afc70b687f9c37ae5e6ec901788d83151b5",
+                "device_id": "ts-content-2"
+            }
+        },
+        {
+            "id": "75000500-0003-4000-8000-000000000000",
+            "title": "ts content empty#3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102003|f61c3821dae0e60f686c718f3e345413d89f1c24",
+                "device_id": "ts-content-3"
+            }
+        },
+        {
+            "id": "75000500-0004-4000-8000-000000000000",
+            "title": "ts content empty#4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102004|cdbe2715f4dd02f0174fede4e83be0ff83cd98ca",
+                "device_id": "ts-content-4"
+            }
+        },
+        {
+            "id": "75000500-0005-4000-8000-000000000000",
+            "title": "ts content empty#5 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102005|d915fa0f7212e9189ee787e314154bedce41fe1c",
+                "device_id": "ts-content-5"
+            }
+        },
+        {
+            "id": "75000500-0006-4000-8000-000000000000",
+            "title": "ts content empty#6 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102006|9dbcb66997a6340d57fa3a4066bf261406449f44",
+                "device_id": "ts-content-6"
+            }
+        },
+        {
+            "id": "75000500-0007-4000-8000-000000000000",
+            "title": "ts content empty#7 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102007|41099221899420425efddaa462b3b8993e572420",
+                "device_id": "ts-content-7"
+            }
+        },
+        {
+            "id": "75000500-0008-4000-8000-000000000000",
+            "title": "ts content empty#8 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102008|ae3694456a0b427d0f01d36a2e8e943d31a55dd1",
+                "device_id": "ts-content-8"
+            }
+        },
+        {
+            "id": "75000500-0009-4000-8000-000000000000",
+            "title": "ts content empty#9 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102009|4469d0ec2ace68b9f8125aad55ca343fe71188fc",
+                "device_id": "ts-content-9"
+            }
+        },
+        {
+            "id": "75000500-000a-4000-8000-000000000000",
+            "title": "ts content empty#10 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102010|d9a436ee058ca9b91851c3124b09b3c0846858c6",
+                "device_id": "ts-content-10"
+            }
+        },
+        {
+            "id": "75000500-000b-4000-8000-000000000000",
+            "title": "ts content empty#11 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102011|728b05e1ce08de2c8801240d2b55a3e59ce978c3",
+                "device_id": "ts-content-11"
+            }
+        },
+        {
+            "id": "75000500-000c-4000-8000-000000000000",
+            "title": "ts content empty#12 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102012|83b95459da31a2f73a5ce13669169cd9f17da12e",
+                "device_id": "ts-content-12"
+            }
+        },
+        {
+            "id": "75000500-000d-4000-8000-000000000000",
+            "title": "ts content empty#13 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102013|f17d76c03aa4f17731b04d5700c6d6fe6f2daa41",
+                "device_id": "ts-content-13"
+            }
+        },
+        {
+            "id": "75000500-000e-4000-8000-000000000000",
+            "title": "ts content empty#14 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "102014|03d778e4424511b22baf36e262e3ba1b214d7504",
+                "device_id": "ts-content-14"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "75000501-0001-4000-8000-000000000000",
+            "key": "ts-content-1-k-write",
+            "project": "75000500-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-0002-4000-8000-000000000000",
+            "key": "ts-content-2-k-write",
+            "project": "75000500-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-0003-4000-8000-000000000000",
+            "key": "ts-content-3-k-write",
+            "project": "75000500-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-0004-4000-8000-000000000000",
+            "key": "ts-content-4-k-write",
+            "project": "75000500-0004-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-0005-4000-8000-000000000000",
+            "key": "ts-content-5-k-write",
+            "project": "75000500-0005-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-0006-4000-8000-000000000000",
+            "key": "ts-content-6-k-write",
+            "project": "75000500-0006-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-0007-4000-8000-000000000000",
+            "key": "ts-content-7-k-write",
+            "project": "75000500-0007-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-0008-4000-8000-000000000000",
+            "key": "ts-content-8-k-write",
+            "project": "75000500-0008-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-0009-4000-8000-000000000000",
+            "key": "ts-content-9-k-write",
+            "project": "75000500-0009-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-000a-4000-8000-000000000000",
+            "key": "ts-content-10-k-write",
+            "project": "75000500-000a-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-000b-4000-8000-000000000000",
+            "key": "ts-content-11-k-write",
+            "project": "75000500-000b-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-000c-4000-8000-000000000000",
+            "key": "ts-content-12-k-write",
+            "project": "75000500-000c-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-000d-4000-8000-000000000000",
+            "key": "ts-content-13-k-write",
+            "project": "75000500-000d-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "75000501-000e-4000-8000-000000000000",
+            "key": "ts-content-14-k-write",
+            "project": "75000500-000e-4000-8000-000000000000",
+            "type": "write"
+        }
+    ]
+}

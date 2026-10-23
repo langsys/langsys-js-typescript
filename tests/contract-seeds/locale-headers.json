@@ -1,0 +1,46 @@
+{
+    "projects": [
+        {
+            "id": "75000900-0001-4000-8000-000000000000",
+            "title": "ts headers base#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "104001|81258e0c7fb7e29808cbd0626728f29661333a9b",
+                "device_id": "ts-headers-1"
+            }
+        },
+        {
+            "id": "75000900-0002-4000-8000-000000000000",
+            "title": "ts headers base#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "104002|077e098d5b732f676a160a1f95a2ef81f405b1ee",
+                "device_id": "ts-headers-2"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "75000901-0001-4000-8000-000000000000",
+            "key": "ts-headers-1-k-read",
+            "project": "75000900-0001-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "75000901-0002-4000-8000-000000000000",
+            "key": "ts-headers-2-k-read",
+            "project": "75000900-0002-4000-8000-000000000000",
+            "type": "read"
+        }
+    ]
+}

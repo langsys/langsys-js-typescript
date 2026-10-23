@@ -22,9 +22,22 @@ src/
     api.ts                  # LangsysAppAPI — singleton HTTP client (validate, getTranslations, post/get/delete/patch/put with [projectid] path substitution)
     signal.ts               # Signal<T> + createSignal + getValue
     persist.ts              # persist<T>(key, initial) — Signal backed by localStorage with SSR-safe fallback
-    stores.ts               # Module-scoped state: sTranslations (persist), currentlyLoadedLocale, contentBlocks, shared config
+    legacy-value.ts         # Legacy i18n values to Langsys/ICU text (MIG-4): placeholders, plurals by format, literal-miss conversion by entry point
+    legacy-keys.ts          # createLegacyKeys: resolve legacy keys against parsed source files, refuse other ecosystems' formats (MIG-2/5/7)
+    snapshot.ts             # Catalog snapshots (SNAP): canonical serialisation, sync sha256, parse/refuse, build; loading is LangsysApp.loadSnapshot
+    request-scope.ts        # createRequestScope: per-request locale, catalog view, misses and seed for server rendering (SRV-7); scopeFromSeed rebuilds it on the client
+    scope-context.ts        # Which request scope is current (AsyncLocalStorage when supplied); activeCatalog() for every catalog read
+    server-messages.ts      # Server message entries (MSG): resolveServerMessages, templateMarkers, fillTemplate; rendering is LangsysApp.renderServerMessage
+    block-tree.ts           # Content blocks without a DOM: tokenizeTree, renderBlock, registerBlock, applyRendered, blockNodesOf (SRV-1, MARK-1, TOK-6)
+    hosts.ts                # Which marked hosts an instance manages; an enclosing walk takes over the rest (MARK-2/3)
+    var-markers.ts          # Value markers (VAR-3): <!--ls:NAME-->, data-ls-param, tree pairs grouped into runs; one token, rendered around the value
+    var-names.ts            # derivePlaceholderNames: placeholder names from source expressions (VAR-2)
+    notices.ts              # Debug notices once per reason, held until init() knows debug; warnUnregistered (VAR-7)
+    served-source.ts        # The source behind a served translation: seeded blocks, catalog recovery for Translate and Phrase (SRV-4)
+    teardown.ts             # setTeardownSignal — a host-supplied "app is going away" signal for hosts with no document (React Native)
+    stores.ts               # Module-scoped state: sTranslations (persist), currentlyLoadedLocale, writeEnabled, autoDiscovery, batchLimit, shared config
     interpolate.ts          # {name}-style + ICU MessageFormat placeholder substitution (CLDR number/date formatting in both paths)
-    locale.ts               # canonicalizeLocale (BCP 47 canonical form) + maximizedLangScript (CLDR likely-subtags matching)
+    locale.ts               # canonicalizeLocale (lowercase xx-yy form) + maximizedLangScript (CLDR likely-subtags matching)
     logger.ts               # Logger + logger singleton — debug-gated, styled grouping in browser / plain in Node
     utils.ts                # md5, isEmpty, structuredCloneShim
     types/
@@ -40,6 +53,13 @@ src/
 
 example/
     index.html              # Single-file vanilla demo — LangsysApp.init + new Translate(...) with no framework
+
+contract-fixture/           # The fleet's contract fixture (spec CONF-2): the forwarder to an SDK test clone — not shipped
+    forwarder.mjs           # The API of an SDK test clone seeded before the run, with each case's caller address, faults and crafted lists; what every contract test reaches
+    reference-lists.mjs     # A case's crafted reference lists, named as the backend's controllers name its own tables
+    setup.schema.json       # A test case's setup, for POST /__fixture/setup
+    symfony-intl.json       # symfony/intl's currency bundles and locale aliases, as the backend locks them
+    README.md               # The clone and its seed files, the forwarder, test cases, faults and crafted lists
 ```
 
 ## Public API
@@ -55,16 +75,23 @@ new Translations(config)                // Rarely instantiated directly — Lang
 t(phrase, category?, params?)           // Top-level convenience function
 LangsysApp.t                            // Same thing, on the singleton
 tSignal                                 // Signal<TFunction> — subscribe for reactivity
+notifyNavigation()                      // Route changed: re-look-up mounted content for the new URL
 
 // Reactive primitive
 createSignal<T>(initial): Signal<T>
 getValue<T>(signal): T
 persist<T>(key, initial): Signal<T>     // localStorage-backed Signal
+setTeardownSignal(subscribe)            // Host teardown signal where there is no document (React Native)
 
 // Reactive stores (also exported for direct subscription)
 sTranslations                           // Signal<iCategories>
 currentlyLoadedLocale                   // Signal<string>
-contentBlocks                           // Signal<iContentBlock[]>
+writeEnabled                            // Signal<boolean | undefined> — server-computed write capability
+autoDiscovery                           // Signal<boolean | undefined> — per-key reporting policy
+
+// Credentials (WIRE-4)
+LangsysApp.isConfigured()               // false before init() and after one refused for missing credentials
+LangsysConfigurationError               // thrown by explicit writes, and by t() under requireCredentials
 
 // Logger
 Logger, logger
@@ -95,6 +122,8 @@ If templates aren't re-rendering after a locale change, the issue is almost alwa
 - `npm run dev` — tsup in watch mode.
 - `npm run typecheck` — `tsc --noEmit`. Should always be clean.
 - `npm run prepublishOnly` — runs build (called automatically by `npm publish`).
+- `npm run verify:spec` — checks that CONFORMANCE.md's **Spec revision read** row names the blob the commit it cites actually carries, by `git ls-tree` against a sibling `langsys2` checkout, and that `tests/fixtures/canonicalization-reference.json` cites the same blob in `spec_blob`. It reads the canonical header (`langsys2 <commit>…, docs/sdk-spec.mdx blob <40-hex>`). Run it **before** writing that row: spec 8.0.1 requires the revision to be re-derived on every write rather than carried. Not in CI and not a vitest case, because it needs the sibling repo and could only skip there. Exits 2 rather than 0 when it cannot verify.
+- `npm run tally:conformance` — checks CONFORMANCE.md against the canonical conformance format and the spec blob it cites: one status table, one rule id per row, every id the cited spec defines (130 at 8.6.0), a canonical status and tier on each, status checked against tier, and a named test that exists for every implemented or provisional row. Exits 0 green, 1 structural error, 2 cannot check, 3 valid but not green. `--structure-only` needs no spec, and `conformance-structure` runs it that way in CI with planted defects that must each fail.
 - `npm run release` — interactive version bump + tag + GitHub release. **Does not publish to npm directly.** See "Releasing" below.
 
 The vanilla `example/index.html` can be opened directly in a browser after a build — it imports from `../dist/index.mjs`. Edit the placeholder `projectid` / `key` to hit the live API.
@@ -112,7 +141,7 @@ Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC
    - Bumps `package.json`, runs `npm install` + `npm run build` locally as a final sanity check.
    - Amends the last commit with the version bump, force-pushes `main`.
    - Creates and pushes a `v$NEW_VERSION` tag.
-   - Creates a GitHub release with auto-generated notes.
+   - Creates a GitHub release whose notes are the install line, the version's CHANGELOG section and a compare link from the previous version. The notes are built and checked before anything is changed: a version with no `## x.y.z - …` section, or notes over GitHub's 125,000-character limit on a release body, is refused before the bump. A heading that already carries a date passes as written and is not stamped, which is why step 3 has headings written as `- unreleased`. `_dev_/publish.sh <version> --notes-only` prints the notes it would send and changes nothing.
    - **Stops there.** Hands off to the Action.
 3. **Changelog dates are stamped by the release script, then verified.** Write new sections as `## x.y.z - unreleased`; `publish.sh` fills the date in at release time, seconds before publish, so the shipped tarball carries a real date instead of the word "unreleased". After the Action completes, verify with `npm view langsys-js-typescript time --json` and correct if they disagree.
 
@@ -135,7 +164,23 @@ Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC
 
 **CI workflow (`ci.yml`):**
 
-Runs on every push to `main` and every PR. `npm ci` → `npm run typecheck` → `npm run build`. Failures here block merges.
+Runs on every push to `main` and every PR. `npm ci` → `npm run typecheck` → `npm run build` → `npm run test:no-clone`. Failures here block merges. `test:no-clone` is vitest's `no-clone` project: every test file except the ones `vitest.config.ts` lists as needing an SDK test clone, which GitHub does not have. `npm test` runs both projects, so locally a missing clone still fails the run.
+
+## Commit conventions
+
+**Check the message against the diff before pushing.** Run `git show --stat` (or
+`git diff --cached --name-only`) and confirm every file the message claims is present, and
+that no file present is unexplained. This has been got wrong twice on one branch, the same
+way both times: edits made across several files before anything was committed, then staged
+whole-file, so the first commit to touch a file swept up every unrelated change in it. Stage
+by hunk (`git add -p`) when a file carries work belonging to more than one commit. The end
+state was correct both times and the history was not, which is the expensive kind of wrong —
+it only surfaces when somebody trusts a commit message.
+
+Commit messages carry **no trailers** — no `Co-Authored-By`, no `Claude-Session`, no agent
+attribution of any kind. Fleet convention across every Langsys SDK repo, and the operator's
+standing instruction here. Credit humans in the message body where they found something
+(see the ticket-838 fold commits); that is different from a machine trailer.
 
 ## Design invariants
 
@@ -143,13 +188,21 @@ Things to preserve when making changes:
 
 1. **One runtime dependency: `intl-messageformat`.** The whole point of being framework-agnostic is to drop in anywhere without dragging in baggage — any additional dep needs a strong justification. Locale plumbing (canonicalization, likely-subtags matching, number/date formatting) rides on the platform's native `Intl` APIs, never bundled CLDR data.
 
-1a. **Locale identifiers are BCP 47 canonical everywhere.** `canonicalizeLocale` runs at every input boundary (init config, user-locale store emissions, `detectPreferredLocale`, API params); cache keys, equality checks, and wire values all use the canonical form (`en-US`, `zh-Hant-TW`). Don't add locale-string comparisons that bypass it.
+1a. **Locale identifiers are lowercase `xx-yy` everywhere.** `canonicalizeLocale` runs at every input boundary (init config, user-locale store emissions, `detectPreferredLocale`, API params); cache keys, equality checks, and wire values all use the lowercase form (`en-us`, `zh-hant-tw`). Don't add locale-string comparisons that bypass it.
+
+    `canonicalizeLocale` resolves legacy aliases in a locale's language, script and region (`iw` → `he`, `sh-BA` → `sr-latn-ba`) and keeps its variants and extensions as written, lowercased. The API's codes are ICU locale ids, and BCP 47 canonicalisation rewrites some of their variants into codes the API does not hold: `en-US-POSIX` is `en-us-posix`, never `en-us-u-va-posix`. `locale` pins it against the API's own table: every code in `tests/fixtures/api-locale-codes.json` canonicalises to itself.
+
+    The codes the reference lists (REF-1) answer are the one place that stops short of `canonicalizeLocale`: they are the API's own identifiers, so they take WIRE-3's form, `_` read as `-` and lowercased, with no alias resolved, and the API's codes come back as it holds them. Their display locale, given or current, is canonical, as the core normalises the locale `t()` serves, on both profiles: a given `iw-IL` and a store holding `iw-IL` both name their lists in `he-il`.
+
+    This was BCP 47 canonical casing until spec v8, and it deliberately supersedes that. Lowercase is what every locale in the backend's database already is — script subtags included, stored `az-cyrl`/`bs-latn` — and what its request middleware produces, so it is the only form guaranteed to behave identically on a route that doesn't mount that middleware; the routes most likely to miss it are the legacy ones carrying the oldest clients. CLDR handling is unaffected: `Intl` canonicalises its own input, so `new Intl.Locale('zh-tw').maximize()` still yields `zh-Hant-TW`.
 
 2. **`Signal<T>` stays Svelte-store-compatible.** `subscribe(run)` must fire immediately with the current value; `set/update/get` keep their current shapes. The Svelte binding relies on this structural compatibility.
 
 3. **`t()` closures read fresh state.** Don't capture `sTranslations.get()` at closure-build time — read it on every call. Otherwise the closure goes stale between rebuilds.
 
 4. **Missing-token registration is `t()`'s responsibility.** Lookup misses in `t()` (and the `Translate` DOM class for content-block tokens) feed `Translations.missingToken`. Don't add separate paths that bypass this.
+
+4a. **No ECMAScript `#private` fields, anywhere in the core.** Use TypeScript's `private` — it is erased at build time and carries no runtime restriction. `#private` is keyed to the real instance, so reading one through a `Proxy` throws `TypeError: Cannot read private member`, and Vue and Solid forward core methods through a Proxy **unbound** to preserve identity: `proxy.method()` runs with `this` set to the proxy. One `#private` field therefore breaks those bindings at runtime, in whichever method touches it, with nothing in the types or the build to warn you. Pinned by `tests/no-private-fields.test.ts`, which scans `src/**/*.{ts,mts,cts,tsx}` and the package build, and carries its own positive control — a blinded scanner fails that control rather than silently reporting "none found". The dist half matches esbuild's **lowering helpers** (`__privateAdd`/`__privateGet`/…) as well as a literal `#`, because at our `es2021` target a private field is downlevelled over a WeakMap: `dist` contains no `#` at all, while the lowered form still throws through a Proxy. A missing `dist` fails the check rather than skipping it, so **`npm run build` must precede `npm test`** — `ci.yml` is ordered that way deliberately.
 
 5. **`Translate` is the only DOM-touching code.** Everything else must work in Node. Keep the platform fork narrow.
 
@@ -169,10 +222,16 @@ Target: ES2021. Module resolution: bundler. Strict TypeScript with `verbatimModu
 
 ## Testing approach
 
-`npm test` runs vitest over `tests/` — 6 files, 79 tests (`api`, `content-block-identity`, `interpolate`, `locale`, `richtext`, `translations`).
+`npm test` runs vitest over `tests/` — 85 files, 2122 tests (`api`, `api-reachability`, `base-locale-gate`, `block-tree`, `c0-strip`, `cache-scope`, `canonicalization-agreement`, `catalog-block-shape`, `catalog-envelope`, `catalog-failure`, `catalog-failure-window`, `catalog-in-flight`, `catalog-supersede`, `changelog-completeness`, `conformance-structure`, `content-block-identity`, `contract-api`, `contract-block-content`, `contract-forwarder`, `contract-hint-lane`, `contract-icu`, `contract-phrase-exclusion`, `contract-reference-lists`, `contract-reference-reads`, `contract-seeds`, `contract-served-block`, `contract-write-lane`, `custom-id`, `custom-id-cross-impl`, `discovery`, `ellipsis-warning`, `grant-documentation`, `grant-lane`, `icu-formatter-failure`, `icu-no-params`, `in-place-render`, `init-settle`, `interpolate`, `interpolation-cross-impl`, `langsys-app`, `legacy-id-tolerance`, `legacy-keys`, `locale`, `locale-headers`, `logger`, `marked-hosts`, `marker-exports`, `navigation`, `nested-host-excision`, `never-attempt`, `no-private-fields`, `no-raw-invisibles`, `obs-notice`, `persist`, `pure-subpath`, `request-scope`, `request-scope-credentials`, `resolved-marker`, `rich-phrase-identity`, `richtext`, `scope-from-seed`, `seed-catalog`, `served-source`, `server-messages`, `server-register-block`, `settle-window`, `snapshot`, `ssr-precondition-doc`, `ssr-strategy-isolation`, `structural-block-detection`, `teardown-signal`, `tfunction-identity`, `tokenizer-convergence`, `tokenizer-cross-impl`, `translate`, `translations`, `type-level`, `unconfigured-core`, `unit-shape`, `var-markers`, `var-naming`, `write-decision-absent`, `write-decision-cache`, `write-decision-persistence`, `write-lane`).
 
 `content-block-identity` pins `custom_id` **identity** rather than output: text-node arity, comment skipping, and attribute emission order. Those are wire values shared with every other SDK. It is mutation-checked — adding `clone.normalize()` to `tokenizeElement` turns three of its tests red. It also pins the **opposite** rule on the `<Phrase>` path: `encodeRichText` coalesces adjacent text nodes by design, because the phrase string is the key and a sentence must survive whole. The two paths are not meant to agree — the realistic bug is someone applying the content-block contract to `richtext.ts`. A failure there is a breaking change, not a stale expectation; never repin a literal to make it green. `npm run test:watch` for watch mode.
 
-**Cross-SDK behaviour is verified against langsys-php's fixtures, not re-derived here.** `langsys-php/tests/fixtures/` holds the shared contract — `custom-id-reference.json` (12 cases), `tokenizer-reference.json` (17), `interpolation-reference.json` (19). Execute the *published tarball* against them after a release; re-deriving expected values in TypeScript proves nothing, since both sides would share the same mistake. Adding cases is safe; changing an existing expectation is a breaking change to content-block identity in every SDK and goes to the PHP agent first.
+**Cross-SDK behaviour is verified against langsys-php's fixtures, not re-derived here.** `langsys-php/tests/fixtures/` holds the shared contract — `custom-id-reference.json` (13 cases), `tokenizer-reference.json` (17, re-vendored at blob `5689f3c1` after PHP corrected its script/style row), `interpolation-reference.json` (25, vendored at blob `017bffdd` from `c11a711`, with its no-params rows, which `interpolation-cross-impl` also runs through `t()`, and ICU-6's two rows). **All three are vendored into `tests/fixtures/` and asserted every run** — `custom-id-cross-impl`, `tokenizer-cross-impl`, `interpolation-cross-impl` (see CONFORMANCE CID-1/ICU-1..6). Re-vendor on a deliberate bump, citing the source SHA — never edit the vendored copy. Execute the *published tarball* against all three after a release; re-deriving expected values in TypeScript proves nothing, since both sides would share the same mistake. Adding cases is safe; changing an existing expectation is a breaking change to content-block identity in every SDK and goes to the PHP agent first. This repo authors two shared fixtures the other lanes vendor byte-exact: `canonicalization-reference.json`, whose `cases` are blocks (tokens and id, and on the VAR-3 rows the stored `expected_content`) and whose `phrase_cases` are rich-phrase keys (TOK-1, with `earlier_phrase` where a key moved), where a new row may carry `awaiting` for each lane that has not measured it yet (that lane's `measured` entry stays null until it has), and `var-naming-vectors.json`, the placeholder-naming vectors (VAR-2), written from the spec's table rather than from `derivePlaceholderNames`. One shared fixture comes from langsys-python instead: `legacy-custom-id-reference.json` (20 rows, blob `dc555646`), asserted by `legacy-id-tolerance` for the historical-id lookup (CID-3/CID-4). Edit `canonicalization-reference.json` only through a serialiser that keeps its one-space indent and writes the code points it already escapes as `\u` escapes: a plain `JSON.stringify` writes them raw, which fails `no-raw-invisibles` and rewrites every row in the diff. The legacy fixture's blob is also its exemption key in `no-raw-invisibles`, so a local edit loses the exemption. One fixture comes from the backend: `api-locale-codes.json`, the API's Locale table as langsys2's `LocalesTableSeeder` lists it (873 codes, cited by commit and blob in its `source`); re-vendor it from the seeder on a deliberate bump, never by hand.
+
+**`contract-fixture/` is the contract fixture every SDK in the fleet grades itself against** (spec CONF-2): an SDK test clone, a real Langsys API seeded before the run, reached through `forwarder.mjs`. It is owned here and vendored by other lanes at its git tree id, so a change to it is a contract change for all of them. The clone is built from seed files kept beside each SDK's tests. This core's are `tests/contract-seeds/`, one JSON file per contract test file, each rendered from the worlds its TypeScript module declares (`worlds.ts`): fixed ids, raw keys and user tokens in the core's ranges, and projects of its own for every test case, which takes its world with `seeds.take(name)`. `fx.use(world)` confirms through the API, as each project's owner, that the world holds exactly its seed before the case acts (its keys, settings, catalog, block markup and no stored hints), and fails the case as `seed not landed` otherwise, so a missing seed or a world a run has already written to never passes an absence. `contract-seeds` fails when a JSON file differs from its worlds, and `npx vitest run tests/contract-seeds.test.ts -u` writes them again. The clone's seeder reads every JSON file in that folder, and one refused file stops the reseed for every SDK sharing the clone, so a changed file goes to the SDK API lane for a dry run before it is written. The clone is reseeded before every run (`contract-fixture/README.md`). The forwarder sends each case's requests from the case's own caller address and adds only what an API cannot produce on demand: faults, a dropped connection, and crafted reference lists (`reference-lists.mjs`), since a clone's shared tables cannot hold a list per test. `tests/helpers/contract-fixture.ts` starts it for a test file and throws when `LANGSYS_CONTRACT_TARGET` or `LANGSYS_CONTRACT_CLONE_ROOT` is missing, so `npm test` needs a freshly reseeded clone: `LANGSYS_CONTRACT_TARGET=https://api.langsys5.test LANGSYS_CONTRACT_CLONE_ROOT=~/Documents/dev/langsys5 NODE_EXTRA_CA_CERTS=~/.config/valet/CA/LaravelValetCASelfSigned.pem npm test`. It has no request log by design: a test observes a write only as what the API serves afterwards, through the catalog (`held`) or a block's stored content as the project's seeded user reads it (`storedBlocks`), which is what CONF-1 and CONF-2 require; `hints` covers only the hints the clone stored, which no route returns. `contract-api` pins the answers the contract rows rely on, from the API itself, each "says no" case paired with the condition that permits the same request. `contract-forwarder` is the forwarder's self-test and `contract-reference-lists` the crafted lists', both against a stand-in clone (`tests/helpers/stand-in-clone.ts`), and both are mutation-checked. After changing the directory, run its battery in the isolated copy, then announce the new tree id through the Reviewer.
+
+**Contract-tier tests drive the real SDK against the API.** `contract-write-lane` and `contract-hint-lane` run `LangsysApp.init` with real `fetch` against it, through `tests/helpers/sdk-session.ts`, and assert only on what the API serves afterwards or on what `t()` renders. An absence is evidence only where the API would have accepted the action: it refuses a read-only session's write and declines a writer's hint on its own, so "the SDK did not send" and "the SDK sent and was refused" look identical. Those cases use capability drift — the SDK learns it must not act, then its case moves to another address of its own, where the key's allow-list makes the API accept — and each carries a control showing the API stores the same action from a session that may act. A "never attempt" clause the API cannot see at all is proven at the transport seam instead, in `never-attempt`, and so is one the API offers no drift for: a key's permission to report cannot change mid-session, so HINT-9's "nothing sent" is counted at `fetch` on a key of the same type, beside its permitted case on the clone, and a project that already holds an earlier key shows nothing, so TOK-1's "only the current key registers" is counted there too. `contract-reference-reads` grades the reference lists (REF-1) the same way, over a case's crafted lists, which name each list in the display locale through ICU, so every case asserts which list came back; a list held is shown by giving the case new lists and getting the old list back, and only a refused display locale and an unconfigured core, which the fixture never sees, are counted at `fetch`. `contract-icu` reads a promoted plural through `t()`, which the API serves as ICU only to a client that sends the capability header (ICU-5). `contract-served-block`, `contract-block-content` and `contract-phrase-exclusion` need a DOM, so they run under happy-dom with its same-origin policy off (a file-level `@vitest-environment-options`); `contract-served-block` drives `LangsysApp.init` itself to keep the locale store a switch goes through. happy-dom computes no inherited or positioned style, so the computed-style capture in a block's `content` is pinned against a stand-in for the cascade; when it changes, measure it in a real browser too (headless Chrome over an esbuild IIFE bundle of `tokenizeElement`). The session helper resets the singleton's state between sessions, `ready()` included, since a session is a fresh page whose first catalog has not settled; a new piece of per-session state in `Translations` belongs in its reset. Its `until()` polls the API once a second, inside the `api` throttle of 120 requests a minute per address.
+
+**Mutation batteries run in an isolated copy, never in this working tree.** The bindings and JS Server load this repo through a symlink, so a battery that rewrites `src/` or rebuilds `dist` in place voids every consumer's run for as long as it lasts, even when each restore is byte-exact. Copy the tree (`rsync -a --exclude node_modules --exclude .git --exclude dist`), symlink `node_modules` into the copy, then build and mutate there. Fleet norm. **Guard the copy path**: if the sync fails, abort — do not let `cd` fall through. A battery once ran in the working tree because the scratchpad script had been cleaned away and the failure was not checked. A mutant measured over the whole suite in a copy with no `dist` also fails the files that read the build (`grant-documentation`, `ssr-strategy-isolation`, `marker-exports`, `pure-subpath`, and `no-private-fields` outright), so build in the copy, or count the mutant against an unmutated control run of the same copy. A battery that reads vitest's summary must strip its colour escapes: in a terminal, a maiTerm stack service included, vitest colours its output even when captured, so a `Tests` line read raw never matches. A mutant run with no tally is broken, never a survivor, and a control that is not green aborts the battery.
 
 Integration testing still happens by hand via `example/index.html` or by exercising the file:..-linked Svelte SDK.
