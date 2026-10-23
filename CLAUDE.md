@@ -164,7 +164,7 @@ Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC
 
 **CI workflow (`ci.yml`):**
 
-Runs on every push to `main` and every PR. `npm ci` → `npm run typecheck` → `npm run build`. Failures here block merges.
+Runs on every push to `main` and every PR. `npm ci` → `npm run typecheck` → `npm run build` → `npm run test:no-clone`. Failures here block merges. `test:no-clone` is vitest's `no-clone` project: every test file except the ones `vitest.config.ts` lists as needing an SDK test clone, which GitHub does not have. `npm test` runs both projects, so locally a missing clone still fails the run.
 
 ## Commit conventions
 

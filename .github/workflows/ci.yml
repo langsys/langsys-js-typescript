@@ -25,4 +25,8 @@ jobs:
       # old order CI had no dist and that assertion was a permanent no-op.
       - run: npm run build
 
-      - run: npm test
+      # Every test that needs no SDK test clone. The contract tier runs against a real
+      # Langsys API seeded before the run (TESTING.md, contract-fixture/README.md), which
+      # GitHub does not have, and a contract test throws without one rather than passing
+      # by skipping. vitest.config.ts lists those files once; `npm test` runs them too.
+      - run: npm run test:no-clone

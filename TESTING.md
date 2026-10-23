@@ -13,6 +13,8 @@ npm run build              # dist/: the package build and the browser build
 npm test                   # the whole suite; it builds first, and needs a freshly reseeded SDK test clone:
                            # LANGSYS_CONTRACT_TARGET, LANGSYS_CONTRACT_CLONE_ROOT and NODE_EXTRA_CA_CERTS
                            # (contract-fixture/README.md)
+npm run test:no-clone      # what GitHub's CI runs, after the build: every file that needs no clone
+                           # (vitest.config.ts lists the ones that do)
 npm run typecheck
 npm run tally:conformance  # CONFORMANCE.md against the spec; prints "verdict: GREEN"
 npm run verify:spec        # needs the sibling ../langsys2 checkout
