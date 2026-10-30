@@ -37,6 +37,7 @@
     },
     "files": [
         "dist",
+        "skill",
         "README.md",
         "CHANGELOG.md",
         "LICENSE"

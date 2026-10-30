@@ -110,6 +110,12 @@ rollback() {
             rm -f package.json.bak
         fi
 
+        # Un-stamp the skill's version, which the bump stamped with package.json's.
+        if [ -f "skill/SKILL.md" ]; then
+            sed -i.bak "s/^  version: $NEW_VERSION$/  version: $ORIGINAL_VERSION/" skill/SKILL.md
+            rm -f skill/SKILL.md.bak
+        fi
+
         # Un-stamp the CHANGELOG date. An aborted release must not leave a dated
         # heading for a version that never shipped — that is a fresh instance of
         # the defect release-time stamping exists to prevent. No-op if the git
@@ -291,6 +297,13 @@ RELEASE_NOTES_FILE=$(mktemp)
 release_notes "$NEW_VERSION" "$ORIGINAL_VERSION" > "$RELEASE_NOTES_FILE" || handle_error "The release notes for $NEW_VERSION cannot be built (above)"
 log_success "Release notes built from the CHANGELOG section for $NEW_VERSION"
 
+# The agent skill ships in the package, and its preamble is a shared template with `{{SLOT}}`
+# markers filled in per release wave. A slot still unfilled would reach every agent that reads it.
+SKILL_SLOTS=$(grep -rnoE '\{\{[A-Z][A-Z0-9_]*\}\}' skill/ 2>/dev/null || true)   # grep exits 1 on a clean skill, which the ERR trap would take as a failure
+if [ -n "$SKILL_SLOTS" ]; then
+    handle_error "skill/ still holds an unfilled template slot: $SKILL_SLOTS"
+fi
+
 # Confirm before proceeding
 if [ "$ASSUME_YES" = true ]; then
     log_info "Non-interactive mode: publishing version $NEW_VERSION"
@@ -315,6 +328,16 @@ else
 fi
 log_success "Updated package.json version to $NEW_VERSION"
 
+# The skill names the package version it describes, which is the version it ships in. Stamped with
+# the bump so the two never differ; tests/skill-gate.test.ts holds them equal on every commit.
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "s/^  version: $ORIGINAL_VERSION$/  version: $NEW_VERSION/" skill/SKILL.md
+else
+    sed -i "s/^  version: $ORIGINAL_VERSION$/  version: $NEW_VERSION/" skill/SKILL.md
+fi
+grep -q "^  version: $NEW_VERSION$" skill/SKILL.md || handle_error "skill/SKILL.md's frontmatter version did not hold $ORIGINAL_VERSION, so it was not stamped $NEW_VERSION"
+log_success "Stamped skill/SKILL.md version $NEW_VERSION"
+
 # Run npm install to update package-lock.json
 log_info "Running npm install to update package-lock.json..."
 npm install
@@ -322,6 +345,12 @@ npm install
 # Run build to ensure everything compiles
 log_info "Running build to verify everything compiles..."
 npm run build
+
+# The agent skill ships in the package, so it must name only what this build has, at the version
+# just stamped. Its gate reads dist/ and needs no SDK test clone.
+log_info "Checking the agent skill against the build..."
+npx vitest run tests/skill-gate.test.ts || handle_error "skill/ names something this build does not have, or its version or preamble is off (above)"
+log_success "The agent skill matches the build"
 
 # Amend the last commit with version bump
 log_info "Amending last commit with version bump..."
@@ -346,7 +375,7 @@ if grep -q "^## $NEW_VERSION - unreleased$" CHANGELOG.md 2>/dev/null; then
     git add CHANGELOG.md
 fi
 
-git add package.json package-lock.json
+git add package.json package-lock.json skill/SKILL.md
 
 LAST_COMMIT_MESSAGE=$(git log -1 --pretty=%B)
 AMENDED_MESSAGE="$LAST_COMMIT_MESSAGE
