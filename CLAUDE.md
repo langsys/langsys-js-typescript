@@ -176,6 +176,7 @@ Runs on every push to `main` and every PR. `npm ci` → `npm run typecheck` → 
 `skill/` is the `langsys-typescript` skill, the core skill of the Langsys skill set: the entry skill `langsys` (langsys-skill) comes first, then this one, then a binding's child skill (`langsys-svelte`, …), which reads this one and adds only what its framework changes. It ships in the package (`files` in package.json), and `npx langsys-skill install` copies it into an agent's skill folder. Its examples are plain TypeScript, never a framework.
 
 - **Change it in the same commit as the behaviour it describes.** It states what this version does; nothing in it narrates earlier versions.
+- **The topic files' names are fixed.** langsys-svelte's skill links into ten of them by path (`init-config`, `server-rendering`, `writing`, `migration`, `locales`, `catalog`, `interpolation`, `primitives`, `invariants`, `value-markers`), and its gate fails when one is renamed. Add files freely; rename none.
 - **`tests/skill-gate.test.ts` holds it to the build**, and `publish.sh` runs it after the release build:
   - every name it imports exists in `dist/`, from the entry it imports it from;
   - every `LangsysApp.x` and `LangsysAppAPI.x` is a public member of its class's declaration, and every `scope.x`, `seed.x` and `tSignal.x` is a member of that receiver's declared type, in examples and inline code alike;

@@ -563,7 +563,7 @@ await LangsysApp.init({
 
 - `'client'` (default) — tokens discovered during SSR flush from the client after hydration.
 - `'server'` — flush tokens immediately from the server.
-- `'auto'` — small batches (fewer than 5) flush from server, larger batches wait for the client.
+- `'auto'` — a short list flushes from the server, and the rest waits for the client. In a request scope, `close()` sends the render's misses when there are fewer than 5, and otherwise leaves them all to the client. Rendering without a scope, the server sends the first 5 and leaves the rest to the client.
 
 > **Precondition for `'server'`, and for the server half of `'auto'`: allow-list the origin server's address.**
 > Registration during a server render is sent from your server, not from the visitor's browser, so the write
@@ -599,7 +599,7 @@ On the client, hydrate with `LangsysApp.seedCatalog(seed.catalog, seed.locale, s
 - **`setRequestScopeStorage`** is opt-in, and what it guarantees depends on the host's async model. Under zone.js, for one, promises don't carry it across concurrent renders. A binding can instead carry the scope through its own dependency injection and read `scope.t` directly.
 - **`scope.run(fn)`** makes the scope current while `fn` runs, for `t()` and for `currentlyLoadedLocale.get()` and `sTranslations.get()` alike, and returns what `fn` returns, a promise included. Without `setRequestScopeStorage`, only code that finishes synchronously inside `fn` sees the scope; `scope.t` always works.
 - **`scope.enter()`** makes the scope current for the rest of the current async context, for a host that cannot wrap its render in a function. It holds only in the continuation that itself performs the render: called inside a function the host awaits and returns from, such as a Nuxt plugin, a Nitro request hook or an awaited helper, the scope is gone when that function returns. So call `enter()` in the function that renders, use `run()` everywhere else, and hand the scope to the app through the framework's injection when the host awaits you. It needs the storage, and throws without it.
-- **`scope.close()`** runs after the response. It sends the scope's misses when the key may write and the strategy collects on the server (`'server'`, or `'auto'` for a short list), and otherwise leaves them to the client. Its result names what happened. It never throws.
+- **`scope.close()`** runs after the response. It sends the scope's misses when the key may write and the strategy collects on the server (`'server'`, or `'auto'` with fewer than 5), and otherwise leaves them to the client. Its result names what happened. It never throws.
 - `currentRequestScope()` returns the scope the current code runs in.
 
 Framework bindings wire this for you through their own request hooks.

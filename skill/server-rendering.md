@@ -41,7 +41,7 @@ await scope.close();                                        // sends what the re
 |---|---|
 | `'client'` (default) | Left to the client, which registers them after hydration |
 | `'server'` | Sent from the server at `close()` |
-| `'auto'` | Sent from the server for a short list (fewer than 5); a longer one is left to the client |
+| `'auto'` | In a request scope: sent from the server at `close()` when the render missed fewer than 5, and otherwise all left to the client. Rendering without a scope: the first 5 are sent from the server, and the rest are left to the client |
 
 - **`'server'` (and the server half of `'auto'`) only works if the server's own address is on the key's allow-list.** Registration from a render is sent from your server, and the write decision is computed for that address. Off the allow-list, the server lane is read-only and fails silently: no error, no request, nothing in the catalog. No discovery report either, since nothing is reported from a server render.
 - **Content that exists only on the server is registered by neither `'client'` nor the browser**, which never walks markup it didn't render. For that, use `'server'` with an allow-listed address.

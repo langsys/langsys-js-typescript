@@ -9,7 +9,7 @@
 - **The README's `detectPreferredLocale` example matches against the project's locales.** It built `supported` from `getLocalesFlat()`, every locale the API knows, so nearly any header matched a locale the project doesn't have and its catalog request answered 422.
 - **The README says which sessions register content.** A read-only session reports the page's URL, which Langsys records, and registers nothing. Content registers only from a session that can write. For a public site with an `ip_write` key, that is a browser at an address on the key's allow-list (such as your own machine, a staging server or a crawl you run), a server rendering from an allow-listed address under `ssrTokenStrategy: 'server'`, or a signed-in user's session holding a write grant.
 - **The type documentation says which sessions register content,** as the README does. The editor hover text for `postDiscoveryHint`, `WriteGrant` and `writeEnabled` says a read-only session's report gives Langsys the page's URL and registers nothing. Only documentation comments changed; the code is the same as 0.7.0's.
-- **The README's `'auto'` threshold reads "fewer than 5"**, which is when a server render sends its misses itself. It said "≤5".
+- **The README states `'auto'`'s threshold for each path.** A request scope's `close()` sends the render's misses when there are fewer than 5, and otherwise leaves them all to the client. A render without a scope sends the first 5 from the server and leaves the rest to the client. It said "≤5" for both.
 - **The README says a failed `init()` also logs.** A wrong key, a wrong host or an unreachable server throws nothing. Besides what `init()` resolves, it shows as a `Langsys` warning or error in the console.
 
 ## 0.7.0 - 2026-10-22
