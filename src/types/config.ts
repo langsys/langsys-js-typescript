@@ -26,16 +26,16 @@ export interface LocaleSource {
  * A short-lived write grant (HS256 JWT) minted by the host app's own backend,
  * sent as `X-Write-Grant`. A valid grant makes the session write-enabled
  * server-side, so `write_enabled` comes back true and phrase discovery
- * registers normally — used by login-walled apps our discovery renderer
- * cannot reach.
+ * registers normally — how an app behind a login makes its signed-in users'
+ * sessions register what they show.
  *
  * If the token only exists after login, still configure a PROVIDER at `init`
  * that returns `null` until then, rather than leaving `writeGrant` unset and
  * calling `setWriteGrant()` later. An unset grant tells the SDK that no grant
  * can ever arrive, so when authorization comes back read-only it releases the
- * queued misses — which for a login-walled app means they are only reported to
- * a renderer that cannot log in, which is the situation grants exist to solve.
- * A provider returning `null` keeps the queue held until the grant appears.
+ * queued misses, and the session only reports its page URLs, which registers
+ * nothing. A provider returning `null` keeps the queue held until the grant
+ * appears.
  *
  * Prefer the FUNCTION form. Grants have a ~5 minute TTL while `init()` runs
  * once and an app session can last hours, so a bare string is expired minutes

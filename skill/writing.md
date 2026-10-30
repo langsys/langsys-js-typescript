@@ -20,8 +20,9 @@ When a `write` or `ip_write` key's session comes back read-only, the SDK logs **
 What the signal tells you when phrases aren't appearing:
 
 - **It stays `undefined` in a browser:** `init()` hasn't been called, or hasn't finished.
-- **It's `false` and `init()` resolved `status: false`:** authorization was refused, or the core has no credentials. Fix that first ([init-config.md](./init-config.md)).
-- **It's `false` and `init()` succeeded:** the server made the session read-only. The entry skill says why that happens.
+- **It's `false` and `LangsysApp.isConfigured()` is `false`:** no credentials reached `init()` ([init-config.md](./init-config.md)).
+- **It's `false`, `isConfigured()` is `true`, and `init()` resolved `status: false`:** authorization was refused. Read the errors `init()` resolved, or the `Langsys` line in the console.
+- **It's `false` after an `init()` that succeeded:** the server made the session read-only. The entry skill says why that happens.
 - **It's `true` and nothing registers:** not a capability problem. Check the primitive and the content ([primitives.md](./primitives.md), [invariants.md](./invariants.md)) and `data-ls-resolved` (below).
 - **On a server:** nothing in the browser decides it ([server-rendering.md](./server-rendering.md)).
 

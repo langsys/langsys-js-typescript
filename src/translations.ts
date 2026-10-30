@@ -860,7 +860,7 @@ export class Translations {
      *
      * Even with the debounce there is always a window where a miss is queued
      * and the document is torn down — a tab closing, a client-side navigation,
-     * or the discovery renderer finishing its grace period. A normal request is
+     * or an automated browser closing the page. A normal request is
      * cancelled with the document; `keepalive` survives it.
      *
      * Deliberately NOT `navigator.sendBeacon`, the usual answer here: it cannot
