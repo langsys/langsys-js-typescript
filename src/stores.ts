@@ -125,7 +125,7 @@ export const config: iLangsysConfig = {
  * Server-computed write capability for THIS session. The single source of
  * truth for every write decision — never infer it from `key_type`, which
  * cannot express `ip_write` (read-only everywhere except from allow-listed
- * IPs, which is exactly how the discovery renderer registers content).
+ * IPs).
  *
  * Tri-state, and the three states are genuinely distinct:
  *   - `undefined` — not yet authorized. HOLD: neither register nor hint.

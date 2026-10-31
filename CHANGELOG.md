@@ -1,9 +1,23 @@
+## 0.7.1 - 2026-10-30
+
+### What's new
+
+- **An agent skill ships in the package:** `skill/`, the `langsys-typescript` skill, describes this core for coding agents and is what every Langsys JavaScript binding's skill builds on. `npx langsys-skill install` gives an agent the Langsys skills, this one included.
+
+### Fixed
+
+- **The README's `detectPreferredLocale` example matches against the project's locales.** It built `supported` from `getLocalesFlat()`, every locale the API knows, so nearly any header matched a locale the project doesn't have and its catalog request answered 422.
+- **The README says which sessions register content.** A read-only session reports the page's URL, which Langsys records, and registers nothing. Content registers only from a session that can write. For a public site with an `ip_write` key, that is a browser at an address on the key's allow-list (such as your own machine, a staging server or a crawl you run), a server rendering from an allow-listed address under `ssrTokenStrategy: 'server'`, or a signed-in user's session holding a write grant.
+- **The type documentation says which sessions register content,** as the README does. The editor hover text for `postDiscoveryHint`, `WriteGrant` and `writeEnabled` says a read-only session's report gives Langsys the page's URL and registers nothing. Only documentation comments changed; the code is the same as 0.7.0's.
+- **The README states `'auto'`'s threshold for each path.** A request scope's `close()` sends the render's misses when there are fewer than 5, and otherwise leaves them all to the client. A render without a scope sends the first 5 from the server and leaves the rest to the client. It said "≤5" for both.
+- **The README says a failed `init()` also logs.** A wrong key, a wrong host or an unreachable server throws nothing. Besides what `init()` resolves, it shows as a `Langsys` warning or error in the console.
+
 ## 0.7.0 - 2026-10-22
 
 ### Upgrading from 0.6.x
 
 - **Write capability is the server's decision.** 0.6.x registered content whenever the key type was `write`; 0.7.0 registers only while the server's answer says `write_enabled: true`, and an answer without it counts as `false`. To do: make sure the server makes your session write-enabled, with a `write` key, an `ip_write` key from an allow-listed address, or a write grant.
-- **Read-only sessions report page URLs for discovery** where the key's `auto_discovery` policy allows it, never the page's text, so the discovery renderer can register what the page shows; 0.6.x sent nothing. Nothing to do.
+- **Read-only sessions report page URLs for discovery** where the key's `auto_discovery` policy allows it, never the page's text; 0.6.x sent nothing. Nothing to do.
 - **Some content-block ids and `<Phrase>` keys move**, through the changes marked *(moves ids)* or *(moves keys)* below. A moved block or phrase re-registers and shows source text until it is translated again, except a `<Phrase>` holding an excluded element, which keeps rendering its earlier translation. To do: nothing, except that vanilla code must construct a nested block's `Translate` first.
 - **Locale identifiers are lowercase:** `canonicalizeLocale` and `currentlyLoadedLocale` give `en-us` and `zh-hant-tw`, where 0.6.x gave `en-US` and `zh-Hant-TW`. To do: compare against the lowercase form.
 - **`registerContentBlock` no longer reports a skip as success:** it resolves `{ status: false, skipped: true, reason }` for a skip and `{ status: false, reason, errors }` for a failure. To do: treat only `status: true` as stored.

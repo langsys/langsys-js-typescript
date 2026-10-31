@@ -171,9 +171,9 @@ class LangsysAppAPIClass {
     }
 
     /**
-     * Report that a page appears to contain unregistered content, so the
-     * discovery renderer can visit it from an allow-listed IP and register
-     * what it finds.
+     * Report that a page appears to contain unregistered content: its URL,
+     * which Langsys records. A report registers nothing; content registers only
+     * from a session that can write.
      *
      * URL only — never a phrase payload. This is the read-only lane: anonymous
      * callers can say "look here", never "store this". Answers 204 whether or

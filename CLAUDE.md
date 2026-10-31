@@ -54,6 +54,11 @@ src/
 example/
     index.html              # Single-file vanilla demo — LangsysApp.init + new Translate(...) with no framework
 
+skill/                      # The `langsys-typescript` agent skill, shipped in the package (see "The agent skill")
+    SKILL.md                # Entry: the shared preamble, the model, the rules, where to read; frontmatter names the version
+    preamble.md             # This package's copy of the Langsys skill preamble template (source: langsys-skill)
+    *.md                    # One topic each: primitives, invariants, writing, init-config, interpolation, …
+
 contract-fixture/           # The fleet's contract fixture (spec CONF-2): the forwarder to an SDK test clone — not shipped
     forwarder.mjs           # The API of an SDK test clone seeded before the run, with each case's caller address, faults and crafted lists; what every contract test reaches
     reference-lists.mjs     # A case's crafted reference lists, named as the backend's controllers name its own tables
@@ -138,7 +143,7 @@ Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC
 2. Run `npm run release` (which calls `_dev_/publish.sh`):
    - Non-interactive: `npm run release -- <version> --yes` skips every prompt and auto-rolls-back on error — use this form when Claude runs the release.
    - Prompts for the new version (suggests next patch).
-   - Bumps `package.json`, runs `npm install` + `npm run build` locally as a final sanity check.
+   - Bumps `package.json` and the skill's frontmatter version (refusing first a skill with an unfilled `{{SLOT}}`), runs `npm install` + `npm run build` locally as a final sanity check, then the skill gate against that build.
    - Amends the last commit with the version bump, force-pushes `main`.
    - Creates and pushes a `v$NEW_VERSION` tag.
    - Creates a GitHub release whose notes are the install line, the version's CHANGELOG section and a compare link from the previous version. The notes are built and checked before anything is changed: a version with no `## x.y.z - …` section, or notes over GitHub's 125,000-character limit on a release body, is refused before the bump. A heading that already carries a date passes as written and is not stamped, which is why step 3 has headings written as `- unreleased`. `_dev_/publish.sh <version> --notes-only` prints the notes it would send and changes nothing.
@@ -165,6 +170,23 @@ Publishing to npm is handled by GitHub Actions via [npm Trusted Publishers (OIDC
 **CI workflow (`ci.yml`):**
 
 Runs on every push to `main` and every PR. `npm ci` → `npm run typecheck` → `npm run build` → `npm run test:no-clone`. Failures here block merges. `test:no-clone` is vitest's `no-clone` project: every test file except the ones `vitest.config.ts` lists as needing an SDK test clone, which GitHub does not have. `npm test` runs both projects, so locally a missing clone still fails the run.
+
+## The agent skill
+
+`skill/` is the `langsys-typescript` skill, the core skill of the Langsys skill set: the entry skill `langsys` (langsys-skill) comes first, then this one, then a binding's child skill (`langsys-svelte`, …), which reads this one and adds only what its framework changes. It ships in the package (`files` in package.json), and `npx langsys-skill install` copies it into an agent's skill folder. Its examples are plain TypeScript, never a framework.
+
+- **Change it in the same commit as the behaviour it describes.** It states what this version does; nothing in it narrates earlier versions.
+- **The topic files' names are fixed.** langsys-svelte's skill links into ten of them by path (`init-config`, `server-rendering`, `writing`, `migration`, `locales`, `catalog`, `interpolation`, `primitives`, `invariants`, `value-markers`), and its gate fails when one is renamed. Add files freely; rename none.
+- **`tests/skill-gate.test.ts` holds it to the build**, and `publish.sh` runs it after the release build:
+  - every name it imports exists in `dist/`, from the entry it imports it from;
+  - every `LangsysApp.x` and `LangsysAppAPI.x` is a public member of its class's declaration, and every `scope.x`, `seed.x` and `tSignal.x` is a member of that receiver's declared type, in examples and inline code alike;
+  - every SDK-shaped name in its inline code is an export or a member some other declaration has. A name only a singleton has is written `LangsysApp.x` at least once in its file;
+  - its init options table lists exactly `iLangsysInitConfig`;
+  - every subpath it names is exported and built, and its links are `./` links to files that exist.
+
+  Each check carries a planted defect it must report. A new example word that only looks like an SDK name goes in the test's `EXAMPLE_CODE` or `NOT_THE_PACKAGES`, with its reason; a new receiver of the package's own goes in `SDK_RECEIVERS` with its declared type. The gate doesn't check option keys in example objects, the init table's types and defaults, which entry an inline name comes from, anchors, or outside URLs.
+- **The preamble** is the span between the `langsys-skill-preamble` markers in `SKILL.md`. It equals `skill/preamble.md`, this package's copy of the template langsys-skill owns, word for word. Change the template there, then copy it here.
+- **The version** in `SKILL.md`'s frontmatter (`metadata.version`) equals package.json's, and `publish.sh` stamps it with the bump. `publish.sh` also refuses a skill that still holds a `{{SLOT}}` marker from the template.
 
 ## Commit conventions
 
@@ -222,7 +244,7 @@ Target: ES2021. Module resolution: bundler. Strict TypeScript with `verbatimModu
 
 ## Testing approach
 
-`npm test` runs vitest over `tests/` — 85 files, 2122 tests (`api`, `api-reachability`, `base-locale-gate`, `block-tree`, `c0-strip`, `cache-scope`, `canonicalization-agreement`, `catalog-block-shape`, `catalog-envelope`, `catalog-failure`, `catalog-failure-window`, `catalog-in-flight`, `catalog-supersede`, `changelog-completeness`, `conformance-structure`, `content-block-identity`, `contract-api`, `contract-block-content`, `contract-forwarder`, `contract-hint-lane`, `contract-icu`, `contract-phrase-exclusion`, `contract-reference-lists`, `contract-reference-reads`, `contract-seeds`, `contract-served-block`, `contract-write-lane`, `custom-id`, `custom-id-cross-impl`, `discovery`, `ellipsis-warning`, `grant-documentation`, `grant-lane`, `icu-formatter-failure`, `icu-no-params`, `in-place-render`, `init-settle`, `interpolate`, `interpolation-cross-impl`, `langsys-app`, `legacy-id-tolerance`, `legacy-keys`, `locale`, `locale-headers`, `logger`, `marked-hosts`, `marker-exports`, `navigation`, `nested-host-excision`, `never-attempt`, `no-private-fields`, `no-raw-invisibles`, `obs-notice`, `persist`, `pure-subpath`, `request-scope`, `request-scope-credentials`, `resolved-marker`, `rich-phrase-identity`, `richtext`, `scope-from-seed`, `seed-catalog`, `served-source`, `server-messages`, `server-register-block`, `settle-window`, `snapshot`, `ssr-precondition-doc`, `ssr-strategy-isolation`, `structural-block-detection`, `teardown-signal`, `tfunction-identity`, `tokenizer-convergence`, `tokenizer-cross-impl`, `translate`, `translations`, `type-level`, `unconfigured-core`, `unit-shape`, `var-markers`, `var-naming`, `write-decision-absent`, `write-decision-cache`, `write-decision-persistence`, `write-lane`).
+`npm test` runs vitest over `tests/` — 87 files, 2154 tests (`api`, `api-reachability`, `base-locale-gate`, `block-tree`, `c0-strip`, `cache-scope`, `canonicalization-agreement`, `catalog-block-shape`, `catalog-envelope`, `catalog-failure`, `catalog-failure-window`, `catalog-in-flight`, `catalog-supersede`, `changelog-completeness`, `conformance-structure`, `content-block-identity`, `contract-api`, `contract-block-content`, `contract-forwarder`, `contract-hint-lane`, `contract-icu`, `contract-phrase-exclusion`, `contract-reference-lists`, `contract-reference-reads`, `contract-seeds`, `contract-served-block`, `contract-write-lane`, `custom-id`, `custom-id-cross-impl`, `discovery`, `ellipsis-warning`, `grant-documentation`, `grant-lane`, `icu-formatter-failure`, `icu-no-params`, `in-place-render`, `init-settle`, `interpolate`, `interpolation-cross-impl`, `langsys-app`, `legacy-id-tolerance`, `legacy-keys`, `locale`, `locale-headers`, `logger`, `marked-hosts`, `marker-exports`, `navigation`, `nested-host-excision`, `never-attempt`, `no-private-fields`, `no-raw-invisibles`, `obs-notice`, `persist`, `pure-subpath`, `release-skill-steps`, `request-scope`, `request-scope-credentials`, `resolved-marker`, `rich-phrase-identity`, `richtext`, `scope-from-seed`, `seed-catalog`, `served-source`, `server-messages`, `server-register-block`, `settle-window`, `skill-gate`, `snapshot`, `ssr-precondition-doc`, `ssr-strategy-isolation`, `structural-block-detection`, `teardown-signal`, `tfunction-identity`, `tokenizer-convergence`, `tokenizer-cross-impl`, `translate`, `translations`, `type-level`, `unconfigured-core`, `unit-shape`, `var-markers`, `var-naming`, `write-decision-absent`, `write-decision-cache`, `write-decision-persistence`, `write-lane`).
 
 `content-block-identity` pins `custom_id` **identity** rather than output: text-node arity, comment skipping, and attribute emission order. Those are wire values shared with every other SDK. It is mutation-checked — adding `clone.normalize()` to `tokenizeElement` turns three of its tests red. It also pins the **opposite** rule on the `<Phrase>` path: `encodeRichText` coalesces adjacent text nodes by design, because the phrase string is the key and a sentence must survive whole. The two paths are not meant to agree — the realistic bug is someone applying the content-block contract to `richtext.ts`. A failure there is a breaking change, not a stale expectation; never repin a literal to make it green. `npm run test:watch` for watch mode.
 

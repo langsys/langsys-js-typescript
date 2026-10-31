@@ -32,6 +32,8 @@ This is the base SDK. Framework-specific bindings (`langsys-js-svelte`, `langsys
 npm install langsys-js-typescript
 ```
 
+**Using a coding agent?** Run `npx langsys-skill install`. It gives the agent the Langsys skills, this package's included: the package ships its own in `skill/`.
+
 ### No build step? Use the browser build
 
 For a plain HTML page with no bundler, import the self-contained browser build —
@@ -108,7 +110,8 @@ double rather than the live API. Patching the built artifact is never necessary.
 > that consumes it, so the ordering cannot be got wrong.
 
 **Always check what `init()` returns.** A failed authorization — wrong key,
-wrong host, unreachable server — is reported there and nowhere else:
+wrong host, unreachable server — throws nothing. It shows only in what `init()`
+resolves and as a `Langsys` warning or error in the console:
 
 ```ts
 const res = await LangsysApp.init({ /* ... */ });
@@ -224,13 +227,13 @@ Whether a session registers what it finds is the server's decision, made per ses
 
 - **`write` key** — every session can write: phrases `t()` misses and new content blocks are registered as your app runs. Keep it out of code you ship to the public.
 - **`read` key** — fetches translations and registers nothing.
-- **`ip_write` key** — can write only from the addresses on the key's allow-list, and is read-only everywhere else. Ship this one in a public site: visitors' browsers read, while your own allow-listed machines, and Langsys's discovery renderer, register.
+- **`ip_write` key** — can write only from the addresses on the key's allow-list, and is read-only everywhere else. Ship this one in a public site: visitors' browsers only read, and what the site shows registers from the addresses on the allow-list, such as your own machine, a staging server or a crawl you run.
 
 The answer is the `writeEnabled` signal: `undefined` until the server has answered, when misses are held rather than dropped, then `true` or `false`. It is only ever set in a browser, so on a server it stays `undefined`. When a `write` or `ip_write` key's session comes back read-only, the SDK logs one warning saying so, debug or not.
 
 #### Write grants
 
-An app behind a login, which the discovery renderer cannot reach, makes its own users' sessions write-enabled with a write grant: a short-lived token your backend mints, sent as `X-Write-Grant`. Pass a function, which the SDK calls before every request so it always sends a fresh token, and return `null` until there is one:
+An app behind a login makes its signed-in users' sessions write-enabled with a write grant: a short-lived token your backend mints, sent as `X-Write-Grant`. Pass a function, which the SDK calls before every request so it always sends a fresh token, and return `null` until there is one:
 
 ```ts
 await LangsysApp.init({
@@ -241,11 +244,13 @@ await LangsysApp.init({
 await setWriteGrant(() => fetchGrant());               // replace it later; the session re-authorizes
 ```
 
-Configure the provider at `init()` even when the token only exists after login. With no grant configured, a read-only answer means no grant can ever arrive, and what the session missed goes to discovery instead of waiting. A bare string works for a quick start, but grants expire within minutes. While a grant is configured, `ssrTokenStrategy` acts as `'client'`, since a grant makes the decision per user and a server process renders for many.
+Configure the provider at `init()` even when the token only exists after login. With no grant configured, a read-only answer means no grant can ever arrive, and the session stops holding what it missed for one. A bare string works for a quick start, but grants expire within minutes. While a grant is configured, `ssrTokenStrategy` acts as `'client'`, since a grant makes the decision per user and a server process renders for many.
 
-#### Content discovery from read-only sessions
+#### Read-only sessions report where content is
 
-A session that cannot write still tells Langsys where its untranslated content is. When `t()` or a content block misses, the SDK reports the page's URL, and nothing else, after a random 5–30 second delay and at most once per URL per browser session. Langsys's discovery renderer then loads that URL from an allow-listed address, where the same page registers what it shows. Reporting happens only where the key permits it, a setting on the key in Langsys that arrives as the `autoDiscovery` signal. Tracking parameters (`utm_*`, `gclid`, `fbclid` and the like) are stripped first, and a URL that carries a credential-shaped parameter (`token`, `password`, `session`, `email` and the like) is never reported. A session that can write registers and never reports, and nothing is reported from a server render.
+A session that cannot write still tells Langsys where its untranslated content is. When `t()` or a content block misses, the SDK reports the page's URL, and nothing else, after a random 5–30 second delay and at most once per URL per browser session, and Langsys records it. Reporting happens only where the key permits it, a setting on the key in Langsys that arrives as the `autoDiscovery` signal. Tracking parameters (`utm_*`, `gclid`, `fbclid` and the like) are stripped first, and a URL that carries a credential-shaped parameter (`token`, `password`, `session`, `email` and the like) is never reported. A session that can write registers and never reports, and nothing is reported from a server render.
+
+A report isn't a registration. Content registers only from a session that can write. For a public site, which ships an `ip_write` key, that is a browser at an address on the key's allow-list (such as your own machine, a staging server or a crawl you run), a server rendering from an allow-listed address under `ssrTokenStrategy: 'server'`, or a signed-in user's session holding a write grant. Visitors' read-only sessions never fill the catalog, so to register what a public site shows, browse or crawl it from an allow-listed address.
 
 A project can also limit both registering and reporting to pages shown in its base locale, a project setting the server sends with its answer, so a page served already translated never files its translated text as source.
 
@@ -436,7 +441,7 @@ The check runs whenever the params key-set changes, so a ticking `count` won't s
 
 A binding that renders its own DOM registers through the same primitives `Translate` uses: `tokenizeElement(element)` gives a block's `tokens` and `content`, `generateCustomId(category, tokens)` its id, and `isContentBlockKnown(category, id)` whether the catalog holds it already. `registerContentBlock({ custom_id, category, content, tokens, label })` sends it, never throws, and resolves `{ status: true }` only once the server has stored the block:
 
-- `{ status: false, skipped: true, reason }` when it did not send, on purpose: `not-configured`, `not-write-enabled` (the page is reported for discovery instead), `catalog-unavailable` (the catalog fetch failed, so an unknown block cannot be told from a registered one), `base-locale-gate`, or `deferred` (inside a request scope, which sends it at `close()`).
+- `{ status: false, skipped: true, reason }` when it did not send, on purpose: `not-configured`, `not-write-enabled` (in a browser, the page's URL is reported instead), `catalog-unavailable` (the catalog fetch failed, so an unknown block cannot be told from a registered one), `base-locale-gate`, or `deferred` (inside a request scope, which sends it at `close()`).
 - `{ status: false, reason, errors }` when the request was made and did not succeed: `refused` (the server answered with a failure) or `failed` (the request did not complete).
 
 Check `status`, not whether a result came back.
@@ -558,7 +563,7 @@ await LangsysApp.init({
 
 - `'client'` (default) — tokens discovered during SSR flush from the client after hydration.
 - `'server'` — flush tokens immediately from the server.
-- `'auto'` — small batches (≤5) flush from server, larger batches wait for the client.
+- `'auto'` — a short list flushes from the server, and the rest waits for the client. In a request scope, `close()` sends the render's misses when there are fewer than 5, and otherwise leaves them all to the client. Rendering without a scope, the server sends the first 5 and leaves the rest to the client.
 
 > **Precondition for `'server'`, and for the server half of `'auto'`: allow-list the origin server's address.**
 > Registration during a server render is sent from your server, not from the visitor's browser, so the write
@@ -594,7 +599,7 @@ On the client, hydrate with `LangsysApp.seedCatalog(seed.catalog, seed.locale, s
 - **`setRequestScopeStorage`** is opt-in, and what it guarantees depends on the host's async model. Under zone.js, for one, promises don't carry it across concurrent renders. A binding can instead carry the scope through its own dependency injection and read `scope.t` directly.
 - **`scope.run(fn)`** makes the scope current while `fn` runs, for `t()` and for `currentlyLoadedLocale.get()` and `sTranslations.get()` alike, and returns what `fn` returns, a promise included. Without `setRequestScopeStorage`, only code that finishes synchronously inside `fn` sees the scope; `scope.t` always works.
 - **`scope.enter()`** makes the scope current for the rest of the current async context, for a host that cannot wrap its render in a function. It holds only in the continuation that itself performs the render: called inside a function the host awaits and returns from, such as a Nuxt plugin, a Nitro request hook or an awaited helper, the scope is gone when that function returns. So call `enter()` in the function that renders, use `run()` everywhere else, and hand the scope to the app through the framework's injection when the host awaits you. It needs the storage, and throws without it.
-- **`scope.close()`** runs after the response. It sends the scope's misses when the key may write and the strategy collects on the server (`'server'`, or `'auto'` for a short list), and otherwise leaves them to the client. Its result names what happened. It never throws.
+- **`scope.close()`** runs after the response. It sends the scope's misses when the key may write and the strategy collects on the server (`'server'`, or `'auto'` with fewer than 5), and otherwise leaves them to the client. Its result names what happened. It never throws.
 - `currentRequestScope()` returns the scope the current code runs in.
 
 Framework bindings wire this for you through their own request hooks.
@@ -693,13 +698,15 @@ const locale = LangsysApp.detectPreferredLocale();
 // SSR — parse Accept-Language header
 const locale = LangsysApp.detectPreferredLocale(req.headers['accept-language']);
 
-// Match against your app's supported locales (script-aware CLDR matching)
-const supported = (await LangsysApp.getLocalesFlat()).map((l) => l.code);
+// Match against your project's locales (script-aware CLDR matching)
+const supported = ['en-us', 'es-cr', 'fr-fr'];   // the project's base and target locales in Langsys
 const locale = LangsysApp.detectPreferredLocale(
     req.headers['accept-language'],
     supported,
-);
+) || 'en-us';
 ```
+
+`supported` is the locales your project offers. `getLocalesFlat()` is a different list: every locale the API knows. Matched against it, nearly any header finds a match the project doesn't have, and the catalog request for that locale answers 422.
 
 The matcher tries an exact match first (`en-us`), then falls back to same-language-and-script matching using CLDR likely-subtags data (`es-mx` matches `es-es`; `zh-tw` matches `zh-hant` but never `zh-hans` — cross-script fallbacks are deliberately refused). Results come back in the core's lowercase form (`en-us`, `zh-hant-tw`). When you pass `supported` and none match, it returns `false`, so `detectPreferredLocale(header, supported) || 'en-us'` reaches your default; without `supported` it returns the user's top preference, and `false` only when no preference can be determined at all.
 

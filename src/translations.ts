@@ -24,10 +24,13 @@ interface iTokenUpdate {
 }
 
 /**
- * `'auto'` SSR strategy: flush from the server while the queue is at or below
- * this size. Above it, `'auto'` defers to the client — which cannot receive the
- * queue across a real process boundary (see `shouldQueueForWrite`), so we also
- * stop collecting at that point rather than retaining tokens nothing will send.
+ * `'auto'` SSR strategy's threshold. Rendering without a request scope, the
+ * server collects misses until its queue holds this many and sends those; past
+ * it, `'auto'` defers to the client — which cannot receive the queue across a
+ * real process boundary (see `shouldQueueForWrite`), so collection stops there
+ * rather than retaining tokens nothing will send. A request scope sends its
+ * misses at `close()` only when it has fewer than this many, and otherwise
+ * leaves them all to the client.
  */
 export const AUTO_SSR_FLUSH_THRESHOLD = 5;
 
@@ -860,7 +863,7 @@ export class Translations {
      *
      * Even with the debounce there is always a window where a miss is queued
      * and the document is torn down — a tab closing, a client-side navigation,
-     * or the discovery renderer finishing its grace period. A normal request is
+     * or an automated browser closing the page. A normal request is
      * cancelled with the document; `keepalive` survives it.
      *
      * Deliberately NOT `navigator.sendBeacon`, the usual answer here: it cannot
