@@ -27,7 +27,7 @@ This is `langsys-typescript`, step 2 for JavaScript and TypeScript. It describes
 - **The source text is the key.** There are no catalog files and no message ids: `t('Save', 'UI')` looks up the phrase `Save` and renders it as-is until a translation exists.
 - **Content is discovered as the app runs.** A session the server makes write-enabled registers each phrase and content block it misses, and the Translation Manager fills in the translations.
 - **The catalog is fetched per project and locale**, held in memory and cached in the browser.
-- **Untranslated text renders as its source**, so the base language always looks right. That is why most mistakes here are invisible: they show only when someone switches locale or reads what was registered in the Translation Manager.
+- **Untranslated text renders as its source**, so the base language always reads as written, and gains its plural forms once Langsys has checked the phrase. That is why most mistakes here are invisible: they show only when someone switches locale or reads what was registered in the Translation Manager.
 
 ## The rules that matter most
 

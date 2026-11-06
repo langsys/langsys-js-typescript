@@ -33,7 +33,7 @@ t('Welcome back', 'Home');   // ✅ the source text is the key and the default
 t('home.welcome');           // ❌ registers the literal text "home.welcome"
 ```
 
-An untranslated phrase renders as itself, so the base language is always right. A project migrating from key files keeps them as input through `legacyKeys` ([migration.md](./migration.md)); it doesn't recreate them.
+An untranslated phrase renders as itself, so the base language always reads as written. A project migrating from key files keeps them as input through `legacyKeys` ([migration.md](./migration.md)); it doesn't recreate them.
 
 ## 3. Never write a plural or a gender form
 
