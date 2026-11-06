@@ -32,7 +32,7 @@ This is `langsys-typescript`, step 2 for JavaScript and TypeScript. It describes
 ## The rules that matter most
 
 1. **Never build a phrase.** `` t(`Hello, ${name}!`) `` registers one phrase per distinct value, permanently, in a catalog every SDK on the project shares. Pass values as params: `t('Hello, {name}!', 'Greetings', { name })`. [invariants.md](./invariants.md)
-2. **Never write ICU.** Write the sentence flat, `t('You have {count} new messages', 'Inbox', { count })`, and Langsys makes each language's plural and gender forms, the base language included. A sentence that says something different at zero is its own phrase. [interpolation.md](./interpolation.md)
+2. **Never write ICU.** Write the sentence flat, `t('You have {count} new messages', 'Inbox', { count })`, and Langsys makes each language's plural and gender forms, your base language's included: English renders `You have 1 new message` with no ICU in your code. A sentence that says something different at zero is its own phrase. [interpolation.md](./interpolation.md)
 3. **Phrase first, category second.** `t(phrase, category?, params?)`. With a placeholder-free phrase both orders typecheck, so the compiler won't catch a swap.
 4. **Choose the primitive by asking whether a tag boundary belongs to the language or to the layout.** Plain text is `t()`. One sentence with inline markup is `Phrase`. A block of separate units is `Translate`. [primitives.md](./primitives.md)
 5. **The server decides whether a session may register, not the key's type.** An answer without `write_enabled: true` is read-only, even for a `write` key. The entry skill holds the concept; [writing.md](./writing.md) has how the SDK exposes it.

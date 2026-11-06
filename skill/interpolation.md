@@ -48,6 +48,8 @@ t('You have {count} new messages', 'Inbox', { count });
 
 Langsys makes the plural and gender forms each language needs, the base language included: English renders `You have 1 new message`, Russian picks among its four forms and Arabic among its six. Every request carries `X-Langsys-Capabilities: icu`, so the catalog sends those forms as ICU and `t()` renders the one the count selects. Your code passes the same params in every language.
 
+**That includes your base language.** Never write ICU for English either. When a phrase with a placeholder registers, Langsys runs the same plural check on its base-language text and serves the forms it makes as the phrase's base-language entry, so English renders `You have 1 new message` with no branch in your code. A translation run checks its own phrases, and an hourly check covers any phrase a run missed, machine translation switched off included. Until a phrase's check has run, the base language shows the sentence as written.
+
 - **Keep a count and the noun it inflects in one phrase**, or no plural form can reach the noun ([primitives.md](./primitives.md)).
 - **A sentence that says something different at zero is its own phrase**, chosen in code:
 

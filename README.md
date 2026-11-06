@@ -195,7 +195,7 @@ t('Hello, {name}!', 'Greetings', { name: 'x', extra: 'y' });   // ❌ Unknown pr
 
 Allowed value types: `string | number | Date | boolean`. Numbers and Dates format per the active locale's CLDR rules (`1234.5` → `1.234,5` in `de-de`; Dates use the medium date style). Pass values as strings to opt out — e.g. IDs and codes that must not get grouping separators.
 
-**Plurals and gender: write the sentence flat, never ICU.** `t('You have {count} new messages', 'Inbox', { count })` is the whole job: Langsys makes each language's plural and gender forms from the flat phrase, the base language included, so English renders `You have 1 new message` with no branch in your code. A sentence that says something different at zero is its own phrase, chosen in code.
+**Plurals and gender: write the sentence flat, never ICU.** `t('You have {count} new messages', 'Inbox', { count })` is the whole job: Langsys makes each language's plural and gender forms from the flat phrase, the base language included: Langsys runs the same plural check on the base-language text, so English renders `You have 1 new message` with no ICU in English either. A sentence that says something different at zero is its own phrase, chosen in code.
 
 > The translations Langsys sends hold those forms as ICU MessageFormat (`{count, plural, one {# item} other {# items}}`, `{gender, select, …}`, `{n, number}`, `{d, date}`), which `t()` renders with the active locale's CLDR plural rules (Arabic's six categories, Russian's four, etc.), alongside plain `{name}` slots. Every request carries `X-Langsys-Capabilities: icu`, so the server sends plurals and selects as ICU for `t()` to render, and a select or plural renders its `other` branch when its argument is not passed.
 >
