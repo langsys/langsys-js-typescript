@@ -1,4 +1,4 @@
-# Interpolation, ICU and the template tag
+# Interpolation, plurals and the template tag
 
 ## `{name}` and `%name%`
 
@@ -38,17 +38,26 @@ Param values are `string | number | Date | boolean`.
 
 Formatting uses the catalog's locale, not the host's, so a server and a browser render the same text. A placeholder with no param stays visible as `{name}` rather than going blank.
 
-## ICU MessageFormat
+## Plurals and gender: write the sentence flat
 
-A translation in ICU syntax renders with the active locale's CLDR rules: Arabic's six plural categories, Russian's four.
+**Never write ICU.** Write the sentence as it reads, with the count or the name as a `{placeholder}`, and pass the value as a param:
 
 ```ts
-t('{count, plural, one {# item} other {# items}}', 'Cart', { count });
+t('You have {count} new messages', 'Inbox', { count });
 ```
 
-`{n, number}`, `{d, date}` and `{t, time}` format too, and plain `{name}` slots keep working beside ICU.
+Langsys makes the plural and gender forms each language needs, the base language included: English renders `You have 1 new message`, Russian picks among its four forms and Arabic among its six. Every request carries `X-Langsys-Capabilities: icu`, so the catalog sends those forms as ICU and `t()` renders the one the count selects. Your code passes the same params in every language.
 
-**You don't have to write ICU to get it.** Every request carries `X-Langsys-Capabilities: icu`, so the server sends plurals and selects as ICU for `t()` to render, never flattened to one branch. Langsys can turn a plain phrase into a plural or a gendered select in a target locale while your code keeps passing the same params.
+**That includes your base language.** Never write ICU for English either. When a phrase with a placeholder registers, Langsys runs the same plural check on its base-language text and serves the forms it makes as the phrase's base-language entry, so English renders `You have 1 new message` with no branch in your code. A translation run checks its own phrases, and an hourly check covers any phrase a run missed, machine translation switched off included. Until a phrase's check has run, the base language shows the sentence as written.
+
+- **Keep a count and the noun it inflects in one phrase**, or no plural form can reach the noun ([primitives.md](./primitives.md)).
+- **A sentence that says something different at zero is its own phrase**, chosen in code:
+
+```ts
+count === 0
+    ? t('Ready to import the rest of the plan.', 'Import')
+    : t('Ready to import {count} new events.', 'Import', { count });
+```
 
 **Gender.** In a language with grammatical gender, Langsys can turn `{name}` into `{name_gender, select, …}` in the translation. Pass `name_gender` beside `name` when you know it; it's typed as an optional param for every placeholder:
 
@@ -56,13 +65,17 @@ t('{count, plural, one {# item} other {# items}}', 'Cart', { count });
 t('{name} has been invited', 'Team', { name: 'Ana', name_gender: 'female' });
 ```
 
+## Rendering what the catalog sends
+
+A translation in ICU syntax renders with the active locale's CLDR rules. `{n, number}`, `{d, date}` and `{t, time}` format too, and plain `{name}` slots keep working beside ICU.
+
 **A missing argument never blanks the text.**
 - A `select` takes its `other` branch, which is why gender works without the param.
 - A `plural` takes `other` and shows `#` as `{count}`.
 - A plain slot stays `{name}`.
 - A `null` argument counts as missing, never as zero.
 
-`interpolate(template, params?, locale?, options?)` is the same renderer as a function (`interpolate('{n, plural, one {# item} other {# items}}', { n: 3 }, 'en-us')` is `'3 items'`). `options.onDefaulted` and `options.onFormatterFailure` hand its notices to your own logger, and `defaultedArguments(template, params)` names the arguments a render would default.
+`interpolate(template, params?, locale?, options?)` is the same renderer as a function, for code that renders a catalog string itself: `interpolate(translation, { count: 3 }, 'ru-ru')` renders a Russian plural in its form for 3. `options.onDefaulted` and `options.onFormatterFailure` hand its notices to your own logger, and `defaultedArguments(template, params)` names the arguments a render would default.
 
 ## The template tag
 

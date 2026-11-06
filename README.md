@@ -195,7 +195,9 @@ t('Hello, {name}!', 'Greetings', { name: 'x', extra: 'y' });   // ❌ Unknown pr
 
 Allowed value types: `string | number | Date | boolean`. Numbers and Dates format per the active locale's CLDR rules (`1234.5` → `1.234,5` in `de-de`; Dates use the medium date style). Pass values as strings to opt out — e.g. IDs and codes that must not get grouping separators.
 
-> Translations containing ICU MessageFormat syntax — `{count, plural, one {# item} other {# items}}`, `{gender, select, …}`, `{n, number}`, `{d, date}` — are rendered with full CLDR plural rules for the active locale (Arabic's six categories, Russian's four, etc.), alongside plain `{name}` slots. Every request carries `X-Langsys-Capabilities: icu`, so the server sends plurals and selects as ICU for `t()` to render, and a select or plural renders its `other` branch when its argument is not passed.
+**Plurals and gender: write the sentence flat, never ICU.** `t('You have {count} new messages', 'Inbox', { count })` is the whole job: Langsys makes each language's plural and gender forms from the flat phrase, the base language included: Langsys runs the same plural check on the base-language text, so English renders `You have 1 new message` with no ICU in English either. Langsys makes them once it has checked the phrase: a translation run checks its own phrases, and an hourly check covers the rest. Until then the base language shows the sentence as written. A sentence that says something different at zero is its own phrase, chosen in code.
+
+> The translations Langsys sends hold those forms as ICU MessageFormat (`{count, plural, one {# item} other {# items}}`, `{name_gender, select, …}`), which `t()` renders with the active locale's CLDR plural rules (Arabic's six categories, Russian's four, etc.), alongside plain `{name}` slots. Every request carries `X-Langsys-Capabilities: icu`, so the server sends plurals and selects as ICU for `t()` to render, and a select or plural renders its `other` branch when its argument is not passed.
 >
 > In a language with grammatical gender, Langsys can turn a plain `{name}` into `{name_gender, select, …}` in the translation. Pass `name_gender` beside `name` when you know it; it is typed as an optional param for every placeholder, and without it the neutral `other` branch renders:
 >
@@ -641,7 +643,7 @@ import { canonicalizeLocale, generateCustomId, interpolate } from 'langsys-js-ty
 
 canonicalizeLocale('zh-Hant-TW');                                    // 'zh-hant-tw'
 generateCustomId('Pricing', ['Compare every plan', 'Cancel anytime']);   // the block's custom_id
-interpolate('{n, plural, one {# item} other {# items}}', { n: 3 }, 'en-us');   // '3 items'
+interpolate(translation, { count: 3 }, 'ru-ru');                         // a catalog's Russian plural, in its form for 3
 ```
 
 What it exports:
