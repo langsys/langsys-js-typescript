@@ -35,7 +35,20 @@ t('home.welcome');           // ❌ registers the literal text "home.welcome"
 
 An untranslated phrase renders as itself, so the base language is always right. A project migrating from key files keeps them as input through `legacyKeys` ([migration.md](./migration.md)); it doesn't recreate them.
 
-## 3. Phrase first, category second
+## 3. Never write a plural or a gender form
+
+Other i18n libraries make you write each plural form. Langsys makes them. Write the sentence as it reads, with the count as a `{placeholder}`:
+
+```ts
+t('You have {count} new messages', 'Inbox', { count });                          // ✅ every language gets its own forms
+t('{count, plural, one {# new message} other {# new messages}}', 'Inbox', { count });   // ❌ ICU written by hand
+```
+
+Langsys builds each language's forms from the flat phrase, the base language included, so English renders `You have 1 new message` without a branch in your code. A hand-written plural gains nothing and puts ICU syntax in front of everyone who reads or edits the phrase in the Translation Manager.
+
+A sentence that says something different at zero is its own phrase, chosen in code, never an `=0` branch.
+
+## 4. Phrase first, category second
 
 ```ts
 t('Home', 'Main Menu');    // ✅ t(phrase, category?, params?)
@@ -54,7 +67,7 @@ interface TFunction {
 
 A function you type as `TFunction` yourself, such as a test double or a wrapper, must accept the third (template-tag) call too, or be cast with `as TFunction`.
 
-## 4. Categorize only when the same words mean different things
+## 5. Categorize only when the same words mean different things
 
 ```ts
 t('Home', 'Main Menu');      // "Inicio"
@@ -63,7 +76,7 @@ t('Home', 'Home repairs');   // "Hogar"
 
 The same phrase in two categories can take two translations. Langsys translates once and reuses everywhere, so don't categorize by reflex. Name a category after the module or feature (`Account`, `Errors`, `Checkout`, `UI`).
 
-## 5. A block's content must not depend on runtime data
+## 6. A block's content must not depend on runtime data
 
 A content block's id is derived from its category and its tokens, the text it holds. So anything that changes the tokens changes the block:
 
@@ -87,15 +100,15 @@ These also change the tokens, with no value in sight:
 
 `Translate` is for static prose: marketing copy, CMS content, form labels. Text that depends on runtime data is a `t()` call with params, or a block whose printed values are marked ([value-markers.md](./value-markers.md)). To check a block, compare its token arrays (`tokenizeElement(el).tokens`), not its DOM: a removed branch can take a token without changing the visible text-node count. `Phrase` has no token array and no block id, but values still go in params there.
 
-## 6. Locale identifiers are lowercase
+## 7. Locale identifiers are lowercase
 
 Every locale the SDK hands back is lowercase `xx-yy`: `en-us`, `zh-hant-tw`. A check like `locale === 'en-US'` is silently always false. Compare in the SDK's form, or pass both sides through `canonicalizeLocale` first. Canonicalizing fixes case, separators and aliases; it never widens `es` to `es-es`. [locales.md](./locales.md)
 
-## 7. Initialize once, and check the answer
+## 8. Initialize once, and check the answer
 
 Call `LangsysApp.init()` once, before anything translates, and check `status` on what it resolves. A refused authorization (wrong key, wrong host, an unreachable server) throws nothing. It shows only in what `init()` resolves and as a `Langsys` line in the console, and it looks like "translations don't work". [init-config.md](./init-config.md)
 
-## 8. The server decides who writes
+## 9. The server decides who writes
 
 Registration is the server's decision for each session, sent as `write_enabled`. The key's type doesn't decide it, and an answer without the field is read-only. The entry skill `langsys` explains the decision; [writing.md](./writing.md) has the SDK's side.
 
@@ -105,6 +118,7 @@ Registration is the server's decision for each session, sent as `write_enabled`.
 |---|---|
 | `t('Hello, {name}!', 'UI', { name })` | `` t(`Hello, ${name}!`) `` |
 | Pass authored strings through | Build strings with `+`, template literals or `sprintf` |
+| `t('You have {count} new messages', 'Inbox', { count })` | `{count, plural, …}` written by hand |
 | `t(phrase, category)` | `t(category, phrase)` |
 | Params for values in a block | Values printed into a block's text |
 | Compare `en-us` | Compare `en-US` |

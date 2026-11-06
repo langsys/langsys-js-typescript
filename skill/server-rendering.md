@@ -95,7 +95,7 @@ import { canonicalizeLocale, generateCustomId, interpolate } from 'langsys-js-ty
 
 canonicalizeLocale('zh-Hant-TW');                                          // 'zh-hant-tw'
 generateCustomId('Pricing', ['Compare every plan', 'Cancel anytime']);     // the block's custom_id
-interpolate('{n, plural, one {# item} other {# items}}', { n: 3 }, 'en-us');   // '3 items'
+interpolate(translation, { count: 3 }, 'ru-ru');                           // a catalog's Russian plural, in its form for 3
 ```
 
 What it holds:

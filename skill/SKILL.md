@@ -1,6 +1,6 @@
 ---
 name: langsys-typescript
-description: The Langsys TypeScript core skill, for langsys-js-typescript and every Langsys JavaScript binding built on it. Part of the Langsys skill set, read in order - the entry skill langsys first, then this one, then the framework's own skill (langsys-svelte, langsys-react, langsys-vue and the rest). Covers t(), Phrase and Translate, the write signals and grants, init and config, interpolation and ICU, value markers, legacy keys and snapshots, reference lists, localeHeaders, catalog caching and request scopes for server rendering.
+description: The Langsys TypeScript core skill, for langsys-js-typescript and every Langsys JavaScript binding built on it. Part of the Langsys skill set, read in order - the entry skill langsys first, then this one, then the framework's own skill (langsys-svelte, langsys-react, langsys-vue and the rest). Covers t(), Phrase and Translate, the write signals and grants, init and config, interpolation and plurals, value markers, legacy keys and snapshots, reference lists, localeHeaders, catalog caching and request scopes for server rendering.
 metadata:
   package: langsys-js-typescript
   version: 0.7.1
@@ -32,11 +32,12 @@ This is `langsys-typescript`, step 2 for JavaScript and TypeScript. It describes
 ## The rules that matter most
 
 1. **Never build a phrase.** `` t(`Hello, ${name}!`) `` registers one phrase per distinct value, permanently, in a catalog every SDK on the project shares. Pass values as params: `t('Hello, {name}!', 'Greetings', { name })`. [invariants.md](./invariants.md)
-2. **Phrase first, category second.** `t(phrase, category?, params?)`. With a placeholder-free phrase both orders typecheck, so the compiler won't catch a swap.
-3. **Choose the primitive by asking whether a tag boundary belongs to the language or to the layout.** Plain text is `t()`. One sentence with inline markup is `Phrase`. A block of separate units is `Translate`. [primitives.md](./primitives.md)
-4. **The server decides whether a session may register, not the key's type.** An answer without `write_enabled: true` is read-only, even for a `write` key. The entry skill holds the concept; [writing.md](./writing.md) has how the SDK exposes it.
-5. **Locale identifiers are lowercase `xx-yy`** everywhere the SDK hands one back (`en-us`, `zh-hant-tw`). Compare in that form. [locales.md](./locales.md)
-6. **Check what `LangsysApp.init()` returns.** A refused authorization doesn't throw. It shows only in what `init()` resolves and as a `Langsys` line in the console. [init-config.md](./init-config.md)
+2. **Never write ICU.** Write the sentence flat, `t('You have {count} new messages', 'Inbox', { count })`, and Langsys makes each language's plural and gender forms, the base language included. A sentence that says something different at zero is its own phrase. [interpolation.md](./interpolation.md)
+3. **Phrase first, category second.** `t(phrase, category?, params?)`. With a placeholder-free phrase both orders typecheck, so the compiler won't catch a swap.
+4. **Choose the primitive by asking whether a tag boundary belongs to the language or to the layout.** Plain text is `t()`. One sentence with inline markup is `Phrase`. A block of separate units is `Translate`. [primitives.md](./primitives.md)
+5. **The server decides whether a session may register, not the key's type.** An answer without `write_enabled: true` is read-only, even for a `write` key. The entry skill holds the concept; [writing.md](./writing.md) has how the SDK exposes it.
+6. **Locale identifiers are lowercase `xx-yy`** everywhere the SDK hands one back (`en-us`, `zh-hant-tw`). Compare in that form. [locales.md](./locales.md)
+7. **Check what `LangsysApp.init()` returns.** A refused authorization doesn't throw. It shows only in what `init()` resolves and as a `Langsys` line in the console. [init-config.md](./init-config.md)
 
 ## Where to read
 
@@ -46,7 +47,7 @@ This is `langsys-typescript`, step 2 for JavaScript and TypeScript. It describes
 | [invariants.md](./invariants.md) | Before writing code: the rules other i18n habits break |
 | [writing.md](./writing.md) | Phrases aren't registering: `writeEnabled`, write grants, page reports, `notifyNavigation()`, registration results |
 | [init-config.md](./init-config.md) | Wiring `init()`, an unconfigured core, the signals bindings build on |
-| [interpolation.md](./interpolation.md) | Placeholders, `{name}` against `%name%`, ICU, plurals and gender, the template tag |
+| [interpolation.md](./interpolation.md) | Placeholders, `{name}` against `%name%`, plurals and gender written flat, rendering ICU, the template tag |
 | [value-markers.md](./value-markers.md) | HTML another renderer printed values into; placeholder names |
 | [migration.md](./migration.md) | Moving off i18next or vue-i18n keys; catalog snapshots |
 | [locales.md](./locales.md) | Canonical locales, `LangsysApp.detectPreferredLocale`, `localeHeaders()`, the country, currency and locale lists |

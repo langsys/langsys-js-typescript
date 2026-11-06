@@ -1,3 +1,9 @@
+## 0.7.2 - unreleased
+
+### Fixed
+
+- **The skill and the README say never to write ICU.** Write the sentence flat with its `{placeholders}`, `t('You have {count} new messages', 'Inbox', { count })`, and Langsys makes each language's plural and gender forms, the base language included. A sentence that says something different at zero is its own phrase, chosen in code. The skill's rules, its invariants and its interpolation page lead with this, and no example writes a plural by hand. Only documentation changed; the code is the same as 0.7.1's.
+
 ## 0.7.1 - 2026-10-30
 
 ### What's new
