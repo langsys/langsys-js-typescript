@@ -23,7 +23,7 @@ import {
     VALUE_TRANSLATABLE_INPUT_TYPES,
     type WalkNode,
 } from './content-block.js';
-import { encodeRichPhrase, generateCustomId, historicalCustomIds, NON_TRANSLATABLE_ELEMENTS, normalizeMarkupPlaceholders, normalizeTokenText, PREVIOUS_CATEGORY_MARKER_ATTR, PREVIOUS_CONTENT_BLOCK_MARKER_ATTR } from './identity.js';
+import { encodeRichPhrase, generateCustomId, historicalCustomIds, NON_TRANSLATABLE_ELEMENTS, normalizeMarkupPlaceholders, normalizeTokenText, PREVIOUS_CATEGORY_MARKER_ATTR, PREVIOUS_CATEGORY_MARKER_ATTRS, PREVIOUS_CONTENT_BLOCK_MARKER_ATTR, PREVIOUS_CONTENT_BLOCK_MARKER_ATTRS } from './identity.js';
 import { categoryArg, normalizePreviousCategory } from './category-ref.js';
 import { interpolate, isICU } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
@@ -418,6 +418,10 @@ export function applyRendered(
                         writes.push(() => el.setAttribute(name, text));
                     }
                 }
+                // A nested host the render no longer stamps loses the stamp the DOM kept (MOVE-5).
+                for (const name of PREVIOUS_MARKER_ATTRS) {
+                    if (!(name in node.attrs) && el.hasAttribute(name)) writes.push(() => el.removeAttribute(name));
+                }
                 const content = el.localName === 'template' ? (el as HTMLTemplateElement).content : el;
                 if (!walk(content, node.children)) return false;
             }
@@ -440,6 +444,9 @@ export function applyRendered(
 
 /** The markers a render sets on a nested host, and `applyRendered` writes. */
 const UNIT_MARKER_ATTRS: readonly string[] = [CONTENT_BLOCK_MARKER_ATTR, RESOLVED_MARKER_ATTR, PREVIOUS_CONTENT_BLOCK_MARKER_ATTR, PREVIOUS_CATEGORY_MARKER_ATTR];
+
+/** MOVE-5's stamps, in both spellings: written by a render, removed where it no longer applies. */
+const PREVIOUS_MARKER_ATTRS: readonly string[] = [...PREVIOUS_CONTENT_BLOCK_MARKER_ATTRS, ...PREVIOUS_CATEGORY_MARKER_ATTRS];
 
 function isTranslatableAttribute(tag: string, name: string, attrs: Record<string, string | true>): boolean {
     if ((TRANSLATABLE_ATTRIBUTES as readonly string[]).includes(name)) return true;
@@ -511,6 +518,9 @@ class ViewElement implements WalkNode {
     }
     setAttribute(name: string, value: string): void {
         this.attrs.set(name.toLowerCase(), String(value));
+    }
+    removeAttribute(name: string): void {
+        this.attrs.delete(name.toLowerCase());
     }
     hasChildNodes(): boolean {
         return this.childNodes.length > 0;
@@ -802,6 +812,9 @@ function renderNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved = 
                 if (marker.kind === 'identity' && name === CONTENT_BLOCK_MARKER_ATTR) continue;
                 node.setAttribute(name, value);
             }
+            // A nested host filled from its current category says nothing of a previous one,
+            // though the nodes it was rendered from carried a stamp (MOVE-5).
+            for (const name of PREVIOUS_MARKER_ATTRS) if (!(name in rendered.hostAttrs)) node.removeAttribute(name);
             if (rendered.customId && rendered.shape !== 'empty') {
                 activeScope()?.recordRendered({
                     customId: rendered.customId,
@@ -844,6 +857,7 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
     // MOVE-4: the previous category last, by the same keys in the same order, and the
     // host says it was filled from there (MOVE-5).
     const previous = normalizePreviousCategory(category, options.previousCategory);
+    let fromPrevious = false;
     if (translated === null && previous !== undefined) {
         translated = LangsysApp.Translations.lookup(phrase, category, previous);
         if (translated === null && earlier) {
@@ -854,8 +868,11 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
                 for (const [name, value] of Object.entries(earlier.values)) if (!(name in values)) values[name] = value;
             }
         }
-        if (translated !== null) host.setAttribute(PREVIOUS_CATEGORY_MARKER_ATTR, previous);
+        fromPrevious = translated !== null;
     }
+    // A stamp the nodes carried from an earlier render is replaced by this one's answer.
+    for (const name of PREVIOUS_MARKER_ATTRS) host.removeAttribute(name);
+    if (fromPrevious) host.setAttribute(PREVIOUS_CATEGORY_MARKER_ATTR, previous!);
     const locale = currentlyLoadedLocale.get();
     // A translation from the catalog is marked resolved, as a block's host is, so a
     // client never reads it as the source phrase (GATE-10).

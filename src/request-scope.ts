@@ -53,6 +53,16 @@ export interface RequestScopeOptions {
     credentials?: ApiCredentials;
 }
 
+/**
+ * The later record of one block, keeping the previous category an earlier record named
+ * (MOVE-3): one item per block, the first previous category named stays, and a later
+ * record naming none never clears it, as on the phrase path.
+ */
+function keepMove<T extends { previousCategory?: string }>(earlier: T | undefined, later: T): T {
+    if (earlier?.previousCategory === undefined || later.previousCategory !== undefined) return later;
+    return { ...later, previousCategory: earlier.previousCategory };
+}
+
 /** A phrase a scope's render missed. */
 export interface ScopeMiss {
     category: string;
@@ -287,7 +297,7 @@ class Scope implements RequestScope, ActiveScope {
     }
 
     recordRendered(block: SeededBlock): void {
-        this.rendered.set(block.customId, block);
+        this.rendered.set(block.customId, keepMove(this.rendered.get(block.customId), block));
     }
 
     misses(): readonly ScopeMiss[] {
@@ -303,7 +313,8 @@ class Scope implements RequestScope, ActiveScope {
             queueMicrotask(() => void runOutsideScopes(() => registerContentBlock(block)));
             return;
         }
-        this.blockMisses.set(`${block.category}\0${block.custom_id}`, block);
+        const id = `${block.category}\0${block.custom_id}`;
+        this.blockMisses.set(id, keepMove(this.blockMisses.get(id), block));
     }
 
     close(): Promise<RegistrationResult> {

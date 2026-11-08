@@ -351,3 +351,52 @@ describe('MOVE-1: a move one call makes while another still uses the old categor
         }
     });
 });
+
+describe('review fixes: a later record without the move never drops it', () => {
+    const nodes = (html: string): BlockNode[] => {
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        return blockNodesOf(div);
+    };
+
+    it('a request scope keeps a block’s previous category when the same block is recorded again without one', async () => {
+        Object.assign(configStore, { ssrTokenStrategy: 'server' });
+        try {
+            const scope = await createRequestScope({ locale: 'es-cr', catalog: {} as never });
+            // Both inside the scope synchronously: without an AsyncLocalStorage a scope does
+            // not survive an await.
+            scope.run(() => {
+                void registerBlock(nodes('<p>First</p><p>Second</p>'), { category: 'Pricing', previousCategory: 'Home' });
+                void registerBlock(nodes('<p>First</p><p>Second</p>'), { category: 'Pricing' });
+            });
+            await scope.close();
+            expect(sent).toHaveLength(1);
+            expect(sent[0]).toMatchObject({ type: 'content_block', category: 'Pricing', previous_category: 'Home' });
+        } finally {
+            Object.assign(configStore, { ssrTokenStrategy: 'client' });
+        }
+    });
+
+    it('its seed keeps the previous category across a second render without one', async () => {
+        const scope = await createRequestScope({ locale: 'es-cr', catalog: {} as never });
+        scope.run(() => {
+            renderBlock(nodes('<p>First</p><p>Second</p>'), { category: 'Pricing', previousCategory: 'Home' });
+            renderBlock(nodes('<p>First</p><p>Second</p>'), { category: 'Pricing' });
+        });
+        const [block] = Object.values(scope.seed().blocks);
+        expect(block?.previousCategory).toBe('Home');
+    });
+
+    it('a nested phrase host re-rendered from live DOM loses its stamp once its current category has the translation', () => {
+        const phrase = 'Read the {m0o}terms{m0c}';
+        catalog({ Footer: { [phrase]: 'Leé los {m0o}términos{m0c}' } });
+        const host = document.createElement('div');
+        host.innerHTML = '<p>Intro</p><span data-ls-phrase>Read the <b>terms</b></span>';
+        applyRendered(host, renderBlock(blockNodesOf(host), { category: 'Legal', previousCategory: 'Footer' }));
+        const nested = host.querySelector('span')!;
+        expect(nested.getAttribute(PREVIOUS_CATEGORY_MARKER_ATTR)).toBe('Footer');
+        catalog({ Legal: { [phrase]: 'Leé las {m0o}condiciones{m0c}' } });
+        applyRendered(host, renderBlock(blockNodesOf(host), { category: 'Legal', previousCategory: 'Footer' }));
+        expect(nested.hasAttribute(PREVIOUS_CATEGORY_MARKER_ATTR)).toBe(false);
+    });
+});
