@@ -42,3 +42,14 @@ t('{username} has been invited', { username: 'Ada', username_gender: 'female' })
 t('{username} has been invited', 'Team', { username: 'Ada', team_gender: 'female' });
 // @ts-expect-error: the companion does not replace the placeholder
 t('{username} has been invited', 'Team', { username_gender: 'female' });
+
+// MOVE-1: a moved call names its previous category through `inCategory()`, in the
+// category position, and keeps its placeholder checks.
+import { inCategory } from '../../src/category-ref.js';
+t('Buy now', inCategory('Checkout', { previousCategory: 'Header' }));
+t('Buy now', inCategory('Checkout', { previousCategory: '' }));
+t('Hello {name}', inCategory('Greetings', { previousCategory: 'Old' }), { name: 'Ada' });
+// @ts-expect-error: the moved call's placeholders are checked as any other's
+t('Hello {name}', inCategory('Greetings', { previousCategory: 'Old' }), { nope: 1 });
+// @ts-expect-error: a look-alike object is params, never a category, and a sentence takes none
+t('Buy now', { category: 'Checkout', previousCategory: 'Header' });

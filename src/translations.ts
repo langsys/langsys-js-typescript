@@ -5,6 +5,7 @@ import { warnUnregistered } from './notices.js';
 import { derivePlaceholderNames } from './var-names.js';
 import { _registerTeardownFlush } from './teardown.js';
 import { stripC0Controls } from './identity.js';
+import { isCategoryRef, normalizePreviousCategory, previousCategoryField } from './category-ref.js';
 import { interpolate } from './interpolate.js';
 import { activeCatalog, activeScope } from './scope-context.js';
 import { createLegacyKeys, type LegacyKeyFile, type LegacyKeys } from './legacy-keys.js';
@@ -21,6 +22,8 @@ interface iTokenUpdate {
     projectid: string;
     category: string;
     token: string;
+    /** The category this phrase was registered under before (MOVE-1); never part of its identity (MOVE-2). */
+    previousCategory?: string;
 }
 
 /**
@@ -68,6 +71,17 @@ export function failureWindowMs(failures: number): number {
 function isObject(test: unknown): test is Record<string, unknown> {
     return typeof test === 'object' && !Array.isArray(test) && test !== null;
 }
+/**
+ * A phrase's displayable entry under a category, by CAT-2's rule: a non-empty
+ * string, else nothing. `''` is the no-category bucket, as the catalog keys it.
+ */
+function displayValue(cats: iCategories, category: string, key: string): string | null {
+    const bucket = cats[category || '__uncategorized__'];
+    if (!bucket || !Object.prototype.hasOwnProperty.call(bucket, key)) return null;
+    const value = bucket[key];
+    return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
 function sameToken(a: iTokenUpdate, b: iTokenUpdate): boolean {
     return a.projectid === b.projectid && a.category === b.category && a.token === b.token;
 }
@@ -163,7 +177,8 @@ export function noticeSsrGrantDegradation(strategy: string): void {
 export interface CatalogView {
     catalog(): iCategories;
     locale(): string;
-    miss(category: string, key: string, onlyForRegistration: boolean): void;
+    /** `previousCategory` rides on the registration only (MOVE-1, MOVE-3); it is no part of the key. */
+    miss(category: string, key: string, onlyForRegistration: boolean, previousCategory?: string): void;
     fromSnapshot(): boolean;
 }
 
@@ -179,6 +194,13 @@ export class Translations {
     private missingTokens: iTokenUpdate[] = [];
     /** Phrases already reported under REG-11, so the warning fires once each. */
     private warnedEllipsis = new Set<string>();
+    /**
+     * MOVE-1's split-move check, debug only: for each phrase, the categories calls
+     * render it under and the categories calls say it moved from, so a move one call
+     * site makes while another still uses the old category is said once.
+     */
+    private categoryUses = new Map<string, { uses: Set<string>; movedFrom: Set<string> }>();
+    private warnedSplitMoves = new Set<string>();
     /** The legacy-key mode (MIG-1): null unless configured, and then `t()` does no key lookup at all. */
     private legacyKeys: LegacyKeys | null = null;
     private warnedLegacy = new Set<string>();
@@ -388,13 +410,22 @@ export class Translations {
      * missing-token registration. Returns null when no (non-empty) translation
      * is cached. Used by the `Phrase` rich-text handler, which needs the
      * un-interpolated template (it supplies its own markup-token values).
+     *
+     * With a `previousCategory`, a phrase with no displayable entry under
+     * `category` reads that category's entry instead (MOVE-4), last. Not only on
+     * absence: this session's own registration records the phrase with `null`
+     * until a fetch brings the translation the API copied to it.
      */
-    public lookup(phrase: string, category: string): string | null {
+    public lookup(phrase: string, category: string, previousCategory?: string): string | null {
         const cats = activeCatalog();
         const lookupCat = category || '__uncategorized__';
         // The catalog key never carries a C0 control (TOK-2), on lookup as on register.
-        const value = cats[lookupCat]?.[stripC0Controls(phrase)];
-        return typeof value === 'string' && value.length > 0 ? value : null;
+        const key = stripC0Controls(phrase);
+        const bucket = cats[lookupCat];
+        const value = bucket?.[key];
+        if (typeof value === 'string' && value.length > 0) return value;
+        const previous = normalizePreviousCategory(category, previousCategory);
+        return previous === undefined ? null : displayValue(cats, previous, key);
     }
 
     private buildTFn(): TFunction {
@@ -420,7 +451,7 @@ export class Translations {
     private readonly pageView: CatalogView = {
         catalog: () => pageCatalog(),
         locale: () => pageLocale(),
-        miss: (category, key, onlyForRegistration) => this.missingToken(category, key, onlyForRegistration),
+        miss: (category, key, onlyForRegistration, previousCategory) => this.missingToken(category, key, onlyForRegistration, previousCategory),
         fromSnapshot: () => this.catalogFromSnapshot,
     };
 
@@ -443,8 +474,11 @@ export class Translations {
             phrase = tagged.phrase;
             rest = [tagged.params];
         }
-        let category = typeof rest[0] === 'string' ? rest[0] : '';
-        const params = (typeof rest[0] === 'object' ? rest[0] : rest[1]) as Record<string, unknown> | undefined;
+        // Position 2: a string is the category, a ref from `inCategory()` a category with
+        // the one it moved from (MOVE-1), any other object params.
+        const moved = isCategoryRef(rest[0]) ? rest[0] : null;
+        let category = moved ? moved.category : typeof rest[0] === 'string' ? rest[0] : '';
+        const params = (typeof rest[0] === 'object' && !moved ? rest[0] : rest[1]) as Record<string, unknown> | undefined;
 
         // In the legacy-key mode the argument is resolved as a key first (MIG-2):
         // a hit becomes the key's converted source value, never the key string.
@@ -486,23 +520,54 @@ export class Translations {
         const value = known ? bucket[key] : undefined;
 
         let translated: string;
+        const previousCategory = moved ? normalizePreviousCategory(category, moved.previousCategory) : undefined;
+        if (this.debug.debugEnabled) this.noteCategoryUse(key, category, previousCategory);
         if (typeof value === 'string' && value.length > 0) {
             this.debug.log('TRANSLATION FOUND', [lookupCat, phrase, value]);
             translated = value;
         } else {
-            if (!known) view.miss(category, key, false);
-            translated = phrase;
+            if (!known) view.miss(category, key, false, previousCategory);
+            // MOVE-4: until the catalog has a translation under the new category, the
+            // previous category's entry renders; the miss above still registers it there.
+            // On no displayable entry rather than on absence: this session's own
+            // registration records the phrase as known with `null`, and ending the
+            // fallback there would show source until the next fetch brings the copied
+            // translation, the flash MOVE-4 exists to prevent.
+            const earlier = previousCategory !== undefined ? displayValue(cats, previousCategory, key) : null;
+            translated = earlier ?? phrase;
         }
         // A phrase the snapshot holds is not yet known to the live catalog. It is
         // queued for registration without a discovery report, and the flush,
         // held until the live catalog arrives, drops it there if it is present.
-        if (known && view.fromSnapshot()) view.miss(category, key, true);
+        if (known && view.fromSnapshot()) view.miss(category, key, true, previousCategory);
 
         // Interpolated with or without params. Returning early without them
         // rendered a select or plural as its raw source, where ICU-1 renders the
         // `other` branch and ICU-3 shows `{count}` in place of a `#` with no count.
         // Plain text, braces included, comes back exactly as written.
         return interpolate(translated, params ?? {}, view.locale());
+    }
+
+    /**
+     * MOVE-1: one item stands for every call registering a text in a category, so a
+     * move retires it for all of them. A call moving a phrase out of a category while
+     * another call still renders it there splits the app across a retired item, so it
+     * is said, once per phrase and category, while debug is on.
+     */
+    private noteCategoryUse(key: string, category: string, previousCategory: string | undefined): void {
+        let seen = this.categoryUses.get(key);
+        if (!seen) this.categoryUses.set(key, (seen = { uses: new Set(), movedFrom: new Set() }));
+        seen.uses.add(category);
+        if (previousCategory !== undefined) seen.movedFrom.add(previousCategory);
+        for (const from of seen.movedFrom) {
+            const warned = `${key}\0${from}`;
+            if (!seen.uses.has(from) || this.warnedSplitMoves.has(warned)) continue;
+            this.warnedSplitMoves.add(warned);
+            this.debug.warn(
+                `Langsys: "${key}" is moved out of category "${from}" by one call, while another call still renders it in "${from}". ` +
+                    `A move retires the item for every call using it, so move every use in the same release (MOVE-1).`
+            );
+        }
     }
 
     /**
@@ -548,11 +613,11 @@ export class Translations {
      * request scope rebuilt from a seed on the client (`scopeFromSeed`), whose
      * render's misses belong to the page.
      */
-    public recordPageMiss(category: string, token: string): void {
-        this.missingToken(category, token);
+    public recordPageMiss(category: string, token: string, previousCategory?: string): void {
+        this.missingToken(category, token, false, previousCategory);
     }
 
-    private missingToken(category: string, token: string | undefined | null, onlyForRegistration = false) {
+    private missingToken(category: string, token: string | undefined | null, onlyForRegistration = false, previousCategory?: string) {
         if (token === undefined || token === null) {
             return this.debug.warn(`Received undefined or null token for category: ${category}`);
         }
@@ -654,10 +719,17 @@ export class Translations {
         }
 
         const missingToken: iTokenUpdate = { category, token, projectid: this.config.projectid };
-        if (!this.missingTokens.some((t) => sameToken(t, missingToken))) {
+        if (previousCategory !== undefined) missingToken.previousCategory = previousCategory;
+        const queued = this.missingTokens.find((t) => sameToken(t, missingToken));
+        if (!queued) {
             this.debug.log('MISSING TOKEN LOOKUP FAILED', [missingToken, [...this.missingTokens], { ...sTranslations.get() }]);
             this.missingTokens.push(missingToken);
             this.scheduleTokenFlush();
+        } else if (queued.previousCategory === undefined && previousCategory !== undefined) {
+            // One item per phrase and category (REG-7, MOVE-2). A call site naming the
+            // previous category after one that did not still moves it; a later call
+            // without one never clears it.
+            queued.previousCategory = previousCategory;
         }
     }
 
@@ -1197,6 +1269,7 @@ export class Translations {
                 type: 'phrase',
                 phrase: tokenObj.token,
                 category: tokenObj.category || null,
+                ...previousCategoryField(tokenObj.previousCategory),
             }));
 
             // /translatable-items caps each request (default 200 items); chunk so

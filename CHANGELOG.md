@@ -1,3 +1,13 @@
+## 0.7.3 - unreleased
+
+### What's new
+
+- **Content can move to another category without being translated again** (spec MOVE-1 to MOVE-5). Category is part of a phrase's identity, so a `t()` call or block moved into a better category used to register as new content, which Langsys translated and charged for again. Name the category it was registered under before, and the API copies the old item's translations to the new one and retires the old item, which released app versions keep being served:
+  - `t('Buy now', inCategory('Checkout', { previousCategory: 'Header' }))`, with `inCategory` going where the category goes. `''` means the content had no category.
+  - `previousCategory` on the `Translate` and `Phrase` options and on `renderBlock`'s and `registerBlock`'s options.
+
+  It is sent once, as `previous_category` on the registration a miss triggers, and is never part of a `custom_id`, a catalog key or deduplication. Until the catalog has a translation under the new category, the previous category's entry renders, so the first deploy after a move shows no source text. `renderBlock` marks a host it filled from the previous category with `data-ls-previous-contentblock` or `data-ls-previous-category`. With `debug` on, a call that still renders the text in the old category while another moves it is reported once. Nothing changes for code that doesn't use it, and an API from before this feature ignores the field.
+
 ## 0.7.2 - 2026-11-06
 
 ### Fixed

@@ -1,3 +1,5 @@
+import type { CategoryRef } from '../category-ref.js';
+
 /**
  * Translation function type machinery.
  *
@@ -82,6 +84,10 @@ export type TranslationParams = Record<string, ParamPrimitive>;
  * pass any non-empty string. There is no "null category" wire concept:
  * absent category means absent.
  *
+ * The category may be an `inCategory(category, { previousCategory })` ref, for
+ * content moved from another category (MOVE-1): it renders and registers under
+ * `category`, and names where its translations are.
+ *
  * As a template tag, each value written as a one-key object is a placeholder
  * named by its key in snake_case (`${{ userName }}` is `{user_name}`), with the
  * value as its param. With any other value, the tag returns the rendered text
@@ -90,6 +96,6 @@ export type TranslationParams = Record<string, ParamPrimitive>;
  */
 export interface TFunction {
     <P extends string>(phrase: P, ...args: TArgs<P>): string;
-    <P extends string>(phrase: P, category: string, ...args: TArgs<P>): string;
+    <P extends string>(phrase: P, category: string | CategoryRef, ...args: TArgs<P>): string;
     (strings: TemplateStringsArray, ...values: unknown[]): string;
 }

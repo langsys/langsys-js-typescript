@@ -53,7 +53,15 @@ export {
     RESOLVED_MARKER_ATTR,
     RESOLVED_MARKER_ATTR_LEGACY,
     RESOLVED_MARKER_ATTRS,
+    // A host filled from its content's previous category says which identity (MOVE-5)
+    PREVIOUS_CONTENT_BLOCK_MARKER_ATTR,
+    PREVIOUS_CONTENT_BLOCK_MARKER_ATTRS,
+    PREVIOUS_CATEGORY_MARKER_ATTR,
+    PREVIOUS_CATEGORY_MARKER_ATTRS,
 } from './identity.js';
+
+// Content moved between categories (MOVE-1): `t(phrase, inCategory('New', { previousCategory: 'Old' }))`
+export { inCategory, isCategoryRef, type CategoryRef, type CategoryMoveOptions } from './category-ref.js';
 
 // Reactive primitives
 export { createSignal, getValue, type Signal, type Subscriber, type Unsubscriber, type Updater } from './signal.js';

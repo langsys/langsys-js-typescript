@@ -477,6 +477,26 @@ An element you exclude inside a phrase, with `translate="no"` or `data-notrans`,
 
 If a translation drops or unbalances a markup token, rendering degrades to plain text with the markers stripped — the meaning survives even when the markup doesn't.
 
+## Moving content between categories
+
+A category is part of a phrase's identity, and of a content block's `custom_id`. So a `t()` call or block moved into a better category registers as new content, which Langsys would translate, and charge for, again. Name the category the content was registered under before, and the API copies the old item's translations to the new one instead, before any machine translation, and retires the old item. A retired item is still served to API keys, so app versions already released keep working, and it is removed after 90 days.
+
+```ts
+import { inCategory, Phrase, t, Translate } from 'langsys-js-typescript';
+
+t('Buy now', inCategory('Checkout', { previousCategory: 'Header' }));
+t('Hi {name}', inCategory('Account', { previousCategory: '' }), { name: 'Ana' });   // '' = it had no category
+new Translate(el, { category: 'Pricing', previousCategory: 'Home' });
+new Phrase(el, { category: 'Legal', previousCategory: 'Footer' });
+```
+
+- **`inCategory()` goes in the category position.** `t()`'s second argument is a category when it is a string and params when it is an object, so the move is a branded value rather than an options object: a params object with a `category` key is still params. Every existing call is unchanged.
+- **Sent once.** `previous_category` rides on the registration a miss triggers, and nowhere else. It is never part of a `custom_id`, a catalog key or the request deduplication. Two calls that render the same phrase and category queue one item, and the first previous category named stays.
+- **No flash on the first deploy.** Until the catalog has a translation under the new category, the previous category's entry renders: for a block, the entry under the `custom_id` its previous category gives it (or under its own id, when the app fixes it). The miss still registers under the new category.
+- **Move every use of the text at once.** One item stands for every call registering the text in a category, so the move retires it for all of them. With `debug` on, a call that still renders the text in the old category is reported once per session.
+- **`renderBlock` says when it filled a host from the previous category** (`previousCategory` on its options): `hostAttrs` carries `data-ls-previous-contentblock` (the previous category's `custom_id`) on a block, or `data-ls-previous-category` on a phrase, beside the usual `data-ls-contentblock`. Set `hostAttrs` on the host your binding owns, as before. `applyRendered` removes them once the host renders from its current category.
+- Two known limits. Two live releases moving the same text in opposite directions take turns being the current item until one ages out; nothing is lost or charged, but which item the Translation Manager shows changes, so don't reverse a move while the release that made it is live. And a move while the old item is still being machine translated takes over what it had at registration; a run still in flight lands on the old item, and the new one is translated for what it lacks.
+
 ## Migrating from i18n keys
 
 An app on vue-i18n or i18next can move to Langsys without rewriting its call sites. Keep the source-language file, delete every other language's file, and hand the kept file to `init`:
@@ -650,12 +670,13 @@ What it exports:
 
 - **Ids and keys:** `generateCustomId`, `generateLegacyCustomId`, `canonicalContentBlockJson`, `encodeRichPhrase` (the `Phrase` encoder over a node shape of your own), `md5`, `md5Legacy`.
 - **What the tokenizer is built from:** `TRANSLATABLE_ATTRIBUTES`, `NON_TRANSLATABLE_ELEMENTS`, `isTranslationExcluded`, `normalizeTokenText`, `normalizeMarkupPlaceholders`, `stripC0Controls`.
-- **Marker attributes:** `PHRASE_MARKER_ATTR`, `PHRASE_MARKER_ATTR_LEGACY`, `PHRASE_MARKER_ATTRS`, `CONTENT_BLOCK_MARKER_ATTR`, `CONTENT_BLOCK_MARKER_ATTR_LEGACY`, `CONTENT_BLOCK_MARKER_ATTRS`, `RESOLVED_MARKER_ATTR`, `RESOLVED_MARKER_ATTR_LEGACY`, `RESOLVED_MARKER_ATTRS`, `VAR_PARAM_ATTR`.
+- **Marker attributes:** `PHRASE_MARKER_ATTR`, `PHRASE_MARKER_ATTR_LEGACY`, `PHRASE_MARKER_ATTRS`, `CONTENT_BLOCK_MARKER_ATTR`, `CONTENT_BLOCK_MARKER_ATTR_LEGACY`, `CONTENT_BLOCK_MARKER_ATTRS`, `RESOLVED_MARKER_ATTR`, `RESOLVED_MARKER_ATTR_LEGACY`, `RESOLVED_MARKER_ATTRS`, `PREVIOUS_CONTENT_BLOCK_MARKER_ATTR`, `PREVIOUS_CONTENT_BLOCK_MARKER_ATTRS`, `PREVIOUS_CATEGORY_MARKER_ATTR`, `PREVIOUS_CATEGORY_MARKER_ATTRS` (a host filled from its previous category, MOVE-5), `VAR_PARAM_ATTR`.
 - **Locales:** `canonicalizeLocale`, `maximizedLangScript`.
 - **Interpolation and placeholders:** `interpolate`, `defaultedArguments`, `isICU`, `findUnusedParamKeys`, `derivePlaceholderNames`, `snakeCase`.
 - **Legacy keys:** `createLegacyKeys`, `convertLegacyValue`, `convertLegacyPluralForms`, `convertLegacyCall`, `LegacyFormatError`, `LEGACY_FORMATS`, `SUPPORTED_LEGACY_FORMATS`.
 - **Catalog snapshots:** `buildSnapshot`, `parseSnapshot`, `canonicalSnapshotJson`, `snapshotChecksum`, `SnapshotError`, `SNAPSHOT_FORMAT`, `SNAPSHOT_VERSION`.
 - **Server messages:** `resolveServerMessages`, `toServerMessage`, `templateMarkers`, `fillTemplate`, `DEFAULT_SERVER_MESSAGE_CATEGORY`.
+- **Moved content:** `inCategory`, `isCategoryRef` (see [Moving content between categories](#moving-content-between-categories)).
 - **Utilities:** `isEmpty`.
 
 The DOM walkers (`tokenizeElement`, `encodeRichText`) and everything that sends a request are on the main entry only.

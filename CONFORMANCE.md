@@ -560,6 +560,30 @@ None of those id spaces is injective, so a match is attached only when the store
 holds the current block's phrases, compared as sets after hashing normalisation. The
 collision above is declined rather than attached, and the block registers under its own id.
 
+## MOVE-1..MOVE-5 — read at an unpublished spec revision
+
+Read at langsys-nova `242181a9` (the API lane's local `main`, 9 commits ahead of origin, not
+pushed when read), `docs/sdk-spec.mdx` blob `644bfd0de89a631e784552d9abadc5deb3902692`,
+`specVersion: 8.7.0`, derived with `git ls-tree 242181a9 docs/sdk-spec.mdx` at this write. The
+header above still cites 8.6.0, because `verify:spec` checks it against a `langsys2` checkout
+this machine does not have, and a revision that is not on any remote is not one to cite there.
+These rows move into the Status table when 8.7.0 is published and the header is re-derived.
+
+The surface: `inCategory(category, { previousCategory })` in `t()`'s category position (a
+value branded with `Symbol.for('langsys.category')`, so a params object is never mistaken for
+it), and `previousCategory` on the `Translate`, `Phrase`, `renderBlock` and `registerBlock`
+options. This table is kept apart from the Status table, under its own header, so the tally
+keeps counting only the cited revision's rules. Every test named is in `category-move` unless stated; mutations ran in an isolated
+copy, each red over a green control of 33.
+
+| Rule at 8.7.0 | Status | Tier | Evidence |
+|---|---|---|---|
+| MOVE-1 | implemented | n/a (pure) | A miss sends `previous_category` beside `category` from `t()`, a `Phrase`, a `Translate` block, `registerBlock` and a request scope's `close()`; `''` is sent as `""`; absent, `null` and a value equal to the category leave the key out. Params still follow the ref (`type-level` pins the call's types, a look-alike object included). The SHOULD warning: with `debug` on, one call moving a phrase out of a category while another renders it there is reported once. Mutations: the phrase payload field dropped (5 red), the block payload field dropped (3), the scope's dropped (1), an equal value not dropped (2), the warning silenced (1). |
+| MOVE-2 | implemented | n/a (pure) | A block derives the same `custom_id` with and without it; two calls queue one item, the first previous category named stays and a later absent one never clears it. Mutation: a later call overwriting the queued value (1 red). |
+| MOVE-3 | implemented | n/a (pure) | An item the catalog holds under its current category is not registered; a read-only session sends nothing. Graded `n/a (pure)` for now: the API that stores `previous_category` is not deployed, and the clone runs have not been repeated against the local API (`http://langsys.test`) that has it. |
+| MOVE-4 | implemented | n/a (pure) | The previous category's entry renders on a miss and the miss still registers under the current one; `''` reads `__uncategorized__`; the current category wins once it holds a translation; an empty previous entry falls back to source; a `Phrase` and a `Translate` block render from it, the block by `generateCustomId(previous, tokens)` or, for an app-fixed id, the same id, each with a control. One reading the spec does not state: the fallback holds while the current category has no displayable entry, not only while the key is absent, because this session's own registration records the phrase as known with `null` until a fetch brings the copied translation (test: "keeps rendering the previous entry after this session registered the item"). The order: every current-category read first, CID-3's historical ids included, then the previous category's primary id and its historical ids (`resolvePreviousBlockId`). Mutations: no fallback in `t()` (4 red), in `Translate` (2), in `Phrase` (1). |
+| MOVE-5 | partial | n/a (pure) | Producer side implemented: `renderBlock` stamps `data-ls-previous-contentblock` on a block and `data-ls-previous-category` on a phrase-shaped unit or nested phrase host it filled from the previous category, in `hostAttrs`, with a control that a host filled from its current category carries neither, and `applyRendered` removes them once the host renders from its current category. Mutation: the block stamp dropped (2 red). **Gap:** a hydrating `Translate` or `Phrase` that adopted a stamped id does not yet read the previous identity from those attributes. |
+
 ## Gaps, ranked by cost
 
 1. **Rules not yet implemented, or partly.** None: every rule this SDK's profiles bind is implemented, and CONF-3's remaining mutations are graded in its row.

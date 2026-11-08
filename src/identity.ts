@@ -233,6 +233,28 @@ export const RESOLVED_MARKER_ATTR_LEGACY = 'data-langsys-resolved';
 export const RESOLVED_MARKER_ATTRS = [RESOLVED_MARKER_ATTR, RESOLVED_MARKER_ATTR_LEGACY] as const;
 
 /**
+ * MOVE-5: a host a renderer filled from the content's PREVIOUS category (MOVE-4)
+ * says which identity it was filled from, beside its current one. A block carries
+ * the previous category's `custom_id`; a phrase carries the previous category
+ * (`""` for none). A hydrating client whose catalog lacks the current identity
+ * renders from it: it cannot recover the previous id by tokenizing translated
+ * markup again. A host filled from its current category carries neither.
+ */
+export const PREVIOUS_CONTENT_BLOCK_MARKER_ATTR = 'data-ls-previous-contentblock';
+export const PREVIOUS_CONTENT_BLOCK_MARKER_ATTRS = [PREVIOUS_CONTENT_BLOCK_MARKER_ATTR, 'data-langsys-previous-contentblock'] as const;
+export const PREVIOUS_CATEGORY_MARKER_ATTR = 'data-ls-previous-category';
+export const PREVIOUS_CATEGORY_MARKER_ATTRS = [PREVIOUS_CATEGORY_MARKER_ATTR, 'data-langsys-previous-category'] as const;
+
+/** The first of `attrs` an element carries, or null (MARK-2's spellings). */
+export function readMarker(element: Element, attrs: readonly string[]): string | null {
+    for (const attr of attrs) {
+        const value = element.getAttribute(attr);
+        if (value !== null) return value.trim();
+    }
+    return null;
+}
+
+/**
  * Canonical form of one token's text, applied identically to a TEXT NODE and to
  * an ATTRIBUTE VALUE.
  *

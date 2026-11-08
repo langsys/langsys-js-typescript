@@ -31,12 +31,14 @@ import { recordMissForDiscovery } from './discovery.js';
 import { normalizeMarkupPlaceholders } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
 import { logger } from './logger.js';
+import { normalizePreviousCategory, previousCategoryField } from './category-ref.js';
 import { catalogUnavailable, config as configStore, configured, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations, writeEnabled } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
 import { groupRuns, isMarkerOnly, runNodes, runSource, runToken, runValues, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
 import {
     blockContentMatches,
+    historicalCustomIds,
     CONTENT_BLOCK_MARKER_ATTRS,
     isTranslationExcluded,
     NON_TRANSLATABLE_ELEMENTS,
@@ -223,6 +225,38 @@ export function isContentBlockKnown(category: string, customId: string): boolean
     const lookupCat = category || '__uncategorized__';
     const cbData = cats[lookupCat]?.[customId];
     return typeof cbData === 'object' && cbData !== null;
+}
+
+/**
+ * Whether the catalog holds a block's entry with its phrases: what a fetch
+ * published, never the empty record this session's own registration leaves
+ * (`_writeKnownContentBlockToCache`). MOVE-4's fallback ends on this, so a block
+ * this session just registered under its new category keeps rendering its
+ * previous category's translation until a fetch has it under the new one.
+ */
+export function isContentBlockHeld(category: string, customId: string): boolean {
+    const stored = activeCatalog()[category || '__uncategorized__']?.[customId];
+    return typeof stored === 'object' && stored !== null && Object.keys(stored).length > 0;
+}
+
+/**
+ * The id a moved block is held under in its PREVIOUS category (MOVE-4), or null:
+ * its primary id there first, then the same historical derivations CID-3 reads
+ * under the current category, in the same order, each verified on content
+ * (CID-4). `primaryId` is `generateCustomId(previousCategory, tokens)` for a
+ * derived id, and the block's own id when the app fixes it, which names one
+ * block whatever its category, so no derivation applies.
+ */
+export function resolvePreviousBlockId(
+    previousCategory: string,
+    primaryId: string,
+    tokens: readonly string[],
+    legacyTokens: readonly string[] | null
+): string | null {
+    if (isContentBlockKnown(previousCategory, primaryId)) return primaryId;
+    if (legacyTokens === null) return null;
+    const candidates = historicalCustomIds(previousCategory, tokens, legacyTokens).filter((id) => id !== primaryId);
+    return resolveHistoricalBlockId(previousCategory, candidates, tokens);
 }
 
 /**
@@ -440,6 +474,7 @@ async function sendContentBlock(contentBlock: iContentBlock, credentials: ApiCre
                     type: 'content_block',
                     custom_id: contentBlock.custom_id,
                     category: contentBlock.category,
+                    ...previousCategoryField(normalizePreviousCategory(contentBlock.category, contentBlock.previousCategory)),
                     content: contentBlock.content,
                     label: contentBlock.label,
                     phrases: contentBlock.tokens.map((phrase) => ({ phrase })),

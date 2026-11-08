@@ -3,6 +3,7 @@ import { registerContentBlock, type RegistrationResult } from './content-block.j
 import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
 import { LangsysApp } from './langsys-app.js';
 import { canonicalizeLocale } from './locale.js';
+import { normalizePreviousCategory, previousCategoryField } from './category-ref.js';
 import { activeScope, enterScope, runInScope, runOutsideScopes, type ActiveScope } from './scope-context.js';
 import { batchLimit, config as configStore } from './stores.js';
 import { AUTO_SSR_FLUSH_THRESHOLD, answeredWriteDecision, noticeSsrGrantDegradation, type CatalogView } from './translations.js';
@@ -56,6 +57,8 @@ export interface RequestScopeOptions {
 export interface ScopeMiss {
     category: string;
     phrase: string;
+    /** The category the phrase was registered under before (MOVE-1); absent when it did not move. */
+    previousCategory?: string;
 }
 
 export interface RequestScope {
@@ -199,11 +202,19 @@ class Scope implements RequestScope, ActiveScope {
     private readonly view: CatalogView = {
         catalog: () => this.catalog,
         locale: () => this.locale,
-        miss: (category, key) => {
+        miss: (category, key, _onlyForRegistration, previousCategory) => {
             if (!this.available || this.closing) return;
             // A scope rebuilt from a seed records on the page's lanes (see `scopeFromSeed`).
-            if (this.fromSeed) return LangsysApp.Translations.recordPageMiss(category, key);
-            this.phraseMisses.set(`${category}\0${key}`, { category, phrase: key });
+            if (this.fromSeed) return LangsysApp.Translations.recordPageMiss(category, key, previousCategory);
+            // One item per phrase and category (MOVE-2); the first previous category named
+            // stays, and a later call naming none never clears it (MOVE-3).
+            const id = `${category}\0${key}`;
+            const held = this.phraseMisses.get(id);
+            if (held) {
+                if (held.previousCategory === undefined && previousCategory !== undefined) held.previousCategory = previousCategory;
+                return;
+            }
+            this.phraseMisses.set(id, previousCategory === undefined ? { category, phrase: key } : { category, phrase: key, previousCategory });
         },
         fromSnapshot: () => false,
     };
@@ -248,6 +259,7 @@ class Scope implements RequestScope, ActiveScope {
             const known = typeof entry === 'object' && entry !== null;
             blocks[id] = collects && held ? { ...withoutContent, collected: true } : known ? withoutContent : { ...block };
         }
+        // A phrase's previous category stays on the server: the client's own render names it again.
         const phrases = [...this.phraseMisses.values()].map(({ category, phrase }) => (collects ? { category, phrase, collected: true } : { category, phrase }));
         return { locale: this.locale, catalog: clone(this.catalog), blocks: clone(blocks), phrases };
     }
@@ -301,11 +313,12 @@ class Scope implements RequestScope, ActiveScope {
 
     private async flush(): Promise<RegistrationResult> {
         const items: Array<Record<string, unknown>> = [
-            ...[...this.phraseMisses.values()].map((m) => ({ type: 'phrase', phrase: m.phrase, category: m.category || null })),
+            ...[...this.phraseMisses.values()].map((m) => ({ type: 'phrase', phrase: m.phrase, category: m.category || null, ...previousCategoryField(m.previousCategory) })),
             ...[...this.blockMisses.values()].map((b) => ({
                 type: 'content_block',
                 custom_id: b.custom_id,
                 category: b.category || null,
+                ...previousCategoryField(normalizePreviousCategory(b.category, b.previousCategory)),
                 content: b.content,
                 label: b.label,
                 phrases: b.tokens.map((phrase) => ({ phrase })),

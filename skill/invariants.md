@@ -60,7 +60,7 @@ Both orders typecheck when the phrase has no placeholders. The types are:
 ```ts
 interface TFunction {
     <P extends string>(phrase: P, ...args: TArgs<P>): string;
-    <P extends string>(phrase: P, category: string, ...args: TArgs<P>): string;
+    <P extends string>(phrase: P, category: string | CategoryRef, ...args: TArgs<P>): string;
     (strings: TemplateStringsArray, ...values: unknown[]): string;
 }
 ```
@@ -75,6 +75,26 @@ t('Home', 'Home repairs');   // "Hogar"
 ```
 
 The same phrase in two categories can take two translations. Langsys translates once and reuses everywhere, so don't categorize by reflex. Name a category after the module or feature (`Account`, `Errors`, `Checkout`, `UI`).
+
+### Moving content to another category: name the one it left
+
+Category is part of a phrase's identity, so a call moved into a new category is new content, and Langsys would translate and charge for it again. Name the category it was registered under before, and its translations follow it:
+
+```ts
+import { inCategory } from 'langsys-js-typescript';
+
+t('Buy now', 'Header');                                                       // before
+t('Buy now', inCategory('Checkout', { previousCategory: 'Header' }));          // ✅ after: translations move with it
+t('Hi {name}', inCategory('Account', { previousCategory: '' }), { name });     // it had no category before
+new Translate(el, { category: 'Pricing', previousCategory: 'Home' });          // a block
+new Phrase(el, { category: 'Legal', previousCategory: 'Footer' });             // a phrase
+```
+
+- **`inCategory()` goes where the category goes.** A plain object there is params, never a category.
+- **Move every use of the text in that category in the same release.** One item stands for every call registering the text in a category, so the move retires it for all of them. With `debug` on, a call still rendering it in the old category is reported once.
+- **Until the catalog has it under the new category, the old category's translation renders**, so the first deploy shows no source text. The new item registers as usual.
+- **It is sent once, on the registration of the miss**, and is never part of an id or a key. Once the item is in the catalog under the new category, the option does nothing and can be deleted.
+- **A revert is a move too.** Moving back names the category it is in now.
 
 ## 6. A block's content must not depend on runtime data
 

@@ -11,6 +11,8 @@ import {
     isInResolvedScope,
     registerContentBlock,
     resolveHistoricalBlockId,
+    resolvePreviousBlockId,
+    isContentBlockHeld,
     tokenizeNodes,
     tokenizeUnit,
     isMarkerOnlyUnit,
@@ -21,7 +23,8 @@ import {
     VALUE_TRANSLATABLE_INPUT_TYPES,
     type WalkNode,
 } from './content-block.js';
-import { encodeRichPhrase, generateCustomId, historicalCustomIds, NON_TRANSLATABLE_ELEMENTS, normalizeMarkupPlaceholders, normalizeTokenText } from './identity.js';
+import { encodeRichPhrase, generateCustomId, historicalCustomIds, NON_TRANSLATABLE_ELEMENTS, normalizeMarkupPlaceholders, normalizeTokenText, PREVIOUS_CATEGORY_MARKER_ATTR, PREVIOUS_CONTENT_BLOCK_MARKER_ATTR } from './identity.js';
+import { categoryArg, normalizePreviousCategory } from './category-ref.js';
 import { interpolate, isICU } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { fillOpaqueText, interpolateRich, splitSentinels, stripSentinels, takesParams } from './richtext.js';
@@ -85,6 +88,13 @@ export type BlockShape = 'phrase' | 'block' | 'empty';
 
 export interface BlockOptions {
     category?: string;
+    /**
+     * The category this block was registered under before it moved to `category`
+     * (MOVE-1), `''` for none, as `Translate`'s option. `renderBlock` fills the block
+     * from it while the catalog lacks the block under `category` (MOVE-4) and says
+     * so in `hostAttrs` (MOVE-5); `registerBlock` sends it on the registration.
+     */
+    previousCategory?: string | null;
     params?: Record<string, ParamPrimitive>;
     /** A label for the block in the Translation Manager, as `Translate`'s option. */
     label?: string;
@@ -119,7 +129,10 @@ export interface RenderedBlock {
      * The attributes to set on the host: the block's id (MARK-1), and, when the
      * rendered text is a translation (a locale other than the base), the resolved
      * marker with that locale (GATE-10), so a DOM reader on the client never files
-     * the served translation as source. Empty for an empty block.
+     * the served translation as source. Empty for an empty block. A block filled from
+     * its previous category (MOVE-4) also carries the identity it was filled from:
+     * `data-ls-previous-contentblock` for a block, `data-ls-previous-category` for a
+     * phrase (MOVE-5). Set every one of them on the host the binding owns.
      */
     hostAttrs: Record<string, string>;
 }
@@ -132,6 +145,8 @@ export interface RenderedBlock {
 export interface SeededBlock {
     customId: string;
     category: string;
+    /** The category the block moved from (MOVE-1), for a client that registers it from the seed. */
+    previousCategory?: string;
     tokens: string[];
     shape: 'phrase' | 'block';
     /**
@@ -203,9 +218,11 @@ export function renderBlock(nodes: readonly BlockNode[], options: BlockOptions =
     // registration over these nodes sends it, as registerView decides.
     if (rendered.customId && rendered.shape !== 'empty') {
         const registers = options.register !== false && !options.customId && !isMarkerOnlyUnit(tokens, vars);
+        const previousCategory = normalizePreviousCategory(options.category ?? '', options.previousCategory);
         activeScope()?.recordRendered({
             customId: rendered.customId,
             category: options.category ?? '',
+            ...(previousCategory === undefined ? {} : { previousCategory }),
             tokens,
             shape: rendered.shape,
             ...(!registers ? { register: false as const } : rendered.shape === 'block' ? { content: contentOf(nodes) } : {}),
@@ -411,13 +428,18 @@ export function applyRendered(
     if (!walk(parent, nodes)) return { applied: false, reason: 'structure' };
     for (const write of writes) write();
     if (!Array.isArray(rendered)) {
-        for (const [name, value] of Object.entries((rendered as RenderedBlock).hostAttrs)) element.setAttribute(name, value);
+        const hostAttrs = (rendered as RenderedBlock).hostAttrs;
+        for (const [name, value] of Object.entries(hostAttrs)) element.setAttribute(name, value);
+        // A host now filled from its current category no longer says where it came from (MOVE-5).
+        for (const name of [PREVIOUS_CONTENT_BLOCK_MARKER_ATTR, PREVIOUS_CATEGORY_MARKER_ATTR]) {
+            if (!(name in hostAttrs) && element.hasAttribute(name)) element.removeAttribute(name);
+        }
     }
     return { applied: true };
 }
 
 /** The markers a render sets on a nested host, and `applyRendered` writes. */
-const UNIT_MARKER_ATTRS: readonly string[] = [CONTENT_BLOCK_MARKER_ATTR, RESOLVED_MARKER_ATTR];
+const UNIT_MARKER_ATTRS: readonly string[] = [CONTENT_BLOCK_MARKER_ATTR, RESOLVED_MARKER_ATTR, PREVIOUS_CONTENT_BLOCK_MARKER_ATTR, PREVIOUS_CATEGORY_MARKER_ATTR];
 
 function isTranslatableAttribute(tag: string, name: string, attrs: Record<string, string | true>): boolean {
     if ((TRANSLATABLE_ATTRIBUTES as readonly string[]).includes(name)) return true;
@@ -575,6 +597,7 @@ function resolveId(root: ViewNode[], tokens: string[], category: string, adopted
 
 function renderView(root: ViewNode[], options: BlockOptions): RenderedBlock {
     const { category = '', params = {} } = options;
+    const previous = normalizePreviousCategory(category, options.previousCategory);
     const { tokens, vars } = tokenizeUnit(root);
     const shape = shapeOf(root, tokens, !!options.customId, vars);
     const locale = currentlyLoadedLocale.get();
@@ -600,31 +623,57 @@ function renderView(root: ViewNode[], options: BlockOptions): RenderedBlock {
             : { [CONTENT_BLOCK_MARKER_ATTR]: id };
 
     if (shape === 'phrase') {
-        // As `Translate.renderSingleToken`: the block entry first, then `t()`'s lookup.
+        // As `Translate.renderSingleToken`: the block entry first, then `t()`'s lookup,
+        // and only then the previous category's, block and phrase (MOVE-4).
         const id = options.id ?? generateCustomId(category, tokens);
         const token = tokens[0]!;
-        const fromBlock = LangsysApp.Translations.lookupContent(category, id, token);
-        const inBlock = fromBlock !== null && fromBlock !== undefined;
+        const current = LangsysApp.Translations.lookupContent(category, id, token);
         const fromPhrases = LangsysApp.Translations.lookup(token, category);
+        let movedAttrs: Record<string, string> = {};
+        let fromBlock = current;
+        let movedPhrase: string | null = null;
+        if (current === null && fromPhrases === null && previous !== undefined) {
+            const previousId = options.id ?? generateCustomId(previous, tokens);
+            fromBlock = LangsysApp.Translations.lookupContent(previous, previousId, token);
+            if (fromBlock !== null) movedAttrs = { [PREVIOUS_CONTENT_BLOCK_MARKER_ATTR]: previousId };
+            else {
+                movedPhrase = LangsysApp.Translations.lookup(token, category, previous);
+                if (movedPhrase !== null) movedAttrs = { [PREVIOUS_CATEGORY_MARKER_ATTR]: previous };
+            }
+        }
+        const inBlock = fromBlock !== null && fromBlock !== undefined;
         const run = vars.runs.includes(0) ? findRun(root) : null;
-        if (run) writeRun(run, inBlock ? fromBlock : (fromPhrases ?? token));
+        if (run) writeRun(run, inBlock ? fromBlock! : (fromPhrases ?? movedPhrase ?? token));
         else {
             const node = findSingleTextNode({ childNodes: root }) as ViewText;
             // The node's own whitespace stays at each end, as on the block path: beside an
             // excluded element (TOK-1) it is the space between two words.
             const [lead, trail] = [/^\s*/.exec(node.nodeValue)![0], /\s*$/.exec(node.nodeValue)![0]];
-            node.nodeValue = lead + (inBlock ? apply(fromBlock) : LangsysApp.Translations.renderWith(readOnlyView(), token, [category, params])) + trail;
+            node.nodeValue =
+                lead +
+                (inBlock ? apply(fromBlock!) : LangsysApp.Translations.renderWith(readOnlyView(), token, [categoryArg(category, previous), params])) +
+                trail;
         }
-        const fromCatalog = inBlock || fromPhrases !== null;
-        return { shape, customId: id, nodes: toRendered(root), hostAttrs: hostAttrs(id, fromCatalog) };
+        const fromCatalog = inBlock || fromPhrases !== null || movedPhrase !== null;
+        return { shape, customId: id, nodes: toRendered(root), hostAttrs: { ...hostAttrs(id, fromCatalog), ...movedAttrs } };
     }
 
     const id = options.customId ?? options.id ?? resolveId(root, tokens, category, undefined);
+    // MOVE-4: a block the catalog lacks under its current category, every current id
+    // tried above, is read from its previous category, primary id then historical ones.
+    // An adopted id is a renderer's: its hydration reads the stamped previous id (MOVE-5).
+    const previousId =
+        previous !== undefined && !options.customId && !isContentBlockHeld(category, id)
+            ? resolvePreviousBlockId(previous, options.id ?? generateCustomId(previous, tokens), tokens, options.id ? null : tokenizeNodes(root, true))
+            : null;
+    const readCategory = previousId === null ? category : previous!;
+    const readId = previousId ?? id;
     // As `Translate.translate`: at the base locale, with no params and no ICU, the
     // content is left exactly as written.
     const untouched = locale === configStore.baseLocale && Object.keys(params).length === 0 && !tokens.some((t) => isICU(t));
-    if (!untouched) translateNodes(root, (token) => LangsysApp.Translations.lookupContent(category, id, token), apply, writeRun);
-    return { shape, customId: id, nodes: toRendered(root), hostAttrs: hostAttrs(id, isContentBlockKnown(category, id)) };
+    if (!untouched) translateNodes(root, (token) => LangsysApp.Translations.lookupContent(readCategory, readId, token), apply, writeRun);
+    const attrs = hostAttrs(id, previousId !== null || isContentBlockKnown(category, id));
+    return { shape, customId: id, nodes: toRendered(root), hostAttrs: previousId === null ? attrs : { ...attrs, [PREVIOUS_CONTENT_BLOCK_MARKER_ATTR]: previousId } };
 }
 
 /** `Translate.translate` over a view: this unit's text nodes and attributes, never what it excises. */
@@ -698,7 +747,11 @@ function translateAttributes(element: ViewElement, lookup: (token: string) => st
  */
 function nestedOptions(node: ViewElement, outer: BlockOptions, resolved: boolean): BlockOptions {
     const element = node as unknown as Element;
-    const options: BlockOptions = { category: hostCategory(element) ?? outer.category, params: node.params ?? outer.params, label: outer.label };
+    const own = hostCategory(element);
+    const options: BlockOptions = { category: own ?? outer.category, params: node.params ?? outer.params, label: outer.label };
+    // A nested host in the enclosing block's category moved with it (MOVE-1); one naming
+    // its own category did not.
+    if (own === null && outer.previousCategory !== undefined) options.previousCategory = outer.previousCategory;
     const marker = readContentBlockMarker(element);
     if (marker?.kind === 'identity') {
         if (resolvedHere(element, resolved)) options.customId = marker.id;
@@ -753,6 +806,7 @@ function renderNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved = 
                 activeScope()?.recordRendered({
                     customId: rendered.customId,
                     category: nested.category ?? '',
+                    ...(nested.previousCategory === undefined || nested.previousCategory === null ? {} : { previousCategory: nested.previousCategory }),
                     tokens,
                     shape: rendered.shape,
                     ...(!registers || markerOnly ? { register: false as const } : rendered.shape === 'block' ? { content } : {}),
@@ -786,6 +840,21 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
         translated = fromEarlier;
         slots = earlier.slots;
         for (const [name, value] of Object.entries(earlier.values)) if (!(name in values)) values[name] = value;
+    }
+    // MOVE-4: the previous category last, by the same keys in the same order, and the
+    // host says it was filled from there (MOVE-5).
+    const previous = normalizePreviousCategory(category, options.previousCategory);
+    if (translated === null && previous !== undefined) {
+        translated = LangsysApp.Translations.lookup(phrase, category, previous);
+        if (translated === null && earlier) {
+            const movedEarlier = LangsysApp.Translations.lookup(earlier.phrase, category, previous);
+            if (movedEarlier !== null) {
+                translated = movedEarlier;
+                slots = earlier.slots;
+                for (const [name, value] of Object.entries(earlier.values)) if (!(name in values)) values[name] = value;
+            }
+        }
+        if (translated !== null) host.setAttribute(PREVIOUS_CATEGORY_MARKER_ATTR, previous);
     }
     const locale = currentlyLoadedLocale.get();
     // A translation from the catalog is marked resolved, as a block's host is, so a
@@ -853,6 +922,8 @@ function withParams(nodes: readonly ViewNode[], params: Readonly<Record<string, 
 
 function registerView(root: ViewNode[], options: BlockOptions, input: readonly BlockNode[]): void {
     const { category = '', label } = options;
+    // Sent on the registration only, never part of the id (MOVE-1, MOVE-2).
+    const previous = normalizePreviousCategory(category, options.previousCategory);
     const { tokens, vars } = tokenizeUnit(root);
     const shape = shapeOf(root, tokens, !!options.customId, vars);
     // `register: false` registers nothing (VAR-7), nested hosts included.
@@ -868,14 +939,14 @@ function registerView(root: ViewNode[], options: BlockOptions, input: readonly B
         if (isServerCollected(id)) return;
         const fromBlock = LangsysApp.Translations.lookupContent(category, id, tokens[0]!);
         if (fromBlock === null || fromBlock === undefined) {
-            (LangsysApp.Translations.t as unknown as (p: string, c: string) => string)(tokens[0]!, category);
+            (LangsysApp.Translations.t as unknown as (p: string, c: unknown) => string)(tokens[0]!, categoryArg(category, previous));
         }
         return;
     }
     const id = options.id ?? resolveId(root, tokens, category, undefined);
     if (isContentBlockKnown(category, id) || isServerCollected(id) || isBlockHandled(id, 'seed')) return;
     if (!activeScope()) markBlockHandled(id, 'mount');
-    void registerContentBlock({ custom_id: id, category, label, content: contentOf(input), tokens });
+    void registerContentBlock({ custom_id: id, category, ...(previous === undefined ? {} : { previousCategory: previous }), label, content: contentOf(input), tokens });
 }
 
 /** A unit's `content`: its nodes as HTML, with no value and no nested unit's content (`scrubContent`). */
@@ -911,13 +982,14 @@ function elementsOf(nodes: readonly BlockNode[]): Extract<BlockNode, { tag: stri
 /** A seeded block: a phrase records its miss as `t()` does; an unknown block registers under its id. */
 function registerSeeded(block: SeededBlock): void {
     const { customId, category, tokens, shape } = block;
+    const previous = normalizePreviousCategory(category, block.previousCategory);
     // Collected by the server, already sent from a mount, or rendered with
     // `register: false`, its tokens then holding per-user values (VAR-1, VAR-7).
     if (block.collected || block.register === false || isBlockHandled(customId, 'mount')) return;
     if (shape === 'phrase') {
         const fromBlock = LangsysApp.Translations.lookupContent(category, customId, tokens[0] ?? '');
         if (tokens[0] && (fromBlock === null || fromBlock === undefined)) {
-            (LangsysApp.Translations.t as unknown as (p: string, c: string) => string)(tokens[0], category);
+            (LangsysApp.Translations.t as unknown as (p: string, c: unknown) => string)(tokens[0], categoryArg(category, previous));
         }
         return;
     }
@@ -932,21 +1004,22 @@ function registerSeeded(block: SeededBlock): void {
         return;
     }
     markBlockHandled(customId, 'seed');
-    void registerContentBlock({ custom_id: customId, category, content: block.content, tokens });
+    void registerContentBlock({ custom_id: customId, category, ...(previous === undefined ? {} : { previousCategory: previous }), content: block.content, tokens });
 }
 
 function registerNestedHosts(nodes: ViewNode[], options: BlockOptions, resolved = false): void {
     for (const node of nodes) {
         if (!(node instanceof ViewElement)) continue;
         const here = resolvedHere(node as unknown as Element, resolved);
-        const category = nestedOptions(node, options, resolved).category ?? '';
+        const nestedFor = nestedOptions(node, options, resolved);
+        const category = nestedFor.category ?? '';
         if (isPhraseMarked(node as unknown as Element)) {
             const values: Record<string, string> = {};
             const { phrase, slots } = encodeRichPhrase(toRichNodes(node.childNodes as unknown as MarkerNode[], (_element, opaque) => opaque, values));
             // Text inside a resolved scope is never recorded (GATE-10), nor a phrase with no
             // text of its own: only value markers (VAR-3) or opaque elements (TOK-1).
             const textless = !phrase.replace(/\{[a-z][a-z0-9_]*\}/g, '').trim() && (Object.keys(values).length > 0 || slots.some(Boolean));
-            if (phrase && !here && !textless) (LangsysApp.Translations.t as unknown as (p: string, c: string) => string)(phrase, category);
+            if (phrase && !here && !textless) (LangsysApp.Translations.t as unknown as (p: string, c: unknown) => string)(phrase, categoryArg(category, nestedFor.previousCategory));
             continue;
         }
         const marker = readContentBlockMarker(node as unknown as Element);

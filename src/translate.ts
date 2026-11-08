@@ -15,6 +15,8 @@ import {
     type UnitVars,
     registerContentBlock,
     resolveHistoricalBlockId,
+    resolvePreviousBlockId,
+    isContentBlockHeld,
     tokenizeElement,
     TRANSLATABLE_ATTRIBUTES,
     VALUE_TRANSLATABLE_ELEMENTS,
@@ -35,11 +37,20 @@ import { RESOLVED_MARKER_ATTRS } from './identity.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
 import { isEmpty } from './utils.js';
+import { activeCatalog } from './scope-context.js';
+import { categoryArg, normalizePreviousCategory } from './category-ref.js';
 
 /** Options for the `Translate` class. Matches the Svelte component's props. */
 export interface TranslateOptions {
     /** Optional category under which tokens are registered. Helps translators disambiguate. */
     category?: string;
+    /**
+     * The category this block was registered under before it moved to `category`
+     * (MOVE-1): `''` for none. Sent once, on the registration its miss triggers;
+     * until the catalog holds the block under `category`, the previous category's
+     * entry renders (MOVE-4). Never part of its `custom_id`.
+     */
+    previousCategory?: string | null;
     /** Optional stable id for the content block. If omitted, we hash category+tokens. */
     custom_id?: string;
     /** Optional human-readable label shown in the Translation Manager. */
@@ -103,6 +114,8 @@ export class Translate {
     private checkedParamKeys: string | null = null;
     /** The block this host registered as, kept so a navigation can re-record its miss. */
     private contentBlock: iContentBlock | null = null;
+    /** The previous category's id this block resolved to, for the catalog it was resolved in (MOVE-4). */
+    private movedFrom: { catalog: unknown; customId: string; id: string | null } | null = null;
     /**
      * The id a renderer stamped on this host (MARK-3's identity), adopted rather
      * than derived. Such a host renders from the catalog entry under that id, or
@@ -525,14 +538,19 @@ export class Translate {
      */
     private renderSingleToken(category: string): void {
         const token = this.tokens[0];
-        const fromBlock = LangsysApp.Translations.lookupContent(category, this.custom_id, token);
+        const current = LangsysApp.Translations.lookupContent(category, this.custom_id, token);
+        // MOVE-4: every current-category read first (the block, then the phrase), the
+        // previous category's block last; `t()` below reads its phrase after that.
+        const moved = current === null && LangsysApp.Translations.lookup(token, category) === null ? this.previousBlockTranslation(token) : null;
+        const fromBlock = current ?? moved;
+        const movedCategory = categoryArg(category, this.previousCategory());
         // The params go INTO `t()`, never onto its result. `t()` renders ICU without
         // params too (ICU-1), so a select in its output has already collapsed to
         // `other`, and interpolating that again can no longer choose by the params
         // supplied here: with `{g: 'female'}` it rendered "They left".
         const tWithParams = LangsysApp.Translations.t as unknown as (
             phrase: string,
-            category: string,
+            category: unknown,
             params: Record<string, unknown>
         ) => string;
         // The producer says text in a resolved scope is already resolved, so it is a
@@ -542,26 +560,33 @@ export class Translate {
         // and a unit that does not register records nothing at all (VAR-7).
         const records = this.settled && this.registers() && !isInResolvedScope(this.element) && !isServerCollected(this.custom_id);
         const found = fromBlock !== null && fromBlock !== undefined;
+        // A block found only under its previous category is still a miss under its
+        // current one, and registers there (MOVE-4).
+        const registersMiss = (current === null || current === undefined) && records;
 
         if (this.isSingleRun()) {
             // One sentence with its values (VAR-3): recorded as its template, written
             // around the values the framework owns.
-            if (!found && records) {
-                tWithParams(token, category, { ...this.vars.values, ...(this.options.params ?? {}) });
+            if (registersMiss) {
+                tWithParams(token, movedCategory, { ...this.vars.values, ...(this.options.params ?? {}) });
                 this.registeredId = this.custom_id;
             }
             const run = this.findRun();
-            if (run) this.writeRun(run, found ? fromBlock : (LangsysApp.Translations.lookup(token, category) ?? token));
+            if (run) this.writeRun(run, found ? fromBlock : (LangsysApp.Translations.lookup(token, category, this.previousCategory()) ?? token));
             return;
         }
 
         let resolved: string;
         if (found) {
+            if (registersMiss) {
+                tWithParams(token, movedCategory, this.options.params ?? {});
+                this.registeredId = this.custom_id;
+            }
             resolved = this.applyParams(fromBlock);
         } else if (!records) {
-            resolved = this.applyParams(LangsysApp.Translations.lookup(token, category) ?? token);
+            resolved = this.applyParams(LangsysApp.Translations.lookup(token, category, this.previousCategory()) ?? token);
         } else {
-            resolved = tWithParams(token, category, this.options.params ?? {});
+            resolved = tWithParams(token, movedCategory, this.options.params ?? {});
             this.registeredId = this.custom_id;
         }
 
@@ -752,9 +777,11 @@ export class Translate {
                 });
             }
         } else {
+            const previousCategory = this.previousCategory();
             const contentBlock: iContentBlock = {
                 custom_id: '',
                 category,
+                ...(previousCategory === undefined ? {} : { previousCategory }),
                 label: this.options.label,
                 content,
                 tokens: this.tokens,
@@ -948,7 +975,36 @@ export class Translate {
     private getTranslation(token: string): string | null {
         if (!token) return null;
         const { category = '' } = this.options;
-        return LangsysApp.Translations.lookupContent(category, this.custom_id, token);
+        const current = LangsysApp.Translations.lookupContent(category, this.custom_id, token);
+        if (current !== null || isContentBlockHeld(category, this.custom_id)) return current;
+        return this.previousBlockTranslation(token);
+    }
+
+    /** `undefined` when the block did not move (MOVE-1). */
+    private previousCategory(): string | undefined {
+        return normalizePreviousCategory(this.options.category ?? '', this.options.previousCategory);
+    }
+
+    /**
+     * A token's translation from the block's PREVIOUS category (MOVE-4), the last
+     * read: only while the catalog holds no entry for the block under its current
+     * category, by the previous category's primary id and then its historical ids.
+     */
+    private previousBlockTranslation(token: string): string | null {
+        const previous = this.previousCategory();
+        if (previous === undefined || !this.element || !this.custom_id) return null;
+        if (isContentBlockHeld(this.options.category ?? '', this.custom_id)) return null;
+        const catalog = activeCatalog();
+        if (this.movedFrom?.catalog !== catalog || this.movedFrom.customId !== this.custom_id) {
+            // An id the app fixes names one block whatever its category: the API moves it
+            // in place, so the previous category holds it under the same id (MOVE-2).
+            const fixed = !!this.options.custom_id;
+            const primary = fixed ? this.custom_id : generateCustomId(previous, this.tokens);
+            const id = resolvePreviousBlockId(previous, primary, this.tokens, fixed ? null : legacyTokenizeElement(this.element));
+            this.movedFrom = { catalog, customId: this.custom_id, id };
+        }
+        const id = this.movedFrom.id;
+        return id === null ? null : LangsysApp.Translations.lookupContent(previous, id, token);
     }
 
     /**

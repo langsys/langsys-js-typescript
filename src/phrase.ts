@@ -1,6 +1,7 @@
 import { warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { isOpaqueInPhrase } from './identity.js';
+import { categoryArg, normalizePreviousCategory, type CategoryRef } from './category-ref.js';
 import { applyInPlace, encodeRichText, fillOpaque, interpolateRich, reconstitute, takesParams, type EncodedRichText, type RichSlot } from './richtext.js';
 import type { Unsubscriber } from './signal.js';
 import { currentlyLoadedLocale, navigationEpoch, sTranslations } from './stores.js';
@@ -21,6 +22,13 @@ import { recoverPhraseSource } from './served-source.js';
 export interface PhraseOptions {
     /** Category the phrase registers under (disambiguation for translators). */
     category?: string;
+    /**
+     * The category this phrase was registered under before it moved to `category`
+     * (MOVE-1): `''` for none. Sent once, on the registration its miss triggers, and
+     * until the catalog holds it under `category` the previous category's entry
+     * renders (MOVE-4). Never part of its identity.
+     */
+    previousCategory?: string | null;
     /**
      * Interpolation params — `{n}` for pluralization, `{name}`, etc.
      *
@@ -53,6 +61,8 @@ export interface PhraseOptions {
 export class Phrase {
     private host: HTMLElement;
     private category: string;
+    /** `undefined` when nothing moved (MOVE-1). */
+    private previousCategory: string | undefined;
     private params: Record<string, ParamPrimitive>;
     private register: boolean;
     /** Each marked value in the host (VAR-3), by name: params the caller's own override. */
@@ -88,6 +98,7 @@ export class Phrase {
     constructor(host: HTMLElement, options: PhraseOptions = {}, byWalk = false) {
         this.host = host;
         this.category = options.category ?? '';
+        this.previousCategory = normalizePreviousCategory(this.category, options.previousCategory);
         this.params = options.params ?? {};
         this.register = options.register !== false;
         // Under a request scope, see `Translate`: `renderBlock` and `registerBlock` there.
@@ -118,9 +129,14 @@ export class Phrase {
                     return;
                 }
                 if (!this.ready || !this.phrase || !this.register || this.textless || !this.host.isConnected || isInResolvedScope(this.host)) return;
-                LangsysApp.Translations.t(this.phrase, this.category);
+                LangsysApp.Translations.t(this.phrase, this.categoryArg());
             })
         );
+    }
+
+    /** The category argument `t()` registers this phrase under, naming the previous one (MOVE-1). */
+    private categoryArg(): string | CategoryRef {
+        return categoryArg(this.category, this.previousCategory);
     }
 
     /** Update interpolation params (e.g. a changed count) and re-render. */
@@ -167,7 +183,7 @@ export class Phrase {
         // Nor with `register: false` (VAR-7), nor for a phrase with no text of its own.
         this.textless = isOnlyPlaceholders(this.phrase) && (Object.keys(values).length > 0 || slots.some((slot) => slot.source));
         if (isInResolvedScope(this.host)) this.servedUnrecovered = !this.recoverServed();
-        else if (this.register && !this.textless) LangsysApp.Translations.t(this.phrase, this.category);
+        else if (this.register && !this.textless) LangsysApp.Translations.t(this.phrase, this.categoryArg());
 
         this.ready = true;
         this._render();
@@ -220,7 +236,14 @@ export class Phrase {
         const translated = LangsysApp.Translations.lookup(this.phrase, this.category);
         // A miss for the key looks up the one this phrase was registered under before an
         // opaque element was one empty pair (TOK-1), and renders it through that key's slots.
-        const earlier = translated === null && this.earlier ? LangsysApp.Translations.lookup(this.earlier.phrase, this.category) : null;
+        let earlier = translated === null && this.earlier ? LangsysApp.Translations.lookup(this.earlier.phrase, this.category) : null;
+        // MOVE-4: the previous category is the last read, after every current-category
+        // key, by the same keys in the same order.
+        let movedTranslation: string | null = null;
+        if (translated === null && earlier === null && this.previousCategory !== undefined) {
+            movedTranslation = LangsysApp.Translations.lookup(this.phrase, this.category, this.previousCategory);
+            if (movedTranslation === null && this.earlier) earlier = LangsysApp.Translations.lookup(this.earlier.phrase, this.category, this.previousCategory);
+        }
         if (earlier !== null) {
             const { slots, values } = this.earlier!;
             const resolved = interpolateRich(earlier, { ...values, ...this.values, ...this.params }, slots.length, currentlyLoadedLocale.get());
@@ -228,7 +251,7 @@ export class Phrase {
             fillOpaque(slots, this.params);
             return;
         }
-        const raw = translated ?? this.phrase;
+        const raw = translated ?? movedTranslation ?? this.phrase;
         const resolved = interpolateRich(raw, { ...this.values, ...this.params }, this.slots.length, currentlyLoadedLocale.get());
         // Into the nodes already there when the translation keeps the markup's shape, so a
         // framework's references to them stay live; rebuilt only when it does not.

@@ -27,6 +27,10 @@ const EXPECTED = [
     'PHRASE_MARKER_ATTR',
     'PHRASE_MARKER_ATTR_LEGACY',
     'PHRASE_MARKER_ATTRS',
+    'PREVIOUS_CATEGORY_MARKER_ATTR',
+    'PREVIOUS_CATEGORY_MARKER_ATTRS',
+    'PREVIOUS_CONTENT_BLOCK_MARKER_ATTR',
+    'PREVIOUS_CONTENT_BLOCK_MARKER_ATTRS',
     'RESOLVED_MARKER_ATTR',
     'RESOLVED_MARKER_ATTR_LEGACY',
     'RESOLVED_MARKER_ATTRS',
@@ -40,7 +44,7 @@ function parity(mainEntry: Entry, pureEntry: Entry): string[] {
 }
 
 describe('marker constants are exported from both entries, with the same value', () => {
-    it('/pure carries the nine marker constants being checked', () => {
+    it('/pure carries the thirteen marker constants being checked', () => {
         expect(markerNames(pure as Entry)).toEqual(EXPECTED);
     });
 
