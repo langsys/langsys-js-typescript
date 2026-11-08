@@ -6,12 +6,12 @@ import {
     isExcisedFromUnit,
     isPhraseMarked,
     readContentBlockMarker,
-    hostCategory,
     RESOLVED_MARKER_ATTRS,
     isInResolvedScope,
     registerContentBlock,
     resolveHistoricalBlockId,
     resolvePreviousBlockId,
+    nestedHostCategories,
     isContentBlockHeld,
     tokenizeNodes,
     tokenizeUnit,
@@ -757,11 +757,9 @@ function translateAttributes(element: ViewElement, lookup: (token: string) => st
  */
 function nestedOptions(node: ViewElement, outer: BlockOptions, resolved: boolean): BlockOptions {
     const element = node as unknown as Element;
-    const own = hostCategory(element);
-    const options: BlockOptions = { category: own ?? outer.category, params: node.params ?? outer.params, label: outer.label };
-    // A nested host in the enclosing block's category moved with it (MOVE-1); one naming
-    // its own category did not.
-    if (own === null && outer.previousCategory !== undefined) options.previousCategory = outer.previousCategory;
+    const { category, previousCategory } = nestedHostCategories(element, outer.category, outer.previousCategory);
+    const options: BlockOptions = { category, params: node.params ?? outer.params, label: outer.label };
+    if (previousCategory !== undefined) options.previousCategory = previousCategory;
     const marker = readContentBlockMarker(element);
     if (marker?.kind === 'identity') {
         if (resolvedHere(element, resolved)) options.customId = marker.id;

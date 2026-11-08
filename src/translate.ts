@@ -8,7 +8,6 @@ import {
     isContentBlockMarked,
     isPhraseMarked,
     readContentBlockMarker,
-    hostCategory,
     isInResolvedScope,
     legacyTokenizeElement,
     isMarkerOnlyUnit,
@@ -16,6 +15,7 @@ import {
     registerContentBlock,
     resolveHistoricalBlockId,
     resolvePreviousBlockId,
+    nestedHostCategories,
     isContentBlockHeld,
     tokenizeElement,
     TRANSLATABLE_ATTRIBUTES,
@@ -440,12 +440,12 @@ export class Translate {
         const visit = (parent: Element) => {
             for (const child of Array.from(parent.children)) {
                 // A nested host's own category when it names one (`data-ls-category`).
-                const category = hostCategory(child) ?? this.options.category;
+                const { category, previousCategory } = nestedHostCategories(child as HTMLElement, this.options.category, this.options.previousCategory);
                 if (isPhraseMarked(child)) {
-                    if (!isHostManaged(child)) this.takenOver.push(new Phrase(child as HTMLElement, { category, params, register: this.options.register }, true));
+                    if (!isHostManaged(child)) this.takenOver.push(new Phrase(child as HTMLElement, { category, previousCategory, params, register: this.options.register }, true));
                 } else if (isContentBlockMarked(child)) {
                     if (!isHostManaged(child)) {
-                        this.takenOver.push(new Translate(child as HTMLElement, { category, params, label, register: this.options.register }, true));
+                        this.takenOver.push(new Translate(child as HTMLElement, { category, previousCategory, params, label, register: this.options.register }, true));
                     }
                 } else if (!isExcisedFromUnit(child)) {
                     visit(child);

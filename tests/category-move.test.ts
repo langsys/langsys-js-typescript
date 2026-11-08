@@ -400,3 +400,41 @@ describe('review fixes: a later record without the move never drops it', () => {
         expect(nested.hasAttribute(PREVIOUS_CATEGORY_MARKER_ATTR)).toBe(false);
     });
 });
+
+describe('nested hosts (MOVE-4): own category, own previous category', () => {
+    const nodes = (html: string): BlockNode[] => {
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        return blockNodesOf(div);
+    };
+    const phraseItems = () => sent.filter((i) => i.type === 'phrase');
+
+    it.each([
+        ['with no category of its own, the block’s category and previous category', '<span data-ls-phrase>Read the <b>terms</b></span>', 'Legal', 'Footer'],
+        ['naming its own category and previous category, its own', '<span data-ls-phrase data-ls-category="Help" data-ls-previous-category="FAQ">Read the <b>terms</b></span>', 'Help', 'FAQ'],
+        ['naming its own category only, no previous category', '<span data-ls-phrase data-ls-category="Help">Read the <b>terms</b></span>', 'Help', undefined],
+    ])('registerBlock: a nested phrase host %s', async (_name, inner, category, previous) => {
+        catalog({});
+        await registerBlock(nodes(`<p>Intro</p>${inner}`), { category: 'Legal', previousCategory: 'Footer' });
+        await settle();
+        const [item] = phraseItems();
+        expect(item).toMatchObject({ phrase: 'Read the {m0o}terms{m0c}', category });
+        expect(item?.previous_category).toBe(previous);
+    });
+
+    it.each([
+        ['with no category of its own', '<span data-ls-phrase>Read the <b>terms</b></span>', 'Legal', 'Footer'],
+        ['naming its own category and previous category', '<span data-ls-phrase data-ls-category="Help" data-ls-previous-category="FAQ">Read the <b>terms</b></span>', 'Help', 'FAQ'],
+        ['naming its own category only', '<span data-ls-phrase data-ls-category="Help">Read the <b>terms</b></span>', 'Help', undefined],
+    ])('Translate: a nested phrase host %s', async (_name, inner, category, previous) => {
+        catalog({});
+        const el = document.createElement('div');
+        el.innerHTML = `<p>Intro</p>${inner}`;
+        document.body.appendChild(el);
+        live.push(new Translate(el, { category: 'Legal', previousCategory: 'Footer' }));
+        await settle();
+        const item = phraseItems().find((i) => i.phrase === 'Read the {m0o}terms{m0c}');
+        expect(item).toMatchObject({ category });
+        expect(item?.previous_category).toBe(previous);
+    });
+});
