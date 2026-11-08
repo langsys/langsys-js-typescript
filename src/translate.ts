@@ -38,6 +38,7 @@ import type { iContentBlock } from './types/content-block.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
 import { isEmpty } from './utils.js';
 import { activeCatalog } from './scope-context.js';
+import { PREVIOUS_CONTENT_BLOCK_MARKER_ATTRS, readMarker } from './identity.js';
 import { categoryArg, normalizePreviousCategory } from './category-ref.js';
 
 /** Options for the `Translate` class. Matches the Svelte component's props. */
@@ -502,7 +503,11 @@ export class Translate {
     private recoverServedSources(warn: boolean): boolean {
         if (!this.adoptedId || this.sourcesRecovered) return true;
         const { category = '', params = {} } = this.options;
-        const recovered = recoverBlockSources(this.element, this.adoptedId, category, params);
+        let recovered = recoverBlockSources(this.element, this.adoptedId, category, params);
+        // MOVE-5: a host a server filled from its previous category names that identity,
+        // and its served text is that entry's translation; the current id has none yet.
+        const moved = recovered ? null : this.stampedPrevious();
+        if (moved) recovered = recoverBlockSources(this.element, moved.id, moved.category, params);
         if (!recovered) {
             if (warn) warnUnrecoveredSource();
             return false;
@@ -980,6 +985,18 @@ export class Translate {
         return this.previousBlockTranslation(token);
     }
 
+    /**
+     * The previous identity a renderer stamped on an adopted host it filled from the
+     * previous category (MOVE-5): the id from `data-ls-previous-contentblock`, under
+     * this instance's previous category. Null without both.
+     */
+    private stampedPrevious(): { id: string; category: string } | null {
+        if (!this.adoptedId || !this.element) return null;
+        const previous = this.previousCategory();
+        const id = readMarker(this.element, PREVIOUS_CONTENT_BLOCK_MARKER_ATTRS);
+        return previous === undefined || !id ? null : { id, category: previous };
+    }
+
     /** `undefined` when the block did not move (MOVE-1). */
     private previousCategory(): string | undefined {
         return normalizePreviousCategory(this.options.category ?? '', this.options.previousCategory);
@@ -998,9 +1015,11 @@ export class Translate {
         if (this.movedFrom?.catalog !== catalog || this.movedFrom.customId !== this.custom_id) {
             // An id the app fixes names one block whatever its category: the API moves it
             // in place, so the previous category holds it under the same id (MOVE-2).
+            // A stamped previous id is the renderer's answer and is read as given (MOVE-5).
+            const stamped = this.stampedPrevious()?.id ?? null;
             const fixed = !!this.options.custom_id;
-            const primary = fixed ? this.custom_id : generateCustomId(previous, this.tokens);
-            const id = resolvePreviousBlockId(previous, primary, this.tokens, fixed ? null : legacyTokenizeElement(this.element));
+            const primary = stamped ?? (fixed ? this.custom_id : generateCustomId(previous, this.tokens));
+            const id = resolvePreviousBlockId(previous, primary, this.tokens, stamped || fixed ? null : legacyTokenizeElement(this.element));
             this.movedFrom = { catalog, customId: this.custom_id, id };
         }
         const id = this.movedFrom.id;

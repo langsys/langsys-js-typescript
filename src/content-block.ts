@@ -376,6 +376,8 @@ function capabilityKnown(): Promise<void> {
 
 /** Each block's registration request while it is unanswered, by the credentials it went out under, its category and its id. */
 const registrationsInFlight = new Map<string, Promise<RegistrationResult>>();
+/** The previous category the request in flight for a block carries, when it carries one (MOVE-3). */
+const movesInFlight = new Map<string, string>();
 
 /**
  * POST a content block to the backend, then stamp its custom_id into the local
@@ -476,9 +478,31 @@ export async function registerContentBlock(contentBlock: iContentBlock): Promise
 
     const credentials = LangsysAppAPI.moduleCredentials();
     const key = [credentials.projectid, credentials.key, contentBlock.category, contentBlock.custom_id].join('\0');
+    const previous = normalizePreviousCategory(contentBlock.category, contentBlock.previousCategory);
     const inFlight = registrationsInFlight.get(key);
-    if (inFlight) return inFlight;
-    const request = sendContentBlock(contentBlock, credentials).finally(() => registrationsInFlight.delete(key));
+    if (inFlight) {
+        // One request per block (REG-7), except that an unmoved request in flight cannot
+        // carry a move named after it went out: once it answers, the move is sent once
+        // more. The API copies and retires even when the item exists, and a repeated move
+        // does nothing (MOVE-3).
+        if (previous === undefined || movesInFlight.get(key) !== undefined) return inFlight;
+        movesInFlight.set(key, previous);
+        const followUp = inFlight
+            .then(() => sendContentBlock(contentBlock, credentials))
+            .finally(() => {
+                if (registrationsInFlight.get(key) === followUp) registrationsInFlight.delete(key);
+                movesInFlight.delete(key);
+            });
+        registrationsInFlight.set(key, followUp);
+        return followUp;
+    }
+    if (previous !== undefined) movesInFlight.set(key, previous);
+    const request = sendContentBlock(contentBlock, credentials).finally(() => {
+        if (registrationsInFlight.get(key) === request) {
+            registrationsInFlight.delete(key);
+            movesInFlight.delete(key);
+        }
+    });
     registrationsInFlight.set(key, request);
     return request;
 }

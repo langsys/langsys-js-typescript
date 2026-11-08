@@ -1,6 +1,6 @@
 import { warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
-import { isOpaqueInPhrase } from './identity.js';
+import { isOpaqueInPhrase, PREVIOUS_CATEGORY_MARKER_ATTRS, readMarker } from './identity.js';
 import { categoryArg, normalizePreviousCategory, type CategoryRef } from './category-ref.js';
 import { applyInPlace, encodeRichText, fillOpaque, interpolateRich, reconstitute, takesParams, type EncodedRichText, type RichSlot } from './richtext.js';
 import type { Unsubscriber } from './signal.js';
@@ -98,7 +98,12 @@ export class Phrase {
     constructor(host: HTMLElement, options: PhraseOptions = {}, byWalk = false) {
         this.host = host;
         this.category = options.category ?? '';
-        this.previousCategory = normalizePreviousCategory(this.category, options.previousCategory);
+        // A host a server filled from its previous category says which one (MOVE-5); the
+        // option, when given, is the author's and wins.
+        this.previousCategory = normalizePreviousCategory(
+            this.category,
+            options.previousCategory !== undefined ? options.previousCategory : readMarker(host, PREVIOUS_CATEGORY_MARKER_ATTRS)
+        );
         this.params = options.params ?? {};
         this.register = options.register !== false;
         // Under a request scope, see `Translate`: `renderBlock` and `registerBlock` there.
@@ -215,7 +220,10 @@ export class Phrase {
      * which is right for the locale it was served in.
      */
     private recoverServed(): boolean {
-        const recovered = recoverPhraseSource(this.phrase, this.slots.length, this.category, this.params);
+        // MOVE-5: served from the previous category's entry while the current one has none.
+        const recovered =
+            recoverPhraseSource(this.phrase, this.slots.length, this.category, this.params) ??
+            (this.previousCategory !== undefined ? recoverPhraseSource(this.phrase, this.slots.length, this.previousCategory, this.params) : null);
         if (!recovered) return false;
         const served = this.slots;
         const slots: RichSlot[] = [];

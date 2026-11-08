@@ -17,6 +17,9 @@
  * recognised by another (a CJS and an ESM copy in one app).
  */
 
+// PUBLIC SURFACE: the registry key is read by name outside this package. Svelte's
+// transform recognises a ref by `Symbol.for('langsys.category')` so it never spreads one
+// into params; renaming it breaks that binding with no error. Pinned in `category-move`.
 const CATEGORY_REF: unique symbol = Symbol.for('langsys.category');
 
 /** A category, and the category its content was registered under before. Made by `inCategory()`. */

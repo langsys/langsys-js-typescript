@@ -438,3 +438,87 @@ describe('nested hosts (MOVE-4): own category, own previous category', () => {
         expect(item?.previous_category).toBe(previous);
     });
 });
+
+describe('MOVE-5, client side: a hydrating host reads the identity it was filled from', () => {
+    const PREVIOUS_ID = generateCustomId('Home', ['First', 'Second']);
+    const CURRENT_ID = generateCustomId('Pricing', ['First', 'Second']);
+    const served = (stamped: boolean) => {
+        const el = document.createElement('div');
+        el.setAttribute('data-ls-contentblock', CURRENT_ID);
+        el.setAttribute('data-ls-resolved', 'es-cr');
+        if (stamped) el.setAttribute(PREVIOUS_CONTENT_BLOCK_MARKER_ATTR, PREVIOUS_ID);
+        el.innerHTML = '<p>Primero</p><p>Segundo</p>';
+        document.body.appendChild(el);
+        return el;
+    };
+
+    it.each([
+        [true, '<p>Premier</p><p>Second</p>'],
+        [false, '<p>Primero</p><p>Segundo</p>'],
+    ])('a Translate block, stamped %s, follows a locale switch from the previous category', async (stamped, expected) => {
+        catalog({ Home: { [PREVIOUS_ID]: { First: 'Primero', Second: 'Segundo' } } });
+        const el = served(stamped);
+        live.push(new Translate(el, { category: 'Pricing', previousCategory: 'Home' }));
+        await settle();
+        expect(el.innerHTML).toBe('<p>Primero</p><p>Segundo</p>');
+        catalog({ Home: { [PREVIOUS_ID]: { First: 'Premier', Second: 'Second' } } }, 'fr-fr');
+        await settle();
+        // Unstamped, its source cannot be recovered, so it keeps what the server served.
+        expect(el.innerHTML).toBe(expected);
+        expect(sent).toEqual([]);
+    });
+
+    it('the stamped id is read as given, though the tokens would derive another', async () => {
+        catalog({ Home: { 'server-chose-this': { First: 'Primero', Second: 'Segundo' } } });
+        const el = served(false);
+        el.setAttribute(PREVIOUS_CONTENT_BLOCK_MARKER_ATTR, 'server-chose-this');
+        live.push(new Translate(el, { category: 'Pricing', previousCategory: 'Home' }));
+        await settle();
+        catalog({ Home: { 'server-chose-this': { First: 'Premier', Second: 'Second' } } }, 'fr-fr');
+        await settle();
+        expect(el.innerHTML).toBe('<p>Premier</p><p>Second</p>');
+    });
+
+    it.each([
+        [true, 'Lisez les <b>conditions</b>'],
+        [false, 'Leé los <b>términos</b>'],
+    ])('a Phrase host, stamped %s, follows a locale switch from the previous category', async (stamped, expected) => {
+        const phrase = 'Read the {m0o}terms{m0c}';
+        catalog({ Footer: { [phrase]: 'Leé los {m0o}términos{m0c}' } });
+        const el = document.createElement('span');
+        el.setAttribute('data-ls-phrase', '');
+        el.setAttribute('data-ls-resolved', 'es-cr');
+        if (stamped) el.setAttribute(PREVIOUS_CATEGORY_MARKER_ATTR, 'Footer');
+        el.innerHTML = 'Leé los <b>términos</b>';
+        document.body.appendChild(el);
+        live.push(new Phrase(el, { category: 'Legal' }));
+        await settle();
+        catalog({ Footer: { [phrase]: 'Lisez les {m0o}conditions{m0c}' } }, 'fr-fr');
+        await settle();
+        expect(el.innerHTML).toBe(expected);
+        expect(sent).toEqual([]);
+    });
+});
+
+describe('a moved block registration overlapping an unmoved one in flight (MOVE-3)', () => {
+    it('is sent once more, with previous_category, after the in-flight request answers; a third adds nothing', async () => {
+        catalog({});
+        const { registerContentBlock } = await import('../src/content-block.js');
+        const block = { custom_id: 'abc', category: 'Pricing', content: '<p>x</p>', tokens: ['x'] };
+        const first = registerContentBlock(block);
+        const second = registerContentBlock({ ...block, previousCategory: 'Home' });
+        const third = registerContentBlock({ ...block, previousCategory: 'Home' });
+        await Promise.all([first, second, third]);
+        expect(sent).toHaveLength(2);
+        expect(sent[0]).not.toHaveProperty('previous_category');
+        expect(sent[1]).toMatchObject({ custom_id: 'abc', previous_category: 'Home' });
+    });
+
+    it('control: two unmoved registrations in flight send once', async () => {
+        catalog({});
+        const { registerContentBlock } = await import('../src/content-block.js');
+        const block = { custom_id: 'abd', category: 'Pricing', content: '<p>x</p>', tokens: ['x'] };
+        await Promise.all([registerContentBlock(block), registerContentBlock(block)]);
+        expect(sent).toHaveLength(1);
+    });
+});
