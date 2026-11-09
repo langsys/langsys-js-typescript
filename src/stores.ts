@@ -1,5 +1,6 @@
 import { createSignal, type Signal } from './signal.js';
 import { persistScoped } from './persist.js';
+import { canonicalizeLocale } from './locale.js';
 import type { iCategories } from './types/translations.js';
 import type { iLangsysConfig } from './types/config.js';
 
@@ -121,6 +122,14 @@ const pageLocaleSignal = createSignal<string>('');
  * scope's locale (SRV-7), for the same reason as `sTranslations`.
  */
 export const currentlyLoadedLocale: Signal<string> = followScope(pageLocaleSignal, (scope) => scope.locale);
+
+// Setting the loaded locale says whose the catalog is. A binding that seeds with
+// `sTranslations.set(catalog)` then `currentlyLoadedLocale.set(locale)` (langsys-js-svelte's
+// SSR guide does) labels it here, so it is never cached as the user store's other
+// locale. The core's own publishes label first and set the locale after, to the same effect.
+pageLocaleSignal.subscribe((locale) => {
+    if (locale) catalogCache.claim(canonicalizeLocale(locale));
+});
 
 /** The page's own loaded locale, whatever scope is current. */
 export const pageLocale = (): string => pageLocaleSignal.get();

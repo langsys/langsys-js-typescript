@@ -269,6 +269,126 @@ describe('a catalog is saved only under its own locale’s key', () => {
         expect(JSON.parse(data['langsys:translations:p2:es-es']!).__uncategorized__.Hello).toBe('P2-Hola');
     });
 
+    it('a plain set then the loaded locale, before scoping, is labelled by that locale', async () => {
+        // langsys-js-svelte's SSR guide seeds this way in the root layout's body.
+        const data = installStorage();
+        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache } = await freshLoad();
+
+        sTranslations.set(catalog('Hello', 'Hola'));
+        currentlyLoadedLocale.set('es-ES');
+        scopeCatalogCache('p1:it-it');
+
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('Hola');
+        expect(data['langsys:translations:p1:it-it']).toBeUndefined();
+    });
+
+    it('a plain set saved under the scope is undone when the loaded locale says it is another’s', async () => {
+        const data = installStorage({ 'langsys:translations:p1:it-it': JSON.stringify(catalog('Hello', 'Ciao')) });
+        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        sTranslations.set(catalog('Hello', 'Hola'));
+        currentlyLoadedLocale.set('es-es');
+
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('Hola');
+        expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao');
+    });
+
+    it('…and removed again where the scope held nothing before it', async () => {
+        const data = installStorage();
+        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        sTranslations.set(catalog('Hello', 'Hola'));
+        currentlyLoadedLocale.set('es-es');
+
+        expect(data['langsys:translations:p1:it-it']).toBeUndefined();
+    });
+
+    it('control: a plain set whose loaded locale matches the scope stays saved', async () => {
+        const data = installStorage();
+        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        sTranslations.set(catalog('Hello', 'Ciao-NEW'));
+        currentlyLoadedLocale.set('it-it');
+        sTranslations.set(catalog('Hello', 'Ciao-EDITED'));
+
+        expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao-EDITED');
+    });
+
+    it('control: a published catalog’s edits are not undone by its own locale arriving later', async () => {
+        // A fetch publishes, a flush writes back with keys marked known, then the 100 ms locale lands.
+        const data = installStorage();
+        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        publishCatalog(catalog('Hello', 'Ciao'), 'p1:it-it');
+        sTranslations.set({ ...sTranslations.get(), __uncategorized__: { ...sTranslations.get().__uncategorized__, Known: null as unknown as string } });
+        currentlyLoadedLocale.set('it-it');
+
+        expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__).toHaveProperty('Known', null);
+    });
+
+    it('the loaded locale is compared in canonical form', async () => {
+        const data = installStorage();
+        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache } = await freshLoad();
+
+        scopeCatalogCache('p1:es-es');
+        sTranslations.set(catalog('Hello', 'Hola'));
+        currentlyLoadedLocale.set('es-ES');
+
+        expect(JSON.parse(data['langsys:translations:p1:es-es']!).__uncategorized__.Hello).toBe('Hola');
+    });
+
+    it('a published catalog is never undone by a locale that does not own it', async () => {
+        // A superseded fetch's 100 ms locale can land after the next catalog was published.
+        const data = installStorage();
+        const { currentlyLoadedLocale, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        publishCatalog(catalog('Hello', 'Ciao'), 'p1:it-it');
+        currentlyLoadedLocale.set('es-es');
+
+        expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao');
+    });
+
+    it('several plain sets are undone to what the key held before the first', async () => {
+        const data = installStorage({ 'langsys:translations:p1:it-it': JSON.stringify(catalog('Hello', 'Ciao')) });
+        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        sTranslations.set(catalog('Hello', 'Hola-1'));
+        sTranslations.set(catalog('Hello', 'Hola-2'));
+        currentlyLoadedLocale.set('es-es');
+
+        expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao');
+    });
+
+    it('a plain seed saved by the first scoping is undone when its locale arrives after', async () => {
+        const data = installStorage({ 'langsys:translations:p1:it-it': JSON.stringify(catalog('Hello', 'Ciao')) });
+        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache } = await freshLoad();
+
+        sTranslations.set(catalog('Hello', 'Hola'));
+        scopeCatalogCache('p1:it-it');
+        currentlyLoadedLocale.set('es-es');
+
+        expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao');
+    });
+
+    it('a copy adopted on returning to a scope is that scope’s, and a later locale does not undo it', async () => {
+        const data = installStorage({ 'langsys:translations:p1:it-it': JSON.stringify(catalog('Hello', 'Ciao')) });
+        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        sTranslations.set(catalog('Hello', 'Ciao-EDITED'));
+        scopeCatalogCache('p1:fr-fr');
+        scopeCatalogCache('p1:it-it');
+        currentlyLoadedLocale.set('es-es');
+
+        expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao-EDITED');
+    });
+
     it('a stored copy adopted on scoping is that scope’s, so later edits save there', async () => {
         const data = installStorage({ 'langsys:translations:p1:it-it': JSON.stringify(catalog('Hello', 'Ciao')) });
         const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
@@ -474,6 +594,25 @@ describe('init() restores the cache before authorization answers', () => {
 
         LangsysApp.seedCatalog(catalog('Hello', 'Hola'), 'es-es');
         const done = LangsysApp.init({ projectid: 'p1', key: 'k', UserLocaleStore: createSignal('it-it') });
+        authorize.resolve(AUTHORIZED);
+        await done;
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(data['langsys:translations:p1:it-it'] ?? '').not.toContain('Hola');
+    });
+
+    it('a binding’s plain seed (set, then the loaded locale) for another locale is not saved under the user’s', async () => {
+        const { LangsysApp, createSignal, authorize, data, stores } = await page({}, { 'it-it': OUTAGE });
+
+        stores.sTranslations.set(catalog('Hello', 'Hola'));
+        stores.currentlyLoadedLocale.set('es-es');
+        const done = LangsysApp.init({
+            projectid: 'p1',
+            key: 'k',
+            UserLocaleStore: createSignal('it-it'),
+            initialTranslations: catalog('Hello', 'Hola'),
+            initialTranslationsLocale: 'es-es',
+        });
         authorize.resolve(AUTHORIZED);
         await done;
         await vi.advanceTimersByTimeAsync(5_000);

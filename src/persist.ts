@@ -116,6 +116,12 @@ export interface PersistScoped<T> {
      * `scope()` points there, never under another scope's key.
      */
     setOwned: (value: T, owner: string) => void;
+    /**
+     * Name whose the value already held is, after a plain `set` put it there.
+     * When the owner does not own the current scope, a plain write saved under
+     * it since the value was last labelled is undone.
+     */
+    claim: (owner: string) => void;
 }
 
 /**
@@ -183,6 +189,13 @@ export function persistScoped<T>(
     let emissions = 0;
     // Set while `scope()` resets the signal, so the reset value is not persisted.
     let resetting = false;
+    // Set while `setOwned` publishes, so its write is known to be labelled.
+    let labelling = false;
+    // What the current key held before the first unlabelled write to it since
+    // the value was last labelled. A plain `set` cannot say whose value it is, so
+    // it is saved as an edit of the current one; if `claim` then names another
+    // owner, the write was not this scope's, and the key gets back what it held.
+    let undo: { key: string; prior: string | null } | null = null;
 
     signal.subscribe((value) => {
         emissions += 1;
@@ -193,6 +206,8 @@ export function persistScoped<T>(
         const target = activeStorage();
         if (!target) return;
         try {
+            if (labelling) undo = null;
+            else if (undo?.key !== currentKey) undo = { key: currentKey, prior: target.getItem(currentKey) };
             target.setItem(currentKey, JSON.stringify(value));
         } catch {
             // Quota / serialization failure — in-memory stays authoritative.
@@ -209,6 +224,7 @@ export function persistScoped<T>(
 
         currentKey = key;
         currentScope = next;
+        undo = null;
         if (key !== null) everScoped = true;
         narrowOwner();
 
@@ -243,6 +259,7 @@ export function persistScoped<T>(
             const target = activeStorage();
             if (target) {
                 try {
+                    if (owner === undefined) undo = { key, prior: target.getItem(key) };
                     target.setItem(key, JSON.stringify(signal.get()));
                 } catch {
                     // Quota — in-memory stays authoritative.
@@ -273,7 +290,28 @@ export function persistScoped<T>(
     const setOwned = (value: T, valueOwner: string): void => {
         owner = valueOwner;
         narrowOwner();
-        signal.set(value);
+        labelling = true;
+        try {
+            signal.set(value);
+        } finally {
+            labelling = false;
+        }
+    };
+
+    const claim = (valueOwner: string): void => {
+        owner = valueOwner;
+        narrowOwner();
+        const pending = undo;
+        undo = null;
+        if (ownsCurrent() || !pending || pending.key !== currentKey) return;
+        const target = activeStorage();
+        if (!target) return;
+        try {
+            if (pending.prior !== null) target.setItem(pending.key, pending.prior);
+            else target.removeItem?.(pending.key);
+        } catch {
+            // Unwritable storage — nothing to restore.
+        }
     };
 
     // Drop the unscoped keys this replaces, once, when identity first arrives.
@@ -295,6 +333,7 @@ export function persistScoped<T>(
         return {
             signal,
             setOwned,
+            claim,
             scope: (next) => {
                 originalScope(next);
                 if (next !== null) drop();
@@ -302,7 +341,7 @@ export function persistScoped<T>(
         };
     }
 
-    return { signal, scope, setOwned };
+    return { signal, scope, setOwned, claim };
 }
 
 /** Current key first, then the legacy one. `undefined` means "nothing usable stored". */

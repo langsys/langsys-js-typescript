@@ -10,7 +10,7 @@
 
 ### Fixed
 
-- **A catalog is cached only under its own locale.** A catalog seeded for one locale while the user's locale store held another (`seedCatalog(catalog, 'es-es')` before `init()`, or `init({ initialTranslations, initialTranslationsLocale: 'es-es' })` with a store holding `it-it`) was saved in `localStorage` as the other locale's catalog. While catalog fetches kept failing, an outage or a device offline, every later visit served Spanish as Italian until a fetch succeeded. Seeds, snapshots and fetches now name the locale of the catalog they publish, and the cache saves a catalog only under that locale's key. The seeded catalog still renders until the user's locale loads, as before. Found by the Svelte binding's agent.
+- **A catalog is cached only under its own locale.** A catalog seeded for one locale while the user's locale store held another (`seedCatalog(catalog, 'es-es')` before `init()`, or `init({ initialTranslations, initialTranslationsLocale: 'es-es' })` with a store holding `it-it`) was saved in `localStorage` as the other locale's catalog. While catalog fetches kept failing, an outage or a device offline, every later visit served Spanish as Italian until a fetch succeeded. Seeds, snapshots and fetches now name the locale of the catalog they publish, and the cache saves a catalog only under that locale's key. A binding that seeds with `sTranslations.set(catalog)` followed by `currentlyLoadedLocale.set(locale)` is covered too: setting the loaded locale names whose catalog it is, and a plain write already saved under another locale's key is undone. The seeded catalog still renders until the user's locale loads, as before. Found by the Svelte binding's agent.
 
 ## 0.7.2 - 2026-11-06
 
