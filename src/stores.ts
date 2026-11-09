@@ -34,7 +34,9 @@ const catalogCache = persistScoped<iCategories>(
     ['translations', 'langsys:translations'],
     // A catalog is owned by its scope, `<projectid>:<locale>`, or by a bare locale:
     // a seed can arrive before init() names the project. A locale holds no colon.
-    (owner, scope) => owner === scope || owner === scope.slice(scope.lastIndexOf(':') + 1)
+    (owner, scope) => owner === scope || owner === scope.slice(scope.lastIndexOf(':') + 1),
+    // A bare locale takes the project of the first scope it meets.
+    (owner, scope) => (owner.includes(':') ? owner : `${scope.slice(0, scope.lastIndexOf(':'))}:${owner}`)
 );
 
 /**

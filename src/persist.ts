@@ -163,7 +163,8 @@ export function persistScoped<T>(
     keyPrefix: string,
     initial: T,
     supersedes: string[] = [],
-    owns: (owner: string, scope: string) => boolean = (owner, scope) => owner === scope
+    owns: (owner: string, scope: string) => boolean = (owner, scope) => owner === scope,
+    qualify: (owner: string, scope: string) => string = (owner) => owner
 ): PersistScoped<T> {
     const signal = createSignal<T>(initial);
     let currentKey: string | null = null;
@@ -179,8 +180,14 @@ export function persistScoped<T>(
     // only that scope's: a seed labelled with a bare locale owns every
     // project's key for the locale, so left broad it would be kept, and saved
     // over the stored catalog, when a re-init scopes another project's.
+    // A label given before any scope existed (a seed's bare locale) takes the
+    // rest of its identity from the first scope it meets, owned or not: the seed
+    // is this page's, and the page's project is the scope's. Left bare, it would
+    // own every project's key for its locale after a re-init.
     const narrowOwner = (): void => {
-        if (owner !== undefined && currentScope !== null && owns(owner, currentScope)) owner = currentScope;
+        if (owner === undefined || currentScope === null) return;
+        owner = qualify(owner, currentScope);
+        if (owns(owner, currentScope)) owner = currentScope;
     };
     const ownsCurrent = (): boolean => owner === undefined || (currentScope !== null && owns(owner, currentScope));
     let everScoped = false;

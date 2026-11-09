@@ -516,6 +516,31 @@ describe('a catalog is saved only under its own locale’s key', () => {
         expect(data['langsys:translations:p1:it-it']).toBeUndefined();
     });
 
+    it('a seed labelled by locale takes its project from the first scope even when another locale’s', async () => {
+        // Seeded fr, init on en for p (its fetch failing), then a re-init for q on fr.
+        const data = installStorage({ 'langsys:translations:q:fr-fr': JSON.stringify(catalog('Hello', 'Q-Bonjour')) });
+        const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        publishCatalog(catalog('Hello', 'P-Bonjour'), 'fr-fr');
+        scopeCatalogCache('p:en-us');
+        scopeCatalogCache('q:fr-fr');
+
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('Q-Bonjour');
+        expect(JSON.parse(data['langsys:translations:q:fr-fr']!).__uncategorized__.Hello).toBe('Q-Bonjour');
+    });
+
+    it('control: …and switching to its own locale under that project still keeps and saves it', async () => {
+        const data = installStorage();
+        const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        publishCatalog(catalog('Hello', 'P-Bonjour'), 'fr-fr');
+        scopeCatalogCache('p:en-us');
+        scopeCatalogCache('p:fr-fr');
+
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('P-Bonjour');
+        expect(JSON.parse(data['langsys:translations:p:fr-fr']!).__uncategorized__.Hello).toBe('P-Bonjour');
+    });
+
     it('a stored copy adopted on scoping is that scope’s, so later edits save there', async () => {
         const data = installStorage({ 'langsys:translations:p1:it-it': JSON.stringify(catalog('Hello', 'Ciao')) });
         const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
