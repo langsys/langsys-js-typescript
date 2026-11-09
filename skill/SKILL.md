@@ -3,7 +3,7 @@ name: langsys-typescript
 description: The Langsys TypeScript core skill, for langsys-js-typescript and every Langsys JavaScript binding built on it. Part of the Langsys skill set, read in order - the entry skill langsys first, then this one, then the framework's own skill (langsys-svelte, langsys-react, langsys-vue and the rest). Covers t(), Phrase and Translate, the write signals and grants, init and config, interpolation and plurals, value markers, legacy keys and snapshots, reference lists, localeHeaders, catalog caching and request scopes for server rendering.
 metadata:
   package: langsys-js-typescript
-  version: 0.7.2
+  version: 0.7.3
 ---
 
 # Langsys TypeScript core
