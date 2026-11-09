@@ -12,7 +12,7 @@ import { createLegacyKeys, type LegacyKeyFile, type LegacyKeys } from './legacy-
 import { canonicalizeLocale } from './locale.js';
 import { Logger, logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
-import { batchLimit, catalogScopeOf, catalogUnavailable, pageCatalog, pageLocale, currentlyLoadedLocale, discoveryBaseLocaleOnly, editCatalog, navigationEpoch, publishCatalog, scopeCatalogCache, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
+import { batchLimit, catalogScopeOf, catalogUnavailable, pageCatalog, pageLocale, currentlyLoadedLocale, discoveryBaseLocaleOnly, editCatalog, navigationEpoch, publishCatalog, scopeCatalogCache, setLoadedLocale, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
 import type { TFunction } from './types/translation-fn.js';
@@ -1468,7 +1468,7 @@ export class Translations {
         publishCatalog(trans, this.catalogScope(locale));
         // Small delay so consumers see translations + locale updates on the same tick. The
         // locale is the one this catalog was fetched for, even if a switch has begun since.
-        setTimeout(() => currentlyLoadedLocale.set(locale), 100);
+        setTimeout(() => setLoadedLocale(locale), 100);
         this.lastLoaded[locale] = new Date().getTime() / 1000;
         this.readyResolve();
         return true;

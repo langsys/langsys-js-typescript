@@ -1,7 +1,7 @@
 import { LangsysAppAPI, LangsysConfigurationError } from './api.js';
 import { canonicalizeLocale, maximizedLangScript } from './locale.js';
 import { Logger, logger } from './logger.js';
-import { autoDiscovery, batchLimit, catalogScopeOf, config as configStore, configured, currentlyLoadedLocale, discoveryBaseLocaleOnly, pageCatalog, pageLocale, publishCatalog, scopeCatalogCache } from './stores.js';
+import { autoDiscovery, batchLimit, catalogScopeOf, config as configStore, configured, currentlyLoadedLocale, discoveryBaseLocaleOnly, pageCatalog, pageLocale, publishCatalog, scopeCatalogCache, setLoadedLocale } from './stores.js';
 import { DEFAULT_SERVER_MESSAGE_CATEGORY, fillTemplate, type ServerMessage } from './server-messages.js';
 import { parseSnapshot, type CatalogSnapshot } from './snapshot.js';
 import { rememberSeededBlock, rememberSeededPhrase } from './served-source.js';
@@ -245,7 +245,7 @@ class LangsysAppClass {
 
         // Owned by its locale: a seed can come before init() names the project, and is this page's.
         publishCatalog(catalog, normalizedLocale);
-        currentlyLoadedLocale.set(normalizedLocale);
+        setLoadedLocale(normalizedLocale);
     }
 
     /**

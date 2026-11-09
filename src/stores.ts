@@ -125,21 +125,35 @@ export const catalogScopeOf = (projectid: string, locale: string): string => `${
 
 const pageLocaleSignal = createSignal<string>('');
 
+const pageLocaleView = followScope(pageLocaleSignal, (scope) => scope.locale);
+
+/**
+ * Set the page's loaded locale from inside the core: a publish whose catalog is
+ * labelled already, or a fetch's locale landing 100 ms after its catalog, even
+ * after a switch. Never a claim on the catalog in memory, which by then may be
+ * another locale's.
+ */
+export const setLoadedLocale = (locale: string): void => pageLocaleSignal.set(locale);
+
 /**
  * The locale the catalog is for. Inside a request scope `get()` answers with the
  * scope's locale (SRV-7), for the same reason as `sTranslations`.
+ *
+ * Setting it from outside the core says whose a binding's catalog is. One that
+ * seeds with `sTranslations.set(catalog)` then `currentlyLoadedLocale.set(locale)`
+ * (langsys-js-svelte's SSR guide does) labels it here, so it is never cached as
+ * the user store's other locale. The claim is made in `set` itself, so a locale
+ * equal to the one already loaded still claims, and applies only after such a
+ * plain set (see `persistScoped`). The core sets it through `setLoadedLocale`.
  */
-export const currentlyLoadedLocale: Signal<string> = followScope(pageLocaleSignal, (scope) => scope.locale);
-
-// Setting the loaded locale says whose a binding's catalog is. One that seeds with
-// `sTranslations.set(catalog)` then `currentlyLoadedLocale.set(locale)` (langsys-js-svelte's
-// SSR guide does) labels it here, so it is never cached as the user store's other
-// locale. It applies only after such a plain set: the core's own publishes are
-// labelled already, and a fetch's locale lands 100 ms late, possibly after the next
-// catalog, which it must not relabel.
-pageLocaleSignal.subscribe((locale) => {
-    if (locale) catalogCache.claim(canonicalizeLocale(locale));
-});
+export const currentlyLoadedLocale: Signal<string> = {
+    ...pageLocaleView,
+    set: (locale) => {
+        if (locale) catalogCache.claim(canonicalizeLocale(locale));
+        pageLocaleSignal.set(locale);
+    },
+    update: (change) => currentlyLoadedLocale.set(change(pageLocaleSignal.get())),
+};
 
 /** The page's own loaded locale, whatever scope is current. */
 export const pageLocale = (): string => pageLocaleSignal.get();

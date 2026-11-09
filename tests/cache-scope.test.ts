@@ -320,12 +320,12 @@ describe('a catalog is saved only under its own locale’s key', () => {
     it('control: a published catalog’s edits are not undone by its own locale arriving later', async () => {
         // A fetch publishes, a flush writes back with keys marked known, then the 100 ms locale lands.
         const data = installStorage();
-        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache, publishCatalog } = await freshLoad();
+        const { setLoadedLocale, sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
 
         scopeCatalogCache('p1:it-it');
         publishCatalog(catalog('Hello', 'Ciao'), 'p1:it-it');
         sTranslations.set({ ...sTranslations.get(), __uncategorized__: { ...sTranslations.get().__uncategorized__, Known: null as unknown as string } });
-        currentlyLoadedLocale.set('it-it');
+        setLoadedLocale('it-it');
 
         expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__).toHaveProperty('Known', null);
     });
@@ -344,11 +344,11 @@ describe('a catalog is saved only under its own locale’s key', () => {
     it('a published catalog is never undone by a locale that does not own it', async () => {
         // A superseded fetch's 100 ms locale can land after the next catalog was published.
         const data = installStorage();
-        const { currentlyLoadedLocale, scopeCatalogCache, publishCatalog } = await freshLoad();
+        const { setLoadedLocale, scopeCatalogCache, publishCatalog } = await freshLoad();
 
         scopeCatalogCache('p1:it-it');
         publishCatalog(catalog('Hello', 'Ciao'), 'p1:it-it');
-        currentlyLoadedLocale.set('es-es');
+        setLoadedLocale('es-es');
 
         expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao');
     });
@@ -396,12 +396,12 @@ describe('a catalog is saved only under its own locale’s key', () => {
             'langsys:translations:p:fr-fr': JSON.stringify(catalog('Hello', 'Bonjour-STORED')),
             'langsys:translations:p:de-de': JSON.stringify(catalog('Hello', 'Hallo')),
         });
-        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache, publishCatalog } = await freshLoad();
+        const { setLoadedLocale, sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
 
         scopeCatalogCache('p:fr-fr');
         publishCatalog(catalog('Hello', 'Bonjour'), 'p:fr-fr');
         scopeCatalogCache('p:de-de');
-        currentlyLoadedLocale.set('fr-fr');
+        setLoadedLocale('fr-fr');
         scopeCatalogCache('p:fr-fr');
 
         expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('Bonjour');
@@ -410,12 +410,12 @@ describe('a catalog is saved only under its own locale’s key', () => {
 
     it('…nor the empty catalog a switch reset to', async () => {
         const data = installStorage();
-        const { currentlyLoadedLocale, scopeCatalogCache, publishCatalog } = await freshLoad();
+        const { setLoadedLocale, scopeCatalogCache, publishCatalog } = await freshLoad();
 
         scopeCatalogCache('p:fr-fr');
         publishCatalog(catalog('Hello', 'Bonjour'), 'p:fr-fr');
         scopeCatalogCache('p:de-de');
-        currentlyLoadedLocale.set('fr-fr');
+        setLoadedLocale('fr-fr');
         scopeCatalogCache('p:fr-fr');
 
         expect(JSON.parse(data['langsys:translations:p:fr-fr']!).__uncategorized__.Hello).toBe('Bonjour');
@@ -424,12 +424,12 @@ describe('a catalog is saved only under its own locale’s key', () => {
     it('a late locale does not undo the core’s own edit of the catalog published since', async () => {
         // de publishes inside fr's 100 ms, the flush marks a key known, then fr's locale lands.
         const data = installStorage();
-        const { currentlyLoadedLocale, scopeCatalogCache, publishCatalog, editCatalog } = await freshLoad();
+        const { setLoadedLocale, scopeCatalogCache, publishCatalog, editCatalog } = await freshLoad();
 
         scopeCatalogCache('p:de-de');
         publishCatalog(catalog('Hello', 'Hallo'), 'p:de-de');
         editCatalog((c) => ({ ...c, __uncategorized__: { ...c.__uncategorized__, Known: null as unknown as string } }));
-        currentlyLoadedLocale.set('fr-fr');
+        setLoadedLocale('fr-fr');
 
         expect(JSON.parse(data['langsys:translations:p:de-de']!).__uncategorized__).toHaveProperty('Known', null);
     });
@@ -458,6 +458,62 @@ describe('a catalog is saved only under its own locale’s key', () => {
         editCatalog((c) => ({ ...c }));
 
         expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao');
+    });
+
+    it('a binding’s edit inside a fetch’s 100 ms does not let the fetch’s late locale claim the catalog', async () => {
+        const data = installStorage({ 'langsys:translations:p:de-de': JSON.stringify(catalog('Hello', 'Hallo')) });
+        const { sTranslations, setLoadedLocale, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p:fr-fr');
+        publishCatalog(catalog('Hello', 'Bonjour'), 'p:fr-fr');
+        scopeCatalogCache('p:de-de');
+        sTranslations.update((c) => ({ ...c }));
+        setLoadedLocale('fr-fr');
+        scopeCatalogCache('p:fr-fr');
+
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('Bonjour');
+        expect(JSON.parse(data['langsys:translations:p:fr-fr']!).__uncategorized__.Hello).toBe('Bonjour');
+    });
+
+    it('…nor after a binding’s own seed and claim, then an edit', async () => {
+        const data = installStorage();
+        const { sTranslations, currentlyLoadedLocale, setLoadedLocale, scopeCatalogCache, publishCatalog, editCatalog } = await freshLoad();
+
+        scopeCatalogCache('p:fr-fr');
+        publishCatalog(catalog('Hello', 'Bonjour'), 'p:fr-fr');
+        sTranslations.set(catalog('Hello', 'Hallo'));
+        currentlyLoadedLocale.set('de-de');
+        sTranslations.update((c) => ({ ...c }));
+        setLoadedLocale('fr-fr');
+        editCatalog((c) => ({ ...c }));
+
+        expect(JSON.parse(data['langsys:translations:p:fr-fr']!).__uncategorized__.Hello).toBe('Bonjour');
+    });
+
+    it('a binding setting the locale already loaded still claims its plain set', async () => {
+        // The loaded locale is de (a de fetch's late timer after a switch to fr); the binding then
+        // seeds a de catalog and sets de again, which the signal itself would not re-emit.
+        const data = installStorage();
+        const { sTranslations, currentlyLoadedLocale, setLoadedLocale, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p:fr-fr');
+        publishCatalog(catalog('Hello', 'Bonjour'), 'p:fr-fr');
+        setLoadedLocale('de-de');
+        sTranslations.set(catalog('Hello', 'Hallo'));
+        currentlyLoadedLocale.set('de-de');
+
+        expect(JSON.parse(data['langsys:translations:p:fr-fr']!).__uncategorized__.Hello).toBe('Bonjour');
+    });
+
+    it('currentlyLoadedLocale.update claims as set does', async () => {
+        const data = installStorage();
+        const { sTranslations, currentlyLoadedLocale, scopeCatalogCache } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        sTranslations.set(catalog('Hello', 'Hola'));
+        currentlyLoadedLocale.update(() => 'es-es');
+
+        expect(data['langsys:translations:p1:it-it']).toBeUndefined();
     });
 
     it('a stored copy adopted on scoping is that scope’s, so later edits save there', async () => {
@@ -703,9 +759,41 @@ describe('init() restores the cache before authorization answers', () => {
         expect(JSON.parse(data['langsys:translations:p1:fr-fr']!).__uncategorized__).toHaveProperty('Brand new', null);
 
         // A superseded fetch's locale, landing after the write-back.
-        stores.currentlyLoadedLocale.set('de-de');
+        stores.setLoadedLocale('de-de');
 
         expect(JSON.parse(data['langsys:translations:p1:fr-fr']!).__uncategorized__).toHaveProperty('Brand new', null);
+    });
+
+    it('a fetch’s late locale after a quick switch away and back leaves the stored catalog alone', async () => {
+        // fr's fetch lands; inside its 100 ms the user switches to de (stored copy adopted, its fetch
+        // still out) and a binding edits the catalog; fr's locale lands; the user switches back.
+        let frFetches = 0;
+        const { LangsysApp, createSignal, authorize, data, stores } = await page(
+            { 'langsys:translations:p1:de-de': JSON.stringify(catalog('Hello', 'Hallo')) },
+            {
+                // The first fr fetch answers; the one switching back fails (an outage), so nothing corrects the cache.
+                get 'fr-fr'() {
+                    return frFetches++ ? OUTAGE : live({ Hello: 'Bonjour' });
+                },
+                'de-de': new Promise(() => {}),
+            }
+        );
+        const locale = createSignal('fr-fr');
+
+        const done = LangsysApp.init({ projectid: 'p1', key: 'k', UserLocaleStore: locale });
+        authorize.resolve(AUTHORIZED);
+        await done;
+        await vi.advanceTimersByTimeAsync(0);
+        expect(JSON.parse(data['langsys:translations:p1:fr-fr']!).__uncategorized__.Hello).toBe('Bonjour');
+
+        locale.set('de-de');
+        stores.sTranslations.update((c) => ({ ...c }));
+        await vi.advanceTimersByTimeAsync(150);
+        locale.set('fr-fr');
+        await vi.advanceTimersByTimeAsync(150);
+
+        expect(frFetches).toBe(2);
+        expect(JSON.parse(data['langsys:translations:p1:fr-fr']!).__uncategorized__.Hello).toBe('Bonjour');
     });
 
     it('control: a catalog fetched for the user’s locale after a mismatched seed is saved there', async () => {
