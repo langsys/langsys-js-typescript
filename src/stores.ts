@@ -95,6 +95,14 @@ export const sTranslations: Signal<iCategories> = followScope(catalogCache.signa
  */
 export const publishCatalog = (catalog: iCategories, owner: string): void => catalogCache.setOwned(catalog, owner);
 
+/**
+ * Change the page's catalog in place, keeping whose it is: the core's own
+ * write-backs (keys marked known, a block recorded). A plain `sTranslations.set`
+ * is a binding's, which the next `currentlyLoadedLocale.set` may say is another
+ * locale's; an edit never is.
+ */
+export const editCatalog = (change: (catalog: iCategories) => iCategories): void => catalogCache.edit(change);
+
 /** The page's own catalog, whatever scope is current: for the page's flush and write-back. */
 export const pageCatalog = (): iCategories => catalogCache.signal.get();
 
@@ -123,10 +131,12 @@ const pageLocaleSignal = createSignal<string>('');
  */
 export const currentlyLoadedLocale: Signal<string> = followScope(pageLocaleSignal, (scope) => scope.locale);
 
-// Setting the loaded locale says whose the catalog is. A binding that seeds with
+// Setting the loaded locale says whose a binding's catalog is. One that seeds with
 // `sTranslations.set(catalog)` then `currentlyLoadedLocale.set(locale)` (langsys-js-svelte's
 // SSR guide does) labels it here, so it is never cached as the user store's other
-// locale. The core's own publishes label first and set the locale after, to the same effect.
+// locale. It applies only after such a plain set: the core's own publishes are
+// labelled already, and a fetch's locale lands 100 ms late, possibly after the next
+// catalog, which it must not relabel.
 pageLocaleSignal.subscribe((locale) => {
     if (locale) catalogCache.claim(canonicalizeLocale(locale));
 });

@@ -12,7 +12,7 @@ import { createLegacyKeys, type LegacyKeyFile, type LegacyKeys } from './legacy-
 import { canonicalizeLocale } from './locale.js';
 import { Logger, logger } from './logger.js';
 import { createSignal, type Signal } from './signal.js';
-import { batchLimit, catalogScopeOf, catalogUnavailable, pageCatalog, pageLocale, currentlyLoadedLocale, discoveryBaseLocaleOnly, navigationEpoch, publishCatalog, scopeCatalogCache, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
+import { batchLimit, catalogScopeOf, catalogUnavailable, pageCatalog, pageLocale, currentlyLoadedLocale, discoveryBaseLocaleOnly, editCatalog, navigationEpoch, publishCatalog, scopeCatalogCache, setWriteEnabled, sTranslations, writeEnabled } from './stores.js';
 import type { ResponseObject } from './types/api.js';
 import type { iLangsysConfig } from './types/config.js';
 import type { TFunction } from './types/translation-fn.js';
@@ -1319,7 +1319,7 @@ export class Translations {
                 if (!Object.prototype.hasOwnProperty.call(latest[lookupCat], tokenObj.token)) latest[lookupCat][tokenObj.token] = null as unknown as string;
                 latest[lookupCat]['__category__'] = lookupCat;
             });
-            sTranslations.set({ ...latest });
+            editCatalog(() => ({ ...latest }));
 
             // Remove exactly what was sent, never `= []`.
             this.missingTokens = this.missingTokens.filter((queued) => !batch.some((s) => sameToken(s, queued)));

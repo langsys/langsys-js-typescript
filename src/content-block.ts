@@ -32,7 +32,7 @@ import { normalizeMarkupPlaceholders } from './interpolate.js';
 import { canonicalizeLocale } from './locale.js';
 import { logger } from './logger.js';
 import { normalizePreviousCategory, previousCategoryField } from './category-ref.js';
-import { catalogUnavailable, config as configStore, configured, currentlyLoadedLocale, discoveryBaseLocaleOnly, sTranslations, writeEnabled } from './stores.js';
+import { catalogUnavailable, config as configStore, configured, currentlyLoadedLocale, discoveryBaseLocaleOnly, editCatalog, writeEnabled } from './stores.js';
 import type { iContentBlock } from './types/content-block.js';
 import type { iTranslations } from './types/translations.js';
 import { groupRuns, isMarkerOnly, runNodes, runSource, runToken, runValues, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
@@ -637,7 +637,7 @@ export function legacyTokenizeElement(element: HTMLElement): string[] {
 
 function _writeKnownContentBlockToCache(category: string, customId: string): void {
     const lookupCat = category || '__uncategorized__';
-    sTranslations.update((current) => {
+    editCatalog((current) => {
         if (!current[lookupCat]) {
             current[lookupCat] = {
                 __category__: lookupCat,

@@ -119,9 +119,12 @@ export interface PersistScoped<T> {
     /**
      * Name whose the value already held is, after a plain `set` put it there.
      * When the owner does not own the current scope, a plain write saved under
-     * it since the value was last labelled is undone.
+     * it since the value was last labelled is undone. With no plain `set` since
+     * the value was last labelled, it does nothing: the claim is about another value.
      */
     claim: (owner: string) => void;
+    /** Change the value in place, keeping its label: an owner's own edit, never undone by `claim`. */
+    edit: (change: (value: T) => T) => void;
 }
 
 /**
@@ -189,8 +192,18 @@ export function persistScoped<T>(
     let emissions = 0;
     // Set while `scope()` resets the signal, so the reset value is not persisted.
     let resetting = false;
-    // Set while `setOwned` publishes, so its write is known to be labelled.
+    // Set while `setOwned` publishes or `scope()` adopts a stored copy, so the
+    // write is known to be labelled.
     let labelling = false;
+    // Set while `edit` writes: the owner's own change to its value, which keeps
+    // the label and is never undone.
+    let editing = false;
+    // Has a plain `set`, from outside this cache's writers, put a value here
+    // since it was last labelled? Only then can `claim` say whose it is. A
+    // claim with no plain write behind it is about some other catalog (a
+    // superseded fetch's locale, landing after the next catalog was published
+    // or adopted) and must not relabel, or undo, the one held.
+    let plainSinceLabel = false;
     // What the current key held before the first unlabelled write to it since
     // the value was last labelled. A plain `set` cannot say whose value it is, so
     // it is saved as an edit of the current one; if `claim` then names another
@@ -202,12 +215,15 @@ export function persistScoped<T>(
         // `subscribe` fires immediately with the current value, so emission 1
         // is creation, not a write.
         if (!everScoped && emissions > 1) seededBeforeScope = true;
+        const plain = emissions > 1 && !labelling && !editing && !resetting;
+        if (plain) plainSinceLabel = true;
+        if (labelling || resetting) plainSinceLabel = false;
         if (!currentKey || resetting || !ownsCurrent()) return;
         const target = activeStorage();
         if (!target) return;
         try {
             if (labelling) undo = null;
-            else if (undo?.key !== currentKey) undo = { key: currentKey, prior: target.getItem(currentKey) };
+            else if (plain && undo?.key !== currentKey) undo = { key: currentKey, prior: target.getItem(currentKey) };
             target.setItem(currentKey, JSON.stringify(value));
         } catch {
             // Quota / serialization failure — in-memory stays authoritative.
@@ -270,7 +286,12 @@ export function persistScoped<T>(
 
         if (stored !== undefined) {
             owner = next as string;
-            signal.set(stored as T);
+            labelling = true;
+            try {
+                signal.set(stored as T);
+            } finally {
+                labelling = false;
+            }
             return;
         }
         // Nothing stored for the new scope. Clear only if we are LEAVING a
@@ -298,7 +319,18 @@ export function persistScoped<T>(
         }
     };
 
+    const edit = (change: (value: T) => T): void => {
+        editing = true;
+        try {
+            signal.update(change);
+        } finally {
+            editing = false;
+        }
+    };
+
     const claim = (valueOwner: string): void => {
+        if (!plainSinceLabel) return;
+        plainSinceLabel = false;
         owner = valueOwner;
         narrowOwner();
         const pending = undo;
@@ -333,6 +365,7 @@ export function persistScoped<T>(
         return {
             signal,
             setOwned,
+            edit,
             claim,
             scope: (next) => {
                 originalScope(next);
@@ -341,7 +374,7 @@ export function persistScoped<T>(
         };
     }
 
-    return { signal, scope, setOwned, claim };
+    return { signal, scope, setOwned, edit, claim };
 }
 
 /** Current key first, then the legacy one. `undefined` means "nothing usable stored". */
