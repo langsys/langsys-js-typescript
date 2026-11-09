@@ -166,6 +166,13 @@ export function persistScoped<T>(
     // unlabelled `set` edits the value in place (a flush marking keys known) and
     // keeps the label; only `setOwned`, adopting a stored copy, or a reset change it.
     let owner: string | undefined;
+    // Once a value sits under a scope its owner owns, it is that scope's, and
+    // only that scope's: a seed labelled with a bare locale owns every
+    // project's key for the locale, so left broad it would be kept, and saved
+    // over the stored catalog, when a re-init scopes another project's.
+    const narrowOwner = (): void => {
+        if (owner !== undefined && currentScope !== null && owns(owner, currentScope)) owner = currentScope;
+    };
     const ownsCurrent = (): boolean => owner === undefined || (currentScope !== null && owns(owner, currentScope));
     let everScoped = false;
     // Did somebody write to this signal BEFORE any scope existed? That is the
@@ -203,6 +210,7 @@ export function persistScoped<T>(
         currentKey = key;
         currentScope = next;
         if (key !== null) everScoped = true;
+        narrowOwner();
 
         // An SSR handoff outranks the store on the FIRST scoping, whether or
         // not something is stored. Adopting the stored copy here was a
@@ -264,6 +272,7 @@ export function persistScoped<T>(
 
     const setOwned = (value: T, valueOwner: string): void => {
         owner = valueOwner;
+        narrowOwner();
         signal.set(value);
     };
 

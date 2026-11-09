@@ -242,6 +242,33 @@ describe('a catalog is saved only under its own locale’s key', () => {
         expect(data['langsys:translations:p1:es-es']).toBeUndefined();
     });
 
+    it('a seed labelled by locale belongs to the first project it is scoped under, not every project', async () => {
+        // A re-init for another project, same locale: the seed kept by the first scoping must not
+        // be kept again, nor saved over the second project's stored catalog.
+        const data = installStorage({ 'langsys:translations:p2:es-es': JSON.stringify(catalog('Hello', 'P2-Hola')) });
+        const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        publishCatalog(catalog('Hello', 'P1-SEED'), 'es-es');
+        scopeCatalogCache('p1:es-es');
+        scopeCatalogCache('p2:es-es');
+
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('P2-Hola');
+        expect(JSON.parse(data['langsys:translations:p2:es-es']!).__uncategorized__.Hello).toBe('P2-Hola');
+        expect(JSON.parse(data['langsys:translations:p1:es-es']!).__uncategorized__.Hello).toBe('P1-SEED');
+    });
+
+    it('so does a seed published while already scoped', async () => {
+        const data = installStorage({ 'langsys:translations:p2:es-es': JSON.stringify(catalog('Hello', 'P2-Hola')) });
+        const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p1:es-es');
+        publishCatalog(catalog('Hello', 'P1-SEED'), 'es-es');
+        scopeCatalogCache('p2:es-es');
+
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('P2-Hola');
+        expect(JSON.parse(data['langsys:translations:p2:es-es']!).__uncategorized__.Hello).toBe('P2-Hola');
+    });
+
     it('a stored copy adopted on scoping is that scope’s, so later edits save there', async () => {
         const data = installStorage({ 'langsys:translations:p1:it-it': JSON.stringify(catalog('Hello', 'Ciao')) });
         const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
