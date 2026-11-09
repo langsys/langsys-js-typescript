@@ -8,6 +8,10 @@
 
   It is sent once, as `previous_category` on the registration a miss triggers, and is never part of a `custom_id`, a catalog key or deduplication. Until the catalog has a translation under the new category, the previous category's entry renders, so the first deploy after a move shows no source text. `renderBlock` marks a host it filled from the previous category with `data-ls-previous-contentblock` or `data-ls-previous-category`, and a hydrating `Translate` or `Phrase` reads the mark, so the served translation stays and follows a locale switch. A nested host naming its own category names its own previous category with `data-ls-previous-category`. With `debug` on, a call that still renders the text in the old category while another moves it is reported once. Nothing changes for code that doesn't use it, and an API from before this feature ignores the field.
 
+### Fixed
+
+- **A catalog is cached only under its own locale.** A catalog seeded for one locale while the user's locale store held another (`seedCatalog(catalog, 'es-es')` before `init()`, or `init({ initialTranslations, initialTranslationsLocale: 'es-es' })` with a store holding `it-it`) was saved in `localStorage` as the other locale's catalog. While catalog fetches kept failing, an outage or a device offline, every later visit served Spanish as Italian until a fetch succeeded. Seeds, snapshots and fetches now name the locale of the catalog they publish, and the cache saves a catalog only under that locale's key. The seeded catalog still renders until the user's locale loads, as before. Found by the Svelte binding's agent.
+
 ## 0.7.2 - 2026-11-06
 
 ### Fixed

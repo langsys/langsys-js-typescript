@@ -107,6 +107,17 @@ export function persist<T>(key: string, initial: T, legacyKey?: string): Signal<
     return signal;
 }
 
+export interface PersistScoped<T> {
+    signal: Signal<T>;
+    scope: (scope: string | null) => void;
+    /**
+     * Set the value and name whose it is, in `owns`'s terms. It is persisted
+     * only while the cache is scoped to a scope that owner owns, now or once
+     * `scope()` points there, never under another scope's key.
+     */
+    setOwned: (value: T, owner: string) => void;
+}
+
 /**
  * A persisted signal whose storage key is not known at module-init time.
  *
@@ -131,14 +142,31 @@ export function persist<T>(key: string, initial: T, legacyKey?: string): Signal<
  *   - `scope(s)` with nothing stored and no previous scope: leave the signal
  *     alone, so an SSR-seeded catalog survives.
  *   - `scope(null)`: stop persisting.
+ *
+ * A writer that knows whose value it sets says so with `setOwned`, and a
+ * labelled value is persisted only under a scope its owner owns (`owns`).
+ * A fetched catalog is owned by its project and locale, and a seed or snapshot
+ * by its bare locale, since one can arrive before `init()` names the project: a seed or a fetch published while the cache
+ * is scoped to another locale renders, but is never saved as that locale's
+ * catalog, and scoping to its own locale later keeps and saves it.
  */
 export function persistScoped<T>(
     keyPrefix: string,
     initial: T,
-    supersedes: string[] = []
-): { signal: Signal<T>; scope: (scope: string | null) => void } {
+    supersedes: string[] = [],
+    owns: (owner: string, scope: string) => boolean = (owner, scope) => owner === scope
+): PersistScoped<T> {
     const signal = createSignal<T>(initial);
     let currentKey: string | null = null;
+    let currentScope: string | null = null;
+    // Whose value the signal holds, as `setOwned` named it: `undefined` when no
+    // writer said. A labelled value is persisted only under a scope that owner
+    // owns, so a catalog published for one locale while the cache is scoped to
+    // another is kept in memory and never saved as that other locale's. An
+    // unlabelled `set` edits the value in place (a flush marking keys known) and
+    // keeps the label; only `setOwned`, adopting a stored copy, or a reset change it.
+    let owner: string | undefined;
+    const ownsCurrent = (): boolean => owner === undefined || (currentScope !== null && owns(owner, currentScope));
     let everScoped = false;
     // Did somebody write to this signal BEFORE any scope existed? That is the
     // SSR handoff: `init()` seeds the catalog from the server payload, and only
@@ -154,7 +182,7 @@ export function persistScoped<T>(
         // `subscribe` fires immediately with the current value, so emission 1
         // is creation, not a write.
         if (!everScoped && emissions > 1) seededBeforeScope = true;
-        if (!currentKey || resetting) return;
+        if (!currentKey || resetting || !ownsCurrent()) return;
         const target = activeStorage();
         if (!target) return;
         try {
@@ -173,6 +201,7 @@ export function persistScoped<T>(
         const hadScope = everScoped;
 
         currentKey = key;
+        currentScope = next;
         if (key !== null) everScoped = true;
 
         // An SSR handoff outranks the store on the FIRST scoping, whether or
@@ -182,7 +211,27 @@ export function persistScoped<T>(
         // fires — so a returning visitor to an SSR app would be served last
         // session's strings for the whole session. Persist the fresh value
         // instead, so the next load starts from it.
+        // The signal already holds this scope's value, labelled by its writer
+        // (a seed or fetch for this locale, published while the cache was
+        // scoped elsewhere). It is newer than anything stored, so keep it and
+        // save it here rather than adopting a stale copy or resetting it away.
+        if (key !== null && owner !== undefined && owns(owner, next as string)) {
+            const target = activeStorage();
+            if (target) {
+                try {
+                    target.setItem(key, JSON.stringify(signal.get()));
+                } catch {
+                    // Quota — in-memory stays authoritative.
+                }
+            }
+            return;
+        }
+
+        // A seed for ANOTHER locale still outranks the store in memory (it is
+        // what this page was handed), but it is not this scope's catalog, so it
+        // is not saved under this scope's key.
         if (!hadScope && seededBeforeScope && key !== null) {
+            if (!ownsCurrent()) return;
             const target = activeStorage();
             if (target) {
                 try {
@@ -195,6 +244,7 @@ export function persistScoped<T>(
         }
 
         if (stored !== undefined) {
+            owner = next as string;
             signal.set(stored as T);
             return;
         }
@@ -202,6 +252,7 @@ export function persistScoped<T>(
         // scope — otherwise this is the first scoping and there is nothing to
         // discard.
         if (hadScope && key !== null) {
+            owner = undefined;
             resetting = true;
             try {
                 signal.set(structuredCloneShim(initial));
@@ -209,6 +260,11 @@ export function persistScoped<T>(
                 resetting = false;
             }
         }
+    };
+
+    const setOwned = (value: T, valueOwner: string): void => {
+        owner = valueOwner;
+        signal.set(value);
     };
 
     // Drop the unscoped keys this replaces, once, when identity first arrives.
@@ -229,6 +285,7 @@ export function persistScoped<T>(
         const originalScope = scope;
         return {
             signal,
+            setOwned,
             scope: (next) => {
                 originalScope(next);
                 if (next !== null) drop();
@@ -236,7 +293,7 @@ export function persistScoped<T>(
         };
     }
 
-    return { signal, scope };
+    return { signal, scope, setOwned };
 }
 
 /** Current key first, then the legacy one. `undefined` means "nothing usable stored". */

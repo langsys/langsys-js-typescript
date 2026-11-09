@@ -155,6 +155,107 @@ describe('an SSR-seeded catalog survives the first scoping', () => {
     });
 });
 
+describe('a catalog is saved only under its own locale’s key', () => {
+    /**
+     * A seed or fetch names the locale its catalog is for (`publishCatalog`). One
+     * landing while the cache is scoped to another locale used to be saved under
+     * that locale's key, and while catalog fetches failed every later visit
+     * served it as that locale: a Spanish seed with an Italian user store left
+     * Spanish under `…:it-it`.
+     */
+    it('a catalog for another locale renders but is not saved under the current scope', async () => {
+        const data = installStorage();
+        const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        publishCatalog(catalog('Hello', 'Hola'), 'es-es');
+
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('Hola');
+        expect(data['langsys:translations:p1:it-it']).toBeUndefined();
+    });
+
+    it('control: a catalog for the current scope’s locale is saved', async () => {
+        const data = installStorage();
+        const { scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        publishCatalog(catalog('Hello', 'Ciao'), 'it-it');
+
+        expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao');
+    });
+
+    it('an in-place edit of a mislabelled catalog is not saved under the current scope either', async () => {
+        // The flush writes the catalog back with its new keys marked known, through a plain `set`.
+        const data = installStorage();
+        const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        publishCatalog(catalog('Hello', 'Hola'), 'es-es');
+        sTranslations.set({ ...sTranslations.get() });
+
+        expect(data['langsys:translations:p1:it-it']).toBeUndefined();
+    });
+
+    it('scoping to the catalog’s own locale keeps it and saves it there, over a stale copy', async () => {
+        const data = installStorage({ 'langsys:translations:p1:es-es': JSON.stringify(catalog('Hello', 'STALE')) });
+        const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        publishCatalog(catalog('Hello', 'Hola'), 'es-es');
+        scopeCatalogCache('p1:es-es');
+
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('Hola');
+        expect(JSON.parse(data['langsys:translations:p1:es-es']!).__uncategorized__.Hello).toBe('Hola');
+    });
+
+    it('a seed for another locale before the first scoping is not saved under it', async () => {
+        const data = installStorage({ 'langsys:translations:p1:it-it': JSON.stringify(catalog('Hello', 'Ciao')) });
+        const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        publishCatalog(catalog('Hello', 'Hola'), 'es-es');
+        scopeCatalogCache('p1:it-it');
+
+        // The seed is what this page was handed, so it still renders until the right catalog loads.
+        expect(sTranslations.get().__uncategorized__?.['Hello']).toBe('Hola');
+        expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao');
+    });
+
+    it('a catalog fetched for one project is not saved under another project’s same locale', async () => {
+        const data = installStorage();
+        const { scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p2:es-es');
+        publishCatalog(catalog('Hello', 'P1-Hola'), 'p1:es-es');
+
+        expect(data['langsys:translations:p2:es-es']).toBeUndefined();
+    });
+
+    it('leaving a scope drops the label, so the reset catalog is never saved as the labelled locale’s', async () => {
+        const data = installStorage();
+        const { scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p1:it-it');
+        publishCatalog(catalog('Hello', 'Hola'), 'es-es');
+        scopeCatalogCache('p1:fr-fr'); // nothing stored: reset to the empty catalog
+        scopeCatalogCache('p1:es-es');
+
+        expect(data['langsys:translations:p1:es-es']).toBeUndefined();
+    });
+
+    it('a stored copy adopted on scoping is that scope’s, so later edits save there', async () => {
+        const data = installStorage({ 'langsys:translations:p1:it-it': JSON.stringify(catalog('Hello', 'Ciao')) });
+        const { sTranslations, scopeCatalogCache, publishCatalog } = await freshLoad();
+
+        scopeCatalogCache('p1:es-es');
+        publishCatalog(catalog('Hello', 'Hola'), 'es-es');
+        scopeCatalogCache('p1:it-it');
+        sTranslations.set(catalog('Hello', 'Ciao-EDITED'));
+
+        expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao-EDITED');
+        expect(JSON.parse(data['langsys:translations:p1:es-es']!).__uncategorized__.Hello).toBe('Hola');
+    });
+});
+
 describe('init() restores the cache before authorization answers', () => {
     /**
      * A returning visitor's catalog is in the cache under the project and locale `init()`
@@ -317,5 +418,57 @@ describe('init() restores the cache before authorization answers', () => {
         unsubscribe();
 
         expect(posted).toEqual(['Gone']);
+    });
+
+    // Both ways a seed reached the wrong key, with every catalog fetch failing (an outage),
+    // which is when a mislabelled copy was served on every later visit.
+    const OUTAGE = { status: false, errors: ['HTTP 503'] };
+
+    it('initialTranslations for another locale are not saved under the user’s locale', async () => {
+        const { LangsysApp, createSignal, authorize, data, t } = await page({}, { 'it-it': OUTAGE });
+
+        const done = LangsysApp.init({
+            projectid: 'p1',
+            key: 'k',
+            UserLocaleStore: createSignal('it-it'),
+            initialTranslations: catalog('Hello', 'Hola'),
+            initialTranslationsLocale: 'es-es',
+        });
+        authorize.resolve(AUTHORIZED);
+        await done;
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(t('Hello')).toBe('Hola');
+        expect(data['langsys:translations:p1:it-it'] ?? '').not.toContain('Hola');
+    });
+
+    it('a catalog seeded before init() for another locale is not saved under the user’s locale', async () => {
+        const { LangsysApp, createSignal, authorize, data } = await page({}, { 'it-it': OUTAGE });
+
+        LangsysApp.seedCatalog(catalog('Hello', 'Hola'), 'es-es');
+        const done = LangsysApp.init({ projectid: 'p1', key: 'k', UserLocaleStore: createSignal('it-it') });
+        authorize.resolve(AUTHORIZED);
+        await done;
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(data['langsys:translations:p1:it-it'] ?? '').not.toContain('Hola');
+    });
+
+    it('control: a catalog fetched for the user’s locale after a mismatched seed is saved there', async () => {
+        const { LangsysApp, createSignal, authorize, data, t } = await page({}, { 'it-it': live({ Hello: 'Ciao' }) });
+
+        const done = LangsysApp.init({
+            projectid: 'p1',
+            key: 'k',
+            UserLocaleStore: createSignal('it-it'),
+            initialTranslations: catalog('Hello', 'Hola'),
+            initialTranslationsLocale: 'es-es',
+        });
+        authorize.resolve(AUTHORIZED);
+        await done;
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(t('Hello')).toBe('Ciao');
+        expect(JSON.parse(data['langsys:translations:p1:it-it']!).__uncategorized__.Hello).toBe('Ciao');
     });
 });

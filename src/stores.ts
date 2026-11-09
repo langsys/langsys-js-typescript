@@ -27,10 +27,14 @@ const initialTranslations: iCategories = {
  * never be read again, and a stale catalog sitting in localStorage forever is
  * not something anyone goes looking for.
  */
-const catalogCache = persistScoped<iCategories>('langsys:translations', initialTranslations, [
-    'translations',
+const catalogCache = persistScoped<iCategories>(
     'langsys:translations',
-]);
+    initialTranslations,
+    ['translations', 'langsys:translations'],
+    // A catalog is owned by its scope, `<projectid>:<locale>`, or by a bare locale:
+    // a seed can arrive before init() names the project. A locale holds no colon.
+    (owner, scope) => owner === scope || owner === scope.slice(scope.lastIndexOf(':') + 1)
+);
 
 /**
  * The request scope the current code renders in, as the two signals below need
@@ -80,6 +84,15 @@ function followScope<T>(page: Signal<T>, pick: (scope: { catalog: iCategories; l
  * `subscribe` are the page's.
  */
 export const sTranslations: Signal<iCategories> = followScope(catalogCache.signal, (scope) => scope.catalog);
+
+/**
+ * Publish a catalog and name whose it is: a `catalogScopeOf` scope, or a bare
+ * canonical locale when the project is not known yet (a seed before `init()`).
+ * The cache saves it only under a key that owner owns: a seed or fetch landing
+ * while the cache is scoped to another locale renders without being saved as
+ * that locale's catalog.
+ */
+export const publishCatalog = (catalog: iCategories, owner: string): void => catalogCache.setOwned(catalog, owner);
 
 /** The page's own catalog, whatever scope is current: for the page's flush and write-back. */
 export const pageCatalog = (): iCategories => catalogCache.signal.get();

@@ -13,7 +13,7 @@ The catalog is a project's translations for one locale, by category: `{ [categor
 
 ## The browser cache
 
-In a browser the catalog is cached in `localStorage` under its project and locale, as `langsys:translations:<projectid>:<locale>`. A reload renders that catalog while `LangsysApp.init()` authorizes, and the fetched catalog then replaces it. So a page never shows another project's or locale's cached text. The cache holds translations only; whether the session may write is asked of the server every time. Where there is no `localStorage`, `setPersistStorage(storage)` supplies a synchronous one ([init-config.md](./init-config.md)).
+In a browser the catalog is cached in `localStorage` under its project and locale, as `langsys:translations:<projectid>:<locale>`. A reload renders that catalog while `LangsysApp.init()` authorizes, and the fetched catalog then replaces it. So a page never shows another project's or locale's cached text, and a catalog seeded for one locale is never cached as another's. The cache holds translations only; whether the session may write is asked of the server every time. Where there is no `localStorage`, `setPersistStorage(storage)` supplies a synchronous one ([init-config.md](./init-config.md)).
 
 ## Putting a catalog in place before the first render
 
