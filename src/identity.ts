@@ -119,6 +119,15 @@ export const TRANSLATABLE_ATTRIBUTES = [
  * as translatable phrases and sent for machine translation. Added by spec 8.0.1
  * after v8 shipped without it.
  *
+ * `<plaintext>` is here because parsers read its body three ways. A browser
+ * reads everything after a `<plaintext>` start tag, to the end of the document,
+ * as one text node and shows it as written; libxml2 before 2.14 parses that
+ * text as markup, as `happy-dom` does; libxml2 2.14 and later make it
+ * one CDATA node, written back raw. So a server SDK would derive another id from
+ * it than this core does, and a translation written into it would be served as
+ * live markup. Excluded, every parser agrees by construction, at the cost that
+ * the text after one stays in the base language. The element is obsolete.
+ *
  * `<svg>` IS DELIBERATELY ABSENT and must stay absent. It is the exclusion people
  * expect that is wrong: an `<svg><text>` renders visible words to a reader, so its
  * text is translated like any other. 8.0.1 states that behaviourally because the
@@ -128,7 +137,7 @@ export const TRANSLATABLE_ATTRIBUTES = [
  * and every icon-bearing heading, link and list item lost its words. Adding `svg`
  * here would reproduce that, which is what `tokenizer-convergence` now pins.
  */
-export const NON_TRANSLATABLE_ELEMENTS = ['script', 'style', 'template', 'noscript', 'math'];
+export const NON_TRANSLATABLE_ELEMENTS = ['script', 'style', 'template', 'noscript', 'math', 'plaintext'];
 
 /**
  * True when an element opts out of translation entirely — it and its subtree

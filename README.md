@@ -377,7 +377,7 @@ Attributes honored on contained elements:
 
 - `translate="no"` (case-insensitive), or `data-notrans` — `langsys-php`'s author-facing alias, honored here so an SSR-rendered page opts out consistently in both SDKs. Presence means intent; an explicit `="false"` or `="0"` opts back in.
 - Elements marked this way, and their children, are skipped entirely.
-- `<script>`, `<style>`, `<template>`, `<noscript>` and `<math>` are always skipped: code and notation are not prose. Text inside an `<svg>` is translated like any other.
+- `<script>`, `<style>`, `<template>`, `<noscript>`, `<plaintext>` and `<math>` are always skipped: code and notation are not prose, and parsers disagree about what a `<plaintext>` holds (everything after its start tag, to the end of the document). Text inside an `<svg>` is translated like any other.
 
 > **`Translate` tokenizes per text node — so inline markup splits a sentence.**
 >

@@ -157,10 +157,10 @@ describe('(a) code-bearing subtrees are not prose', () => {
         // above is what fails if it does, and this states the contract directly so
         // the reason survives next to it.
         expect(NON_TRANSLATABLE_ELEMENTS).not.toContain('svg');
-        expect(NON_TRANSLATABLE_ELEMENTS).toEqual(['script', 'style', 'template', 'noscript', 'math']);
+        expect(NON_TRANSLATABLE_ELEMENTS).toEqual(['script', 'style', 'template', 'noscript', 'math', 'plaintext']);
     });
 
-    it('control: ordinary markup is still tokenized — the exclusion is five tags, not a mood', () => {
+    it('control: ordinary markup is still tokenized — the exclusion is six tags, not a mood', () => {
         // The rule names this as the whole test. Excluding too much is the
         // failure mode on the other side of TOK-1, and it looks identical from
         // the outside: content that is simply never translated.
