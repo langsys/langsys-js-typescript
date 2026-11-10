@@ -518,12 +518,14 @@ function renderWithoutFormatter(nodes: IcuNode[], params: Record<string, unknown
 
 /**
  * The message with every plain argument that is given a number turned into a number
- * argument, so `{n}` renders `1.234,5` in German as it does outside ICU and as ICU4C's
- * MessageFormat (langsys-php) renders it. intl-messageformat formats only `{n, number}`
- * and `#`, and writes a number in a plain `{n}`, or a count written as `{count}` inside its
- * own plural, as `String(n)`. The server adds ICU to a translation per language, so an app
- * can't know which of its sentences that would leave unformatted. A string stays a string,
- * which is how a caller opts out, as on the simple path.
+ * argument, so `{n}` renders `1.234,5` in German as it does outside ICU and as langsys-php
+ * renders it (it formats a plain number with NumberFormatter before ICU sees it).
+ * intl-messageformat formats only `{n, number}` and `#`, and writes a number in a plain
+ * `{n}`, or a count written as `{count}` inside its own plural, as `String(n)`. The server
+ * adds ICU to a translation per language, so an app can't know which of its sentences that
+ * would leave unformatted. A string stays a string, which is how a caller opts out, as on
+ * the simple path. A name the message also selects on stays as written, as langsys-php
+ * leaves it: a select's value is a key, and `{n}` beside it repeats that key.
  */
 function numbersFormatted(message: IntlMessageFormat, params: Record<string, unknown>, locale: string): IntlMessageFormat {
     const ast = (message as unknown as { ast?: unknown }).ast;
@@ -533,20 +535,26 @@ function numbersFormatted(message: IntlMessageFormat, params: Record<string, unk
 }
 
 /** `nodes` with each plain argument given a number made a number argument; the same array when none is. */
-function withNumberArgs(nodes: IcuNode[], params: Record<string, unknown>): IcuNode[] {
+function withNumberArgs(nodes: IcuNode[], params: Record<string, unknown>, selected: Set<string> = selectNames(nodes)): IcuNode[] {
     let changed = false;
     const out = nodes.map((node) => {
-        if (node.type === ICU_ARGUMENT && node.value !== undefined && params && isNumeric(params[node.value])) {
+        const name = node.value;
+        if (node.type === ICU_ARGUMENT && name !== undefined && !selected.has(name) && params && isNumeric(params[name])) {
             changed = true;
             return { ...node, type: ICU_NUMBER, style: null };
         }
-        // A tag needs no walk: with no handler for it the formatter throws, and the phrase
-        // renders without the formatter (ICU-6), which formats numbers itself.
+        // A tag reaches the formatter only when the caller passes a handler for it.
+        if (node.type === ICU_TAG && node.children) {
+            const children = withNumberArgs(node.children, params, selected);
+            if (children === node.children) return node;
+            changed = true;
+            return { ...node, children };
+        }
         if ((node.type === ICU_SELECT || node.type === ICU_PLURAL) && node.options) {
             let branchChanged = false;
             const options: Record<string, { value: IcuNode[] }> = {};
             for (const [key, branch] of Object.entries(node.options)) {
-                const value = withNumberArgs(branch.value, params);
+                const value = withNumberArgs(branch.value, params, selected);
                 if (value !== branch.value) branchChanged = true;
                 options[key] = { ...branch, value };
             }
@@ -557,6 +565,16 @@ function withNumberArgs(nodes: IcuNode[], params: Record<string, unknown>): IcuN
         return node;
     });
     return changed ? out : nodes;
+}
+
+/** Every name a `select` in these nodes selects on, at any depth. */
+function selectNames(nodes: IcuNode[], names: Set<string> = new Set()): Set<string> {
+    for (const node of nodes) {
+        if (node.type === ICU_SELECT && node.value !== undefined) names.add(node.value);
+        if (node.children) selectNames(node.children, names);
+        for (const branch of Object.values(node.options ?? {})) selectNames(branch.value, names);
+    }
+    return names;
 }
 
 function isNumeric(value: unknown): boolean {

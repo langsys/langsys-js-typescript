@@ -185,6 +185,17 @@ describe('interpolate — mixed ICU + simple slots', () => {
         expect(interpolate('{g, select, f {Sie hat {n}} other {Hat {n}}}', { n: 1234.5 }, 'de-DE')).toBe('Hat 1.234,5');
     });
 
+    it('a number in a tag the caller handles is formatted too', () => {
+        const b = (chunks: unknown[]) => `[${chunks.join('')}]`;
+        expect(interpolate('{g, select, other {<b>{n}</b>}}', { g: 'x', n: 1234.5, b } as never, 'de-DE')).toBe('[1.234,5]');
+    });
+
+    it('a name the phrase also selects on is written as given, as langsys-php writes it', () => {
+        expect(interpolate('{n, select, other {o {n}}}', { n: 1234.5 }, 'de-DE')).toBe('o 1234.5');
+        expect(interpolate('{g, select, other {{n, select, 1000 {k {n}} other {x}}}}', { g: 'x', n: 1000 }, 'de-DE')).toBe('k 1000');
+        expect(interpolate('{n, plural, one {# item} other {{n} items}}', { n: 1234 }, 'de-DE')).toBe('1.234 items');
+    });
+
     it('control: a number passed as a string is written as given', () => {
         expect(interpolate('{g, select, other {Code {id}}}', { g: 'x', id: '12345' }, 'de-DE')).toBe('Code 12345');
     });
