@@ -2,7 +2,7 @@ import { seedFile, type ProjectSeed, type WorldSeed } from './worlds.js';
 
 // Every locale a session or request scope here is current in, since the API serves a catalog only
 // at a project's own locales.
-const P: ProjectSeed = { base_locale: 'en-us', target_locales: ['fr-fr', 'es-es', 'de-de', 'he-il', 'en-us-posix'] };
+const P: ProjectSeed = { base_locale: 'en-us', target_locales: ['fr-fr', 'es-es', 'de-de', 'he-il', 'zh-hant-tw'] };
 
 const world = (format: ProjectSeed['locale_code_format'], count: number, second = false): WorldSeed => ({
     projects: { p1: { ...P, locale_code_format: format }, ...(second ? { p2: P } : {}) },

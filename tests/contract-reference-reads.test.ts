@@ -26,9 +26,10 @@ import { resetSdk, session as startSession, sleep } from './helpers/sdk-session.
 let fx: ContractFixture;
 
 const REFERENCE = {
-    // en-us-posix is in the API's Locale table: WIRE-3's form keeps it as the API stores it.
+    // zh-hant-tw is in the API's Locale table: WIRE-3's form keeps it as the API stores it, its
+    // script subtag lowercased.
     // he-il is what the core's current locale is for a store holding the legacy alias iw-IL.
-    locales: ['fr-fr', 'es-es', 'es-cr', 'en-us', 'de-de', 'en-us-posix', 'he-il'],
+    locales: ['fr-fr', 'es-es', 'es-cr', 'en-us', 'de-de', 'zh-hant-tw', 'he-il'],
     countries: [{ code: 'ES' }, { code: 'CR' }, { code: 'US' }],
     dial_codes: [{ country_code: 'ES', dial_code: '34' }, { country_code: 'CR', dial_code: '506' }],
     currencies: [{ code: 'EUR', name: 'Euro', symbol: '€' }, { code: 'CRC', name: 'Costa Rican Colón', symbol: '₡' }],
@@ -139,14 +140,14 @@ describe.each(LISTS)('REF-1 against the contract fixture: $name', ({ name, route
         expect(await scope.run(() => call())).toEqual(await fixtureList(route, 'he-il'));
     });
 
-    it('with no locale, a store or scope holding en-US-POSIX answers en-us-posix, the code the API holds', async () => {
+    it('with no locale, a store or scope holding zh-Hant-TW answers zh-hant-tw, the code the API holds', async () => {
         resetSdk();
-        await LangsysApp.init({ projectid: P(), key: K('k1'), UserLocaleStore: createSignal('en-US-POSIX'), baseLocale: 'en', apiUrl: fx.baseUrl });
-        const posix = await fixtureList(route, 'en-us-posix');
-        expect(posix).not.toEqual(empty);
-        expect(await call()).toEqual(posix);
-        const scope = await createRequestScope({ locale: 'en_US_POSIX' });
-        expect(await scope.run(() => call())).toEqual(posix);
+        await LangsysApp.init({ projectid: P(), key: K('k1'), UserLocaleStore: createSignal('zh-Hant-TW'), baseLocale: 'en', apiUrl: fx.baseUrl });
+        const traditional = await fixtureList(route, 'zh-hant-tw');
+        expect(traditional).not.toEqual(empty);
+        expect(await call()).toEqual(traditional);
+        const scope = await createRequestScope({ locale: 'zh_Hant_TW' });
+        expect(await scope.run(() => call())).toEqual(traditional);
     });
 
     it.each(['iw-IL', ' fr-FR '])('a given display locale is normalised as the current one: a given %j answers the list a store holding it answers', async (given) => {
@@ -368,13 +369,13 @@ describe.each(LOCALE_FORMS)('REF-1 against the contract fixture: $name answers t
         expect(JSON.stringify(list)).not.toMatch(/"code":"[a-z]+[_-][A-Z]/);
     });
 
-    it('a code is answered in WIRE-3’s form, as the API stores it: en-us-posix is listed and can be asked for', async () => {
+    it('a code is answered in WIRE-3’s form, as the API stores it: zh-hant-tw is listed and can be asked for', async () => {
         await take('bcp47');
         await configured();
-        expect(JSON.stringify(await call('en-us'))).toContain('"code":"en-us-posix"');
-        const posix = await call('en-US-POSIX');
-        expect(posix).toEqual(await fixtureList(route, 'en-us-posix'));
-        expect(posix).not.toEqual(empty);
+        expect(JSON.stringify(await call('en-us'))).toContain('"code":"zh-hant-tw"');
+        const traditional = await call('zh-Hant-TW');
+        expect(traditional).toEqual(await fixtureList(route, 'zh-hant-tw'));
+        expect(traditional).not.toEqual(empty);
     });
 
     it('a display locale the API does not hold answers the empty value, held like any answer', async () => {
@@ -402,7 +403,7 @@ describe('REF-1 against the contract fixture: what reads the held lists', () => 
         const esCr = await row('locales/data', 'es-es', 'es-cr');
         expect(await LangsysApp.getLocaleNameWithLookup('es-CR')).toBe(esCr.locale_name);
         expect(LangsysApp.getLocaleName('es-cr', true)).toBe(esCr.lang_name);
-        expect(await LangsysApp.getLocaleNameWithLookup('en-US-POSIX', false, 'en-us')).toBe((await row('locales/data', 'en-us', 'en-us-posix')).locale_name);
+        expect(await LangsysApp.getLocaleNameWithLookup('zh-Hant-TW', false, 'en-us')).toBe((await row('locales/data', 'en-us', 'zh-hant-tw')).locale_name);
         // A legacy alias names the code the API lists for it.
         expect(await LangsysApp.getLocaleNameWithLookup('iw-IL', false, 'en-us')).toBe((await row('locales/data', 'en-us', 'he-il')).locale_name);
     });
