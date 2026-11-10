@@ -135,6 +135,19 @@ export interface iLangsysInitConfig {
     messagesCategory?: string;
 
     /**
+     * The category server messages were registered under before `messagesCategory`
+     * (spec MSG-6, MOVE-1), set the same as on the server: `''` when they had none,
+     * absent or `null` when the category did not move. `renderServerMessage` passes
+     * it to `t()` in the move form, `inCategory(messagesCategory, { previousCategory })`,
+     * so a template with no translation under `messagesCategory` renders the previous
+     * category's entry (MOVE-4), before it falls back to the entry's `message`, and a
+     * miss registers under `messagesCategory` carrying `previous_category`. Whether a
+     * template is registered is decided under `messagesCategory` alone. Once the
+     * catalog has the templates' translations there, it has no effect.
+     */
+    messagesPreviousCategory?: string | null;
+
+    /**
      * Pre-fetched translation data to bypass the initial API call.
      * Useful for SSR scenarios to avoid duplicate fetches.
      */
@@ -181,6 +194,9 @@ export interface iLangsysConfig {
 
     /** The category server messages render under (MSG-6). */
     messagesCategory?: string;
+
+    /** The category server messages were registered under before `messagesCategory` (MSG-6); `undefined` for none. */
+    messagesPreviousCategory?: string;
 
     /**
      * Token creation behavior during SSR.

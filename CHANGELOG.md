@@ -1,5 +1,9 @@
 ## 0.7.4 - unreleased
 
+### What's new
+
+- **Server messages can move to another category without losing their translations** (spec 8.7.1, MSG-5, MSG-6). Set `messagesPreviousCategory` in `init()` beside `messagesCategory`, to the category the server registered its templates under before (`''` if they had none), the same as the server's setting. `renderServerMessage` then calls `t()` with `inCategory(messagesCategory, { previousCategory })`, so a template not yet translated under the new category renders the old category's translation, and falls back to the entry's `message` only when neither has one. Whether a template is registered is still decided under the new category alone: a template the catalog lacks there registers under it with `previous_category`, so the API moves its translations. Once the catalog has the templates' translations under the new category the option has no effect and can be removed. Nothing changes when it is not set.
+
 ### Fixed
 
 - **A number in a plain placeholder of an ICU translation is formatted for the locale.** Once a translation was ICU, a plural or a gender `select`, a plain `{n}` given a number rendered it as JavaScript writes it, `1234.5` where German reads `1.234,5`, and so did a count written as `{count}` inside its own plural rather than as `#`. The same `{n}` outside ICU was formatted, and the server adds ICU to a translation per language, so an app could not tell which of its sentences would lose the formatting. Every plain argument given a number (or a bigint) now formats with `Intl.NumberFormat` in the catalog's locale, as it does outside ICU and as langsys-php does. A number passed as a string is still written as given, and so is a name the phrase also selects on (`{n, select, …}`), as langsys-php writes it. Found by the langsys-skill agent.

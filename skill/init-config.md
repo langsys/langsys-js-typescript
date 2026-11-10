@@ -35,6 +35,7 @@ Call it once, before anything translates. It resolves an `iLangsysResponse`: `st
 | `initialTranslationsLocale` | `string` | none | The locale `initialTranslations` holds. Pass both or neither |
 | `legacyKeys` | `LegacyKeyFile[]` | none | Keep i18next or vue-i18n key files during a migration ([migration.md](./migration.md)) |
 | `messagesCategory` | `string` | `'Errors'` | The category server message templates use ([catalog.md](./catalog.md)) |
+| `messagesPreviousCategory` | `string \| null` | none | The category the templates were registered under before `messagesCategory`, `''` for none, the same as the server's; they render from it until translated under the new one ([catalog.md](./catalog.md)) |
 | `emulateFailureToLoad` | `boolean` | `false` | Test hook: the catalog load fails |
 
 Locales passed in any form are canonicalized where they enter (`en-US` becomes `en-us`, [locales.md](./locales.md)).

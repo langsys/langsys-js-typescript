@@ -522,3 +522,40 @@ describe('a moved block registration overlapping an unmoved one in flight (MOVE-
         expect(sent).toHaveLength(1);
     });
 });
+
+describe('MSG-6: a server message under a configured previous category registers under the new category', () => {
+    const entry = { template: 'The password field is required.', message: 'Das Passwortfeld ist erforderlich.' };
+    let saved: { messagesCategory?: string; messagesPreviousCategory?: string };
+
+    beforeEach(() => {
+        saved = { messagesCategory: configStore.messagesCategory, messagesPreviousCategory: configStore.messagesPreviousCategory };
+        Object.assign(configStore, { messagesCategory: 'Messages', messagesPreviousCategory: 'Errors' });
+    });
+    afterEach(() => {
+        Object.assign(configStore, saved);
+    });
+
+    it('held only under Errors, it renders that translation and registers under Messages, carrying previous_category Errors', async () => {
+        catalog({ Errors: { [entry.template]: 'El campo contraseña es obligatorio.' } });
+        expect(LangsysApp.renderServerMessage(entry)).toBe('El campo contraseña es obligatorio.');
+        await settle();
+        expect(sent).toEqual([expect.objectContaining({ type: 'phrase', phrase: entry.template, category: 'Messages', previous_category: 'Errors' })]);
+    });
+
+    it('held under Messages with no translation yet, it renders from Errors and is not registered again', async () => {
+        catalog({ Messages: { [entry.template]: null }, Errors: { [entry.template]: 'El campo contraseña es obligatorio.' } });
+        expect(LangsysApp.renderServerMessage(entry)).toBe('El campo contraseña es obligatorio.');
+        await settle();
+        expect(sent).toEqual([]);
+    });
+
+    it('control: with no previous category configured, the miss registers with no previous_category', async () => {
+        configStore.messagesPreviousCategory = undefined;
+        catalog({ Errors: { [entry.template]: 'El campo contraseña es obligatorio.' } });
+        expect(LangsysApp.renderServerMessage(entry)).toBe(entry.message);
+        await settle();
+        expect(sent).toHaveLength(1);
+        expect(sent[0]).toMatchObject({ phrase: entry.template, category: 'Messages' });
+        expect(sent[0]).not.toHaveProperty('previous_category');
+    });
+});

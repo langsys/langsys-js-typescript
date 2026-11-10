@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LangsysAppAPI } from '../src/api.js';
+import { isCategoryRef, type CategoryRef } from '../src/category-ref.js';
 import { LangsysApp } from '../src/langsys-app.js';
+import { createSignal } from '../src/signal.js';
 import {
     DEFAULT_SERVER_MESSAGE_CATEGORY,
     fillTemplate,
@@ -208,6 +211,104 @@ describe('MSG-5 and MSG-6: rendering', () => {
         expect(LangsysApp.renderServerMessage(entry)).toBe(entry.message);
         publish({ Validation: { [entry.template!]: 'El campo contraseña es obligatorio.' } }, 'es');
         expect(LangsysApp.renderServerMessage(entry)).toBe('El campo contraseña es obligatorio.');
+    });
+});
+
+describe('MSG-6 and MSG-5: a renamed category names its previous one, and a client renders from it', () => {
+    // A server-localised `message`, so the fallback to it is told apart from the template rendered.
+    const entry: ServerMessage = { template: 'The password field is required.', message: 'Das Passwortfeld ist erforderlich.', field: 'password', code: 'Required' };
+    const template = entry.template!;
+    const OLD = 'El campo contraseña es obligatorio.';
+    const NEW = 'Falta la contraseña.';
+
+    let savedPrevious: string | undefined;
+    const render = (category?: string) => LangsysApp.renderServerMessage(entry, category);
+
+    beforeEach(() => {
+        savedPrevious = configStore.messagesPreviousCategory;
+        Object.assign(configStore, { messagesCategory: 'Messages', messagesPreviousCategory: 'Errors' });
+        for (const m of ['log', 'warn', 'error', 'info', 'group', 'groupCollapsed', 'groupEnd'] as const) {
+            vi.spyOn(console, m).mockImplementation(() => {});
+        }
+    });
+
+    afterEach(() => {
+        configStore.messagesPreviousCategory = savedPrevious;
+    });
+
+    it('the spec’s Test: with the category Messages and previous category Errors, a translation held only under Errors renders', () => {
+        publish({ Errors: { [template]: OLD } }, 'es');
+        expect(render()).toBe(OLD);
+    });
+
+    it('control: with no previous category configured, the same catalog falls back to message', () => {
+        configStore.messagesPreviousCategory = undefined;
+        publish({ Errors: { [template]: OLD } }, 'es');
+        expect(render()).toBe(entry.message);
+    });
+
+    it('the new category wins once it holds a translation', () => {
+        publish({ Messages: { [template]: NEW }, Errors: { [template]: OLD } }, 'es');
+        expect(render()).toBe(NEW);
+    });
+
+    it('the template held under the new category with no translation yet still renders the previous entry (MOVE-4)', () => {
+        publish({ Messages: { [template]: null } as never, Errors: { [template]: OLD } }, 'es');
+        expect(render()).toBe(OLD);
+    });
+
+    it('with neither translated, it falls back to message, never to the template', () => {
+        publish({ Messages: {}, Errors: { [template]: '' } }, 'es');
+        expect(render()).toBe(entry.message);
+    });
+
+    it('a previous category of "" reads the uncategorized entries', () => {
+        configStore.messagesPreviousCategory = '';
+        publish({ __uncategorized__: { [template]: OLD } }, 'es');
+        expect(render()).toBe(OLD);
+    });
+
+    it('it reaches t() in the core’s move form, inCategory(Messages, { previousCategory: Errors })', () => {
+        publish({ Errors: { [template]: OLD } }, 'es');
+        const real = LangsysApp.Translations.tSignal.get() as unknown as (...args: unknown[]) => string;
+        const calls: unknown[][] = [];
+        vi.spyOn(LangsysApp.Translations.tSignal, 'get').mockReturnValue(((...args: unknown[]) => (calls.push(args), real(...args))) as never);
+        render();
+        expect(calls).toHaveLength(1);
+        const [phrase, category, params] = calls[0]!;
+        expect(phrase).toBe(template);
+        expect(isCategoryRef(category)).toBe(true);
+        expect({ ...(category as CategoryRef) }).toEqual({ category: 'Messages', previousCategory: 'Errors' });
+        expect(params).toEqual({});
+    });
+
+    // Registration needs a page to flush from, so its cases are in category-move (happy-dom).
+
+    it('it is the configured category’s: a category given that differs names no move, and one equal to it does', () => {
+        publish({ Errors: { [template]: OLD } }, 'es');
+        expect(render('Validation')).toBe(entry.message);
+        expect(render('Messages')).toBe(OLD);
+    });
+
+    it('init takes it beside messagesCategory: a string, "" included, is the previous category; null and absent are no move', async () => {
+        vi.spyOn(LangsysAppAPI, 'validate').mockResolvedValue({ status: false, errors: ['offline'] });
+        vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+        const app = LangsysApp as unknown as { config: unknown };
+        try {
+            for (const [previous, catalog, expected] of [
+                ['Errors', { Errors: { [template]: OLD } }, OLD],
+                ['', { __uncategorized__: { [template]: OLD } }, OLD],
+                [null, { Errors: { [template]: OLD } }, entry.message],
+                [undefined, { Errors: { [template]: OLD } }, entry.message],
+            ] as const) {
+                await LangsysApp.init({ projectid: 'p', key: 'k', UserLocaleStore: createSignal('es'), messagesCategory: 'Messages', messagesPreviousCategory: previous });
+                publish(catalog, 'es');
+                expect(render(), String(previous)).toBe(expected);
+            }
+        } finally {
+            // init() gave the app a config of its own; the rest of this file sets the shared one.
+            app.config = configStore;
+        }
     });
 });
 

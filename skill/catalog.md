@@ -53,5 +53,6 @@ if (!res.ok) {
 - **`renderServerMessage(entry, category?)`** renders the `template` through `t()`, filled from `params`, in the current locale. With no translation it shows `message`, the framework's own text. An entry with no `template` shows its `message` and isn't looked up. A count param drives an ICU plural in the translation with no ICU in your code.
 - **Branch on `code`, never on the text.** It's the framework's identifier, so it holds whatever language the text is in.
 - **The category is `Errors`.** If your server registers templates under another, set the same one with `messagesCategory` in `init()`, or every lookup misses.
+- **A renamed category names the old one.** Set `messagesPreviousCategory` in `init()` to the category the templates were registered under before (`''` for none), the same as the server's. A template not yet translated under `messagesCategory` renders the old category's translation, before falling back to `message`, and its registration carries the move. Whether a template is registered is still decided under `messagesCategory` alone, and once the catalog has their translations there the option has no effect.
 
 `resolveServerMessages`, `toServerMessage`, `templateMarkers` and `fillTemplate` are on `langsys-js-typescript/pure` too, with no DOM.

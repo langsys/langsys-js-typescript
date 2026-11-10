@@ -1,4 +1,5 @@
 import { LangsysAppAPI, LangsysConfigurationError } from './api.js';
+import { categoryArg, normalizePreviousCategory, type CategoryRef } from './category-ref.js';
 import { canonicalizeLocale, maximizedLangScript } from './locale.js';
 import { Logger, logger } from './logger.js';
 import { autoDiscovery, batchLimit, catalogScopeOf, config as configStore, configured, currentlyLoadedLocale, discoveryBaseLocaleOnly, pageCatalog, pageLocale, publishCatalog, scopeCatalogCache, setLoadedLocale } from './stores.js';
@@ -257,21 +258,33 @@ class LangsysAppClass {
      * `template` is not looked up and shows its `message`. `message` is never
      * used as a lookup key.
      *
+     * With `messagesPreviousCategory` configured (MSG-6), `t()` is called in the
+     * move form, `inCategory(messagesCategory, { previousCategory })`: a template
+     * with no translation under the messages category renders the previous
+     * category's entry (MOVE-4), after every lookup under the messages category
+     * and before the fallback to `message`. It is the configured category's
+     * previous category, so a `category` given here that differs from it names
+     * no move.
+     *
      * The lookup goes through `t()` on a miss too, so the template is recorded
-     * like any other missing phrase. A plural in the translation renders from a
-     * numeric param through the catalog's ICU, with no ICU written by the caller.
+     * like any other missing phrase, under the messages category, carrying the
+     * previous category on its registration (MOVE-3). A plural in the translation
+     * renders from a numeric param through the catalog's ICU, with no ICU written
+     * by the caller.
      */
     public renderServerMessage(entry: ServerMessage, category?: string): string {
         if (typeof entry.template !== 'string') return entry.message ?? '';
-        const messagesCategory = category || this.config.messagesCategory || DEFAULT_SERVER_MESSAGE_CATEGORY;
+        const configured = this.config.messagesCategory || DEFAULT_SERVER_MESSAGE_CATEGORY;
+        const messagesCategory = category || configured;
+        const previousCategory = messagesCategory === configured ? normalizePreviousCategory(messagesCategory, this.config.messagesPreviousCategory) : undefined;
         const params = entry.params ?? {};
-        const translated = this.Translations.lookup(entry.template, messagesCategory) !== null;
+        const translated = this.Translations.lookup(entry.template, messagesCategory, previousCategory) !== null;
         const t = this.Translations.tSignal.get() as unknown as (
             phrase: string,
-            category: string,
+            category: string | CategoryRef,
             params: Record<string, unknown>
         ) => string;
-        const rendered = t(entry.template, messagesCategory, params);
+        const rendered = t(entry.template, categoryArg(messagesCategory, previousCategory), params);
         if (translated) return rendered;
         return entry.message ?? fillTemplate(entry.template, params);
     }
@@ -406,6 +419,8 @@ class LangsysAppClass {
                 ssrTokenStrategy,
                 writeGrant,
                 messagesCategory: initConfig.messagesCategory || DEFAULT_SERVER_MESSAGE_CATEGORY,
+                // `''` is a value (no category before); null and absent are no move (MOVE-1).
+                messagesPreviousCategory: typeof initConfig.messagesPreviousCategory === 'string' ? initConfig.messagesPreviousCategory : undefined,
             };
             // Keep the exported config singleton in sync (used by Translate + API).
             Object.assign(configStore, this.config);
