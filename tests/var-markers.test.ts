@@ -328,14 +328,14 @@ describe('VAR-3 as tree nodes: the same token, rendered with the typed param', (
                     [{ text: '{c, plural, one {# item} other {# items}} for ' }, ...marked, { text: ', %points% points' }],
                     { c: 2, points: 12345, user_name: 'Ana' },
                     '{c, plural, one {# item} other {# items}} for {user_name}, {points} points',
-                    '<span data-ls-phrase>2 items for <!--ls:user_name-->Ana<!--/ls-->, 12345 points</span>',
+                    `<span data-ls-phrase>2 items for <!--ls:user_name-->Ana<!--/ls-->, ${new Intl.NumberFormat('es-es').format(12345)} points</span>`,
                 ],
                 [
                     'a marked number the caller names beside an ICU argument',
                     [{ text: '{c, plural, one {# item} other {# items}}, ' }, { comment: 'ls:points' }, { text: '12345' }, { comment: '/ls' }, { text: ' points' }],
                     { c: 2, points: 12345 },
                     '{c, plural, one {# item} other {# items}}, {points} points',
-                    '<span data-ls-phrase>2 items, <!--ls:points-->12345<!--/ls--> points</span>',
+                    `<span data-ls-phrase>2 items, <!--ls:points-->${new Intl.NumberFormat('es-es').format(12345)}<!--/ls--> points</span>`,
                 ],
                 [
                     'a marked date the caller names, and a written boolean, beside an ICU argument',

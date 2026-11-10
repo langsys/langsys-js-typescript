@@ -166,6 +166,29 @@ describe('interpolate — mixed ICU + simple slots', () => {
         expect(interpolate('{s, select, done {{d}} other {pending}}', { s: 'done', d }, 'de-DE')).toBe(interpolate('{d}', { d }, 'de-DE'));
     });
 
+    // Reported by langsys-skill on 0.7.3: intl-messageformat formats only `{n, number}` and `#`,
+    // so once the server made a translation ICU, a plain `{n}` lost its grouping and decimal mark.
+    it('formats a number in a plain argument for the locale, as the simple path does', () => {
+        const d = new Date('2026-03-14T12:00:00.000Z');
+        const tpl = '{count, plural, one {Am {d}: # Element, {n}} other {Am {d}: # Elemente, {n}}}';
+        expect(interpolate(tpl, { d, count: 2, n: 1234.5 }, 'de-DE')).toBe(`Am ${interpolate('{d}', { d }, 'de-DE')}: 2 Elemente, 1.234,5`);
+        expect(interpolate('{g, select, female {Sie hat {n}} other {Er hat {n}}}', { g: 'female', n: 1234.5 }, 'de-DE')).toBe('Sie hat 1.234,5');
+        expect(interpolate('{g, select, other {<b>{n}</b>}}', { g: 'x', n: 1234.5 }, 'de-DE')).toBe('<b>1.234,5</b>');
+        expect(interpolate('{g, select, other {{n} / {big}}}', { g: 'x', n: 1234.5, big: 12345678901234567890n }, 'en')).toBe('1,234.5 / 12,345,678,901,234,567,890');
+    });
+
+    it('formats a count written as {count} inside its own plural, as # is', () => {
+        expect(interpolate('{count, plural, one {{count} Element} other {{count} Elemente}}', { count: 1234 }, 'de-DE')).toBe('1.234 Elemente');
+    });
+
+    it('the same on the recovery path, where another argument is missing', () => {
+        expect(interpolate('{g, select, f {Sie hat {n}} other {Hat {n}}}', { n: 1234.5 }, 'de-DE')).toBe('Hat 1.234,5');
+    });
+
+    it('control: a number passed as a string is written as given', () => {
+        expect(interpolate('{g, select, other {Code {id}}}', { g: 'x', id: '12345' }, 'de-DE')).toBe('Code 12345');
+    });
+
     it('control: a boolean still selects its branch', () => {
         const tpl = '{a, select, true {on} false {off} other {?}} {n, plural, one {# item} other {# items}}';
         expect(interpolate(tpl, { a: true, n: 1 }, 'en')).toBe('on 1 item');

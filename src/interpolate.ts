@@ -204,7 +204,7 @@ export function interpolate(
         let formatterError: unknown;
         if (!hasNullParam) {
             try {
-                return formatIcu(new IntlMessageFormat(template, resolved), params, resolved);
+                return formatIcu(numbersFormatted(new IntlMessageFormat(template, resolved), params, resolved), params, resolved);
             } catch (error) {
                 formatterError = error;
             }
@@ -232,7 +232,7 @@ export function interpolate(
         }
         if (defaulted.length || formatterError === undefined) {
             try {
-                return formatIcu(new IntlMessageFormat(recovered as never, resolved), params, resolved);
+                return formatIcu(new IntlMessageFormat(withNumberArgs(recovered, params) as never, resolved), params, resolved);
             } catch (error) {
                 formatterError = error;
             }
@@ -304,6 +304,7 @@ const ICU_TAG = 8;
 
 interface IcuNode {
     type: number;
+    style?: null;
     value?: string;
     options?: Record<string, { value: IcuNode[] }>;
     children?: IcuNode[];
@@ -513,6 +514,53 @@ function renderWithoutFormatter(nodes: IcuNode[], params: Record<string, unknown
         }
     }
     return out;
+}
+
+/**
+ * The message with every plain argument that is given a number turned into a number
+ * argument, so `{n}` renders `1.234,5` in German as it does outside ICU and as ICU4C's
+ * MessageFormat (langsys-php) renders it. intl-messageformat formats only `{n, number}`
+ * and `#`, and writes a number in a plain `{n}`, or a count written as `{count}` inside its
+ * own plural, as `String(n)`. The server adds ICU to a translation per language, so an app
+ * can't know which of its sentences that would leave unformatted. A string stays a string,
+ * which is how a caller opts out, as on the simple path.
+ */
+function numbersFormatted(message: IntlMessageFormat, params: Record<string, unknown>, locale: string): IntlMessageFormat {
+    const ast = (message as unknown as { ast?: unknown }).ast;
+    if (!Array.isArray(ast)) return message;
+    const rewritten = withNumberArgs(ast as IcuNode[], params);
+    return rewritten === ast ? message : new IntlMessageFormat(rewritten as never, locale);
+}
+
+/** `nodes` with each plain argument given a number made a number argument; the same array when none is. */
+function withNumberArgs(nodes: IcuNode[], params: Record<string, unknown>): IcuNode[] {
+    let changed = false;
+    const out = nodes.map((node) => {
+        if (node.type === ICU_ARGUMENT && node.value !== undefined && params && isNumeric(params[node.value])) {
+            changed = true;
+            return { ...node, type: ICU_NUMBER, style: null };
+        }
+        // A tag needs no walk: with no handler for it the formatter throws, and the phrase
+        // renders without the formatter (ICU-6), which formats numbers itself.
+        if ((node.type === ICU_SELECT || node.type === ICU_PLURAL) && node.options) {
+            let branchChanged = false;
+            const options: Record<string, { value: IcuNode[] }> = {};
+            for (const [key, branch] of Object.entries(node.options)) {
+                const value = withNumberArgs(branch.value, params);
+                if (value !== branch.value) branchChanged = true;
+                options[key] = { ...branch, value };
+            }
+            if (!branchChanged) return node;
+            changed = true;
+            return { ...node, options };
+        }
+        return node;
+    });
+    return changed ? out : nodes;
+}
+
+function isNumeric(value: unknown): boolean {
+    return typeof value === 'number' || typeof value === 'bigint';
 }
 
 /**

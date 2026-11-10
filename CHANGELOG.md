@@ -1,3 +1,9 @@
+## 0.7.4 - unreleased
+
+### Fixed
+
+- **A number in a plain placeholder of an ICU translation is formatted for the locale.** Once a translation was ICU, a plural or a gender `select`, a plain `{n}` given a number rendered it as JavaScript writes it, `1234.5` where German reads `1.234,5`, and so did a count written as `{count}` inside its own plural rather than as `#`. The same `{n}` outside ICU was formatted, and the server adds ICU to a translation per language, so an app could not tell which of its sentences would lose the formatting. Every plain argument given a number (or a bigint) now formats with `Intl.NumberFormat` in the catalog's locale, as it does outside ICU and as langsys-php's ICU does. A number passed as a string is still written as given. Found by the langsys-skill agent.
+
 ## 0.7.3 - 2026-11-09
 
 ### What's new

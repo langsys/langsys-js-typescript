@@ -67,7 +67,7 @@ t('{name} has been invited', 'Team', { name: 'Ana', name_gender: 'female' });
 
 ## Rendering what the catalog sends
 
-A translation in ICU syntax renders with the active locale's CLDR rules. `{n, number}`, `{d, date}` and `{t, time}` format too, and plain `{name}` slots keep working beside ICU.
+A translation in ICU syntax renders with the active locale's CLDR rules. `{n, number}`, `{d, date}` and `{t, time}` format too, and plain `{name}` slots keep working beside ICU, formatted as above: a number in a plain `{n}`, or a count written as `{count}` inside its own plural, formats for the locale just as `#` does. The server adds ICU to a translation per language, so the same sentence renders its numbers the same way in every language.
 
 **A missing argument never blanks the text.**
 - A `select` takes its `other` branch, which is why gender works without the param.
