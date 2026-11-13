@@ -48,6 +48,7 @@ const HEADER = [
     '| | |',
     '|---|---|',
     '| **Profiles** | all, browser |',
+    '| **specVersion** | 8.7.1 |',
     '| **Spec revision read** | langsys2 5cff03a1, docs/sdk-spec.mdx blob 5c5c0723f88fb8e6b13f58876c7adca8b6b35691 |',
     '',
     '| Rule | Status | Tier | Evidence |',
@@ -57,7 +58,7 @@ const HEADER = [
 // Not green on purpose: a provisional and a partial row. --structure-only must still
 // exit 0, because a sound file full of honest provisional rows is correct.
 const GOOD = [
-    '| CAT-1 | implemented | n/a (pure) | Graded against `docs/sdk-spec.mdx` blob `5c5c0723`. `translations` lookup suite. |',
+    '| CAT-1 | implemented | n/a (pure) | Graded against spec 8.7.1, `docs/sdk-spec.mdx` blob `5c5c0723`. `translations` lookup suite. |',
     '| GATE-1 | provisional | mock | `grant-lane` capability. Waits on: CONF-2 shared contract fixture. |',
     '| GATE-3 | partial | - | No test yet. |',
     '| HINT-2 | n/a (profile: server) | - | Profile server. |',
@@ -102,6 +103,11 @@ describe('the checker can fail, for each class of defect', () => {
             replaceRow(0, '| CAT-1 | implemented | n/a (pure) | Graded against `docs/sdk-spec.mdx` blob `2f5c755b`. `translations` lookup suite. |'),
             "cites spec blob 2f5c755b, not the header's 5c5c0723",
         ],
+        [
+            'a row graded against a spec version other than the header\'s',
+            replaceRow(0, '| CAT-1 | implemented | n/a (pure) | Graded against spec 8.6.0, `docs/sdk-spec.mdx` blob `5c5c0723`. `translations` lookup suite. |'),
+            "cites spec 8.6.0, not the header's 8.7.1",
+        ],
     ])('%s', (_label, rows, message) => {
         const r = run(['--structure-only', '--file', writeDoc(rows as string[])]);
         expect(r.code, r.out).toBe(1);
@@ -120,6 +126,13 @@ describe('the checker can fail, for each class of defect', () => {
         const r = run(['--structure-only', '--file', writeDoc(GOOD, header)]);
         expect(r.code, r.out).toBe(1);
         expect(r.out).toContain('is not one of all, browser, server, binding');
+    });
+
+    it('a revision row whose specVersion is not the specVersion row\'s', () => {
+        const header = HEADER.map((l) => (l.startsWith('| **Spec revision read**') ? l.replace(/ \|$/, ' (specVersion 8.6.0) |') : l));
+        const r = run(['--structure-only', '--file', writeDoc(GOOD, header)]);
+        expect(r.code, r.out).toBe(1);
+        expect(r.out).toContain('the specVersion row says 8.7.1, the revision row 8.6.0');
     });
 
     it('a revision row with no blob after the word "blob"', () => {

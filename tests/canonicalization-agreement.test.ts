@@ -293,6 +293,20 @@ describe('the file is internally consistent about who agrees', () => {
     });
 });
 
+describe('the file names the spec revision its rows match once, in spec_blob', () => {
+    // Other lanes vendor this file byte for byte, and `npm run verify:spec` reads `spec_blob`
+    // alone, so a second statement of the revision would drift unseen into every lane.
+    it('no other field cites a full spec blob or a specVersion', () => {
+        const text = JSON.stringify(fixture);
+        const blob = fixture.spec_blob.match(/^[0-9a-f]{40}\b/)?.[0];
+        const version = fixture.spec_blob.match(/specVersion \d+\.\d+\.\d+/)?.[0];
+        expect(blob, 'spec_blob opens with the 40-hex blob').toBeDefined();
+        expect(version, 'spec_blob names its specVersion').toBeDefined();
+        expect(text.match(/\b[0-9a-f]{40}\b/g)).toEqual([blob]);
+        expect(text.match(/specVersion \d+\.\d+\.\d+/g)).toEqual([version]);
+    });
+});
+
 describe('the three named canonicalization rules are each covered', () => {
     // The operator asked for these three specifically, so their presence is
     // asserted rather than assumed from a row count.

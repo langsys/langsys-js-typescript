@@ -69,7 +69,11 @@ export class Phrase {
     private values: Record<string, string> = {};
     private phrase = '';
     private slots: RichSlot[] = [];
-    /** The key a phrase holding an opaque element was registered under before TOK-1: looked up on a miss, never registered. */
+    /**
+     * The keys earlier readers registered a phrase holding an opaque element under (TOK-1),
+     * newest first: 0.7.0 to 0.7.3's, then the one from before 0.7.0. Looked up on a miss,
+     * never registered.
+     */
     private earlier: EarlierRichPhrase<RichSlot>[] = [];
     /**
      * A phrase made only of value markers (VAR-3) or of opaque elements (TOK-1) has no

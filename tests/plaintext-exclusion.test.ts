@@ -83,10 +83,12 @@ const settle = () => vi.advanceTimersByTimeAsync(1200);
 /** Every phrase the core sent for registration, standalone or inside a block. */
 const sentPhrases = () => sent.flatMap((item) => (item.phrases ? item.phrases.map((p) => p.phrase) : [item.phrase!]));
 
-function catalog(entries: Record<string, unknown>) {
+/** A catalog holding `entries` under UI, and `previous` under Old when given. */
+function catalog(entries: Record<string, unknown>, previous?: Record<string, unknown>) {
     sTranslations.set({
         __uncategorized__: { __category__: '__uncategorized__', __symbol__: '__uncategorized__' },
         UI: { __category__: 'UI', __symbol__: 'UI', ...entries },
+        ...(previous ? { Old: { __category__: 'Old', __symbol__: 'Old', ...previous } } : {}),
     } as never);
     currentlyLoadedLocale.set('es-es');
 }
@@ -313,6 +315,47 @@ describe.each(MODELS)('a phrase holding <plaintext> and an author exclusion find
         const [span] = strip(renderBlock(tree, { category: 'UI' }).nodes) as Array<{ children: BlockNode[] }>;
         expect(span!.children).toEqual([{ text: lead }, inner[1], { text: ' y luego ' }, inner[3]]);
         void registerBlock(tree, { category: 'UI' });
+        await settle();
+        expect(sentPhrases()).toEqual([KEY]);
+    });
+});
+
+describe.each(MODELS)('the same phrase moved from another category finds those keys there too, %s', (_name, model) => {
+    // Content moved from Old (MOVE-1): until UI holds a translation, the previous category's
+    // renders. Each category is looked up whole, the current key and then the earlier readers',
+    // before the next is tried, and only the current key registers, under UI.
+    const BEFORE = 'Run <code translate="no">npm i</code> then ';
+    const KEY = 'Run {m0o}{m0c} then {m1o}{m1c}';
+    const FROM_CURRENT = { [KEY]: 'Corre {m0o}{m0c} y luego {m1o}{m1c}' };
+    const FROM_073 = { 'Run {m0o}{m0c} then {m1o}raw{m1c}': 'Ejecuta {m0o}{m0c} y luego {m1o}raw{m1c}' };
+    const FROM_BEFORE_070 = { 'Run {m0o}npm i{m0c} then {m1o}raw{m1c}': 'Lanza {m0o}npm i{m0c} y luego {m1o}raw{m1c}' };
+    const CASES = [
+        ["Old holding 0.7.3's key", {}, FROM_073, 'Ejecuta '],
+        ['Old holding the key from before 0.7.0', {}, FROM_BEFORE_070, 'Lanza '],
+        ["UI holding the key from before 0.7.0 and Old 0.7.3's, rendering UI's", FROM_BEFORE_070, FROM_073, 'Lanza '],
+        ["Old holding the current key and 0.7.3's, rendering the current", {}, { ...FROM_073, ...FROM_CURRENT }, 'Corre '],
+    ] as const;
+    const moved = { category: 'UI', previousCategory: 'Old' };
+
+    it.each(CASES)('Phrase, with %s', async (_held, current, previous, lead) => {
+        catalog(current, previous);
+        const host = mount(model, BEFORE, 'raw', 'span');
+        const written = host.querySelector('plaintext')!.innerHTML;
+        live.push(new Phrase(host, moved));
+        await settle();
+        expect(host.firstChild!.nodeValue).toBe(lead);
+        expect(host.querySelector('code')!.textContent).toBe('npm i');
+        expect(host.querySelector('plaintext')!.innerHTML).toBe(written);
+        expect(sentPhrases()).toEqual([KEY]);
+    });
+
+    it.each(CASES)('the tree path, with %s', async (_held, current, previous, lead) => {
+        const inner = toTree(mount(model, BEFORE, 'raw', 'span').childNodes);
+        const tree: BlockNode[] = [{ tag: 'span', attrs: { 'data-ls-phrase': true }, children: inner }];
+        catalog(current, previous);
+        const [span] = strip(renderBlock(tree, moved).nodes) as Array<{ children: BlockNode[] }>;
+        expect(span!.children).toEqual([{ text: lead }, inner[1], { text: ' y luego ' }, inner[3]]);
+        void registerBlock(tree, moved);
         await settle();
         expect(sentPhrases()).toEqual([KEY]);
     });

@@ -1,5 +1,9 @@
 ## 0.7.4 - unreleased
 
+### Upgrading from 0.7.3
+
+- **`EncodedRichText.earlier` is a list.** It held one key, the one a phrase holding an excluded element had before 0.7.0. It now lists every key an earlier version registered such a phrase under, newest first, each with its `phrase`, `slots` and `values`, and is absent when there is none. To do: if you read it, take `earlier[0]` for the newest key, or go through the list.
+
 ### What's new
 
 - **The attribute a nested host names its own category with is exported** (MARK-4): `CATEGORY_MARKER_ATTR` (`data-ls-category`) and `CATEGORY_MARKER_ATTRS` (with langsys-php's `data-langsys-category`), from the main entry and `/pure`, beside the other marker attributes. A binding that builds a nested `Phrase` or block host with a category of its own writes the name the core reads.

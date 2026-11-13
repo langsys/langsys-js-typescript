@@ -16,7 +16,8 @@
  *   - header row  | **Profiles** | all, browser |          words from: all, browser, server, binding
  *   - ONE status table whose header begins  | Rule | Status | Tier | Evidence |
  *   - ONE rule id per row, every id in the spec, no ranges, family rows or compound ids
- *   - a row naming the spec blob it was graded against names the header's
+ *   - a row naming the spec blob or version it was graded against names the header's, and
+ *     the header's specVersion is the one the cited blob declares
  *   - status: implemented | provisional | delegated | partial | not implemented |
  *             held (strip ruling) | waived | n/a (profile: <p>) | n/a (architecture: <reason>)
  *   - tier:   live | contract | mock | n/a (pure) | -
@@ -80,6 +81,17 @@ if (!revisionLine) errors.push('HEADER  no "| **Spec revision read** |" row');
 else if (!citedBlob) errors.push('HEADER  "Spec revision read" has no 40-hex id after the word "blob"');
 else if (!citedCommit) errors.push('HEADER  "Spec revision read" names no "langsys2 <commit>"');
 
+// The spec version the header cites: its specVersion row, else the "(specVersion x.y.z)" the
+// revision row carries. Where both are written they say the same.
+const versionLine = lines.find((l) => /^\|\s*\*\*specVersion\*\*\s*\|/.test(l));
+const versionRow = versionLine ? (splitRow(versionLine)[1] ?? '').match(/^\d+\.\d+(?:\.\d+)?$/)?.[0] : undefined;
+const versionInRevision = revisionCell.match(/\bspecVersion\s+(\d+\.\d+(?:\.\d+)?)\b/)?.[1];
+if (versionLine && !versionRow) errors.push('HEADER  "specVersion" is not a version number');
+if (versionRow && versionInRevision && versionRow !== versionInRevision) {
+    errors.push(`HEADER  the specVersion row says ${versionRow}, the revision row ${versionInRevision}`);
+}
+const citedVersion = versionRow ?? versionInRevision;
+
 const profilesLine = lines.find((l) => /^\|\s*\*\*Profiles\*\*\s*\|/.test(l));
 const sdkProfiles = profilesLine
     ? (splitRow(profilesLine)[1] ?? '').split(',').map((w) => w.trim()).filter(Boolean)
@@ -125,14 +137,18 @@ for (const row of rows) {
 }
 
 // ---------------------------------------------------------------- one spec revision
-// The header alone fixes every row's rule text, so a row that names the spec blob it was
-// graded against names the header's: a row citing another blob was graded against text
-// the file does not cite.
-if (citedBlob) {
-    for (const row of rows) {
+// The header alone fixes every row's rule text, so a row that names the spec blob or the spec
+// version it was graded against names the header's: a row citing another was graded against
+// text the file does not cite.
+for (const row of rows) {
+    if (citedBlob) {
         for (const m of row.evidence.matchAll(/docs\/sdk-spec\.mdx`?\s+blob\s+`?([0-9a-f]{7,40})\b/g)) {
             if (!citedBlob.startsWith(m[1])) err(row, `cites spec blob ${m[1]}, not the header's ${citedBlob.slice(0, 8)}`);
         }
+    }
+    for (const m of row.evidence.matchAll(/\bspec(?:Version)?[`\s]+v?(\d+\.\d+(?:\.\d+)?)\b/gi)) {
+        if (!citedVersion) err(row, `cites spec ${m[1]}, but the header names no specVersion`);
+        else if (m[1] !== citedVersion) err(row, `cites spec ${m[1]}, not the header's ${citedVersion}`);
     }
 }
 
@@ -192,6 +208,10 @@ if (!structureOnly && citedBlob && citedCommit) {
         errors.push(`HEADER  cites blob ${citedBlob}, but ${citedCommit} carries ${carried}. Run npm run verify:spec.`);
     } else {
         const body = git('cat-file', '-p', citedBlob);
+        const declared = body.match(/^specVersion:\s*(\S+)\s*$/m)?.[1];
+        if (citedVersion && declared !== citedVersion) {
+            errors.push(`HEADER  cites specVersion ${citedVersion}, but blob ${citedBlob.slice(0, 8)} declares ${declared ?? 'none'}`);
+        }
         const anchors = [...body.matchAll(/<a id="([a-z]+-\d+)"><\/a>/g)];
         const profiles = new Map();
         anchors.forEach((a, i) => {
