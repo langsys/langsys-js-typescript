@@ -32,7 +32,7 @@ import { activeCatalog, activeScope } from './scope-context.js';
 import { isBlockHandled, isServerCollected, markBlockHandled, rememberSeededBlock } from './served-source.js';
 import { debugNotice } from './notices.js';
 import { claimHost } from './hosts.js';
-import { earlierRichPhrase, groupRuns, renderRun, runToken, toRichNodes, type MarkerNode, type RunItem, type VarMarker, type VarRun } from './var-markers.js';
+import { earlierRichPhrases, groupRuns, lookupEarlier, renderRun, runToken, toRichNodes, type MarkerNode, type RunItem, type VarMarker, type VarRun } from './var-markers.js';
 import { config as configStore, currentlyLoadedLocale } from './stores.js';
 import type { CatalogView } from './translations.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -843,14 +843,14 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
     if (!phrase) return host.childNodes;
     let translated = LangsysApp.Translations.lookup(phrase, category);
     let slots = keyed;
-    // A miss looks up the key the phrase was registered under before an opaque element
-    // was one empty pair (TOK-1), and renders it through that key's slots; never registered.
-    const earlier = translated === null ? earlierRichPhrase(children, slotOf) : null;
-    const fromEarlier = earlier ? LangsysApp.Translations.lookup(earlier.phrase, category) : null;
-    if (earlier && fromEarlier !== null) {
-        translated = fromEarlier;
-        slots = earlier.slots;
-        for (const [name, value] of Object.entries(earlier.values)) if (!(name in values)) values[name] = value;
+    // A miss looks up the keys earlier readers registered the phrase under (TOK-1), newest
+    // first, and renders the first found through that key's slots; never registered.
+    const earlier = translated === null ? earlierRichPhrases(children, slotOf) : [];
+    const fromEarlier = lookupEarlier(earlier, (key) => LangsysApp.Translations.lookup(key, category));
+    if (fromEarlier !== null) {
+        translated = fromEarlier.translation;
+        slots = fromEarlier.key.slots;
+        for (const [name, value] of Object.entries(fromEarlier.key.values)) if (!(name in values)) values[name] = value;
     }
     // MOVE-4: the previous category last, by the same keys in the same order, and the
     // host says it was filled from there (MOVE-5).
@@ -858,12 +858,12 @@ function renderPhraseHost(host: ViewElement, options: BlockOptions): ViewNode[] 
     let fromPrevious = false;
     if (translated === null && previous !== undefined) {
         translated = LangsysApp.Translations.lookup(phrase, category, previous);
-        if (translated === null && earlier) {
-            const movedEarlier = LangsysApp.Translations.lookup(earlier.phrase, category, previous);
+        if (translated === null) {
+            const movedEarlier = lookupEarlier(earlier, (key) => LangsysApp.Translations.lookup(key, category, previous));
             if (movedEarlier !== null) {
-                translated = movedEarlier;
-                slots = earlier.slots;
-                for (const [name, value] of Object.entries(earlier.values)) if (!(name in values)) values[name] = value;
+                translated = movedEarlier.translation;
+                slots = movedEarlier.key.slots;
+                for (const [name, value] of Object.entries(movedEarlier.key.values)) if (!(name in values)) values[name] = value;
             }
         }
         fromPrevious = translated !== null;

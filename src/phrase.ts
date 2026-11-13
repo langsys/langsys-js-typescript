@@ -2,7 +2,7 @@ import { warnUnmatchedParams } from './interpolate.js';
 import { LangsysApp } from './langsys-app.js';
 import { isOpaqueInPhrase, PREVIOUS_CATEGORY_MARKER_ATTRS, readMarker } from './identity.js';
 import { categoryArg, normalizePreviousCategory, type CategoryRef } from './category-ref.js';
-import { applyInPlace, encodeRichText, fillOpaque, interpolateRich, reconstitute, takesParams, type EncodedRichText, type RichSlot } from './richtext.js';
+import { applyInPlace, encodeRichText, fillOpaque, interpolateRich, reconstitute, takesParams, type RichSlot } from './richtext.js';
 import type { Unsubscriber } from './signal.js';
 import { currentlyLoadedLocale, navigationEpoch, sTranslations } from './stores.js';
 import type { ParamPrimitive } from './types/translation-fn.js';
@@ -16,7 +16,7 @@ export { PHRASE_MARKER_ATTR } from './content-block.js';
 import { isInResolvedScope } from './content-block.js';
 import { claimHost, inertUnderScope, releaseHost } from './hosts.js';
 import { warnUnregistered } from './notices.js';
-import { paramElementName, type MarkerNode } from './var-markers.js';
+import { lookupEarlier, paramElementName, type EarlierRichPhrase, type MarkerNode } from './var-markers.js';
 import { recoverPhraseSource } from './served-source.js';
 
 export interface PhraseOptions {
@@ -70,7 +70,7 @@ export class Phrase {
     private phrase = '';
     private slots: RichSlot[] = [];
     /** The key a phrase holding an opaque element was registered under before TOK-1: looked up on a miss, never registered. */
-    private earlier: EncodedRichText['earlier'];
+    private earlier: EarlierRichPhrase<RichSlot>[] = [];
     /**
      * A phrase made only of value markers (VAR-3) or of opaque elements (TOK-1) has no
      * text of its own, and registers nothing, on mount or on a navigation.
@@ -171,7 +171,7 @@ export class Phrase {
         this.phrase = phrase;
         this.slots = slots;
         this.values = values;
-        this.earlier = earlier;
+        this.earlier = earlier ?? [];
         this.opaqueTexts = slots.flatMap((slot) => (slot.source && takesParams(slot.source) ? [slot.source.textContent ?? ''] : []));
         hostElements(this.host).forEach((element, i) => this.slotOf.set(element, i));
         this._checkParams();
@@ -242,19 +242,20 @@ export class Phrase {
         if (this.servedUnrecovered) this.servedUnrecovered = !this.recoverServed();
 
         const translated = LangsysApp.Translations.lookup(this.phrase, this.category);
-        // A miss for the key looks up the one this phrase was registered under before an
-        // opaque element was one empty pair (TOK-1), and renders it through that key's slots.
-        let earlier = translated === null && this.earlier ? LangsysApp.Translations.lookup(this.earlier.phrase, this.category) : null;
+        // A miss for the key looks up the keys earlier readers registered this phrase under
+        // (TOK-1), newest first, and renders the first found through that key's slots.
+        let earlier = translated === null ? lookupEarlier(this.earlier, (key) => LangsysApp.Translations.lookup(key, this.category)) : null;
         // MOVE-4: the previous category is the last read, after every current-category
         // key, by the same keys in the same order.
         let movedTranslation: string | null = null;
         if (translated === null && earlier === null && this.previousCategory !== undefined) {
             movedTranslation = LangsysApp.Translations.lookup(this.phrase, this.category, this.previousCategory);
-            if (movedTranslation === null && this.earlier) earlier = LangsysApp.Translations.lookup(this.earlier.phrase, this.category, this.previousCategory);
+            const previous = this.previousCategory;
+            if (movedTranslation === null) earlier = lookupEarlier(this.earlier, (key) => LangsysApp.Translations.lookup(key, this.category, previous));
         }
         if (earlier !== null) {
-            const { slots, values } = this.earlier!;
-            const resolved = interpolateRich(earlier, { ...values, ...this.values, ...this.params }, slots.length, currentlyLoadedLocale.get());
+            const { slots, values } = earlier.key;
+            const resolved = interpolateRich(earlier.translation, { ...values, ...this.values, ...this.params }, slots.length, currentlyLoadedLocale.get());
             this.host.replaceChildren(...reconstitute(resolved, slots, this.host.ownerDocument ?? document));
             fillOpaque(slots, this.params);
             return;

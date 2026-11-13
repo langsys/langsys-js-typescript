@@ -143,14 +143,15 @@ describe('this SDK keys every rich phrase as published (phrase_cases, TOK-1)', (
         const { phrase, values, earlier } = encoded(row.html);
         expect(phrase).toBe(row.expected_phrase);
         expect(values).toEqual(row.expected_values);
-        if (row.earlier_phrase !== undefined) expect(earlier?.phrase ?? phrase).toBe(row.earlier_phrase);
+        // The row's earlier key is the one from before TOK-1 bound this path: the oldest reader's.
+        if (row.earlier_phrase !== undefined) expect(earlier?.[earlier.length - 1]?.phrase ?? phrase).toBe(row.earlier_phrase);
     });
 
     it('the earlier key is beside the current one where the key moved, and equal to it on the control', () => {
         const moved = doc.phrase_cases.find((row) => row.id === 'tok1-rich-earlier-key')!;
         const control = doc.phrase_cases.find((row) => row.id === 'tok1-rich-earlier-key-control')!;
         expect(moved.earlier_phrase).not.toBe(moved.expected_phrase);
-        expect(encoded(moved.html).earlier?.phrase).toBe(moved.earlier_phrase);
+        expect(encoded(moved.html).earlier?.map((key) => key.phrase)).toEqual([moved.earlier_phrase]);
         expect(control.earlier_phrase).toBe(control.expected_phrase);
         expect(encoded(control.html).earlier).toBeUndefined();
     });

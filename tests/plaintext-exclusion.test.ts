@@ -278,6 +278,46 @@ describe.each([
     });
 });
 
+describe.each(MODELS)('a phrase holding <plaintext> and an author exclusion finds each key an earlier reader gave it, %s', (_name, model) => {
+    // 0.7.0 to 0.7.3 made the `translate="no"` element one empty pair and read `<plaintext>`'s
+    // content; before 0.7.0 both were read. A translation stored under either renders, the newer
+    // reader's first, with both elements restored from source, and only the current key registers.
+    const BEFORE = 'Run <code translate="no">npm i</code> then ';
+    const KEY = 'Run {m0o}{m0c} then {m1o}{m1c}';
+    const KEY_073 = 'Run {m0o}{m0c} then {m1o}raw{m1c}';
+    const KEY_BEFORE_070 = 'Run {m0o}npm i{m0c} then {m1o}raw{m1c}';
+    const FROM_073 = { [KEY_073]: 'Ejecuta {m0o}{m0c} y luego {m1o}raw{m1c}' };
+    const FROM_BEFORE_070 = { [KEY_BEFORE_070]: 'Lanza {m0o}npm i{m0c} y luego {m1o}raw{m1c}' };
+    const CASES = [
+        ["0.7.3's key", FROM_073, 'Ejecuta '],
+        ["the key from before 0.7.0", FROM_BEFORE_070, 'Lanza '],
+        ["both, rendering 0.7.3's", { ...FROM_BEFORE_070, ...FROM_073 }, 'Ejecuta '],
+    ] as const;
+
+    it.each(CASES)('Phrase, with a catalog holding %s', async (_held, entries, lead) => {
+        catalog(entries);
+        const host = mount(model, BEFORE, 'raw', 'span');
+        const written = host.querySelector('plaintext')!.innerHTML;
+        live.push(new Phrase(host, { category: 'UI' }));
+        await settle();
+        expect(host.firstChild!.nodeValue).toBe(lead);
+        expect(host.querySelector('code')!.textContent).toBe('npm i');
+        expect(host.querySelector('plaintext')!.innerHTML).toBe(written);
+        expect(sentPhrases()).toEqual([KEY]);
+    });
+
+    it.each(CASES)('the tree path, with a catalog holding %s', async (_held, entries, lead) => {
+        const inner = toTree(mount(model, BEFORE, 'raw', 'span').childNodes);
+        const tree: BlockNode[] = [{ tag: 'span', attrs: { 'data-ls-phrase': true }, children: inner }];
+        catalog(entries);
+        const [span] = strip(renderBlock(tree, { category: 'UI' }).nodes) as Array<{ children: BlockNode[] }>;
+        expect(span!.children).toEqual([{ text: lead }, inner[1], { text: ' y luego ' }, inner[3]]);
+        void registerBlock(tree, { category: 'UI' });
+        await settle();
+        expect(sentPhrases()).toEqual([KEY]);
+    });
+});
+
 it('serializes as it was given: a tree path render of the browser shape holds the same text node', () => {
     // The node is returned, not rebuilt: its text, markup characters included, is the source's.
     const tree = toTree(asBrowser(document.createElement('div'), `<p>${SENTENCE}</p>`).childNodes);

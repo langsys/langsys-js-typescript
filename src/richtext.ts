@@ -31,7 +31,7 @@
 //   close(i) = U+E002  <i>  U+E003
 import { encodeRichPhrase, isOpaqueInPhrase, isTranslationExcluded, NON_TRANSLATABLE_ELEMENTS } from './identity.js';
 import { interpolate } from './interpolate.js';
-import { earlierRichPhrase, paramElementName, toRichNodes, type MarkerNode } from './var-markers.js';
+import { earlierRichPhrases, paramElementName, toRichNodes, type EarlierRichPhrase, type MarkerNode } from './var-markers.js';
 
 const SENT_OPEN_START = String.fromCharCode(0xe000);
 const SENT_OPEN_END = String.fromCharCode(0xe001);
@@ -64,11 +64,11 @@ export interface EncodedRichText {
     /** Each marked value, by name (VAR-3): the params the phrase renders with, unless the caller names them. */
     values: Record<string, string>;
     /**
-     * For a phrase holding an opaque element, the key it was registered under before
-     * TOK-1 bound this path, with that key's slots and values: looked up on a miss for
-     * `phrase`, never registered.
+     * For a phrase holding an opaque element, the keys earlier readers registered it under,
+     * newest first, each with its slots and values: looked up on a miss for `phrase`, never
+     * registered (TOK-1). Absent when every reader produced `phrase`.
      */
-    earlier?: { phrase: string; slots: RichSlot[]; values: Record<string, string> };
+    earlier?: EarlierRichPhrase<RichSlot>[];
 }
 
 /**
@@ -117,8 +117,8 @@ export function encodeRichText(root: HTMLElement): EncodedRichText {
     };
     const children = root.childNodes as unknown as ArrayLike<MarkerNode>;
     const { phrase, slots } = encodeRichPhrase(toRichNodes(children, slotOf, values));
-    const earlier = earlierRichPhrase(children, slotOf);
-    return earlier ? { phrase, slots, values, earlier } : { phrase, slots, values };
+    const earlier = earlierRichPhrases(children, slotOf);
+    return earlier.length ? { phrase, slots, values, earlier } : { phrase, slots, values };
 }
 
 

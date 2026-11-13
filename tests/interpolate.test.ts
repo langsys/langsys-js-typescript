@@ -173,7 +173,6 @@ describe('interpolate — mixed ICU + simple slots', () => {
         const tpl = '{count, plural, one {Am {d}: # Element, {n}} other {Am {d}: # Elemente, {n}}}';
         expect(interpolate(tpl, { d, count: 2, n: 1234.5 }, 'de-DE')).toBe(`Am ${interpolate('{d}', { d }, 'de-DE')}: 2 Elemente, 1.234,5`);
         expect(interpolate('{g, select, female {Sie hat {n}} other {Er hat {n}}}', { g: 'female', n: 1234.5 }, 'de-DE')).toBe('Sie hat 1.234,5');
-        expect(interpolate('{g, select, other {<b>{n}</b>}}', { g: 'x', n: 1234.5 }, 'de-DE')).toBe('<b>1.234,5</b>');
         expect(interpolate('{g, select, other {{n} / {big}}}', { g: 'x', n: 1234.5, big: 12345678901234567890n }, 'en')).toBe('1,234.5 / 12,345,678,901,234,567,890');
     });
 
@@ -194,6 +193,18 @@ describe('interpolate — mixed ICU + simple slots', () => {
         expect(interpolate('{n, select, other {o {n}}}', { n: 1234.5 }, 'de-DE')).toBe('o 1234.5');
         expect(interpolate('{g, select, other {{n, select, 1000 {k {n}} other {x}}}}', { g: 'x', n: 1000 }, 'de-DE')).toBe('k 1000');
         expect(interpolate('{n, plural, one {# item} other {{n} items}}', { n: 1234 }, 'de-DE')).toBe('1.234 items');
+    });
+
+    // A tag with no handler makes the formatter throw, so the phrase renders without it (ICU-6),
+    // which formats numbers as the formatter path does: each case says the fallback ran.
+    it('the same where the formatter fails and the phrase renders without it, a selected name as written', () => {
+        const failures: unknown[] = [];
+        const onFormatterFailure = (error: unknown) => failures.push(error);
+        expect(interpolate('{g, select, other {<b>{n}</b>}}', { g: 'x', n: 1234.5 }, 'de-DE', { onFormatterFailure })).toBe('<b>1.234,5</b>');
+        expect(interpolate('{n, select, other {<b>{n}</b>}}', { n: 1234.5 }, 'de-DE', { onFormatterFailure })).toBe('<b>1234.5</b>');
+        expect(interpolate('{g, select, other {<b>{n, select, 1000 {k {n}} other {x}}</b>}}', { g: 'x', n: 1000 }, 'de-DE', { onFormatterFailure })).toBe('<b>k 1000</b>');
+        expect(interpolate('{n, plural, one {<b># item</b>} other {<b>{n} items</b>}}', { n: 1234 }, 'de-DE', { onFormatterFailure })).toBe('<b>1.234 items</b>');
+        expect(failures).toHaveLength(4);
     });
 
     it('control: a number passed as a string is written as given', () => {

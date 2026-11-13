@@ -462,8 +462,16 @@ function noteFormatterFailure(template: string, locale: string, error: unknown):
  *
  * Plural branch order is ICU's: an exact `=N` on the value first, then the
  * value's CLDR category in the render locale (after the offset), then `other`.
+ * Numbers format as the formatter path formats them (`numbersFormatted`), a name the
+ * message selects on included: it stays as written.
  */
-function renderWithoutFormatter(nodes: IcuNode[], params: Record<string, unknown>, locale: string, pound?: number | string): string {
+function renderWithoutFormatter(
+    nodes: IcuNode[],
+    params: Record<string, unknown>,
+    locale: string,
+    pound?: number | string,
+    selected: Set<string> = selectNames(nodes)
+): string {
     let out = '';
     for (const node of nodes) {
         const name = node.value;
@@ -478,12 +486,12 @@ function renderWithoutFormatter(nodes: IcuNode[], params: Record<string, unknown
                 out += pound === undefined ? '#' : typeof pound === 'string' ? pound : formatScalar(pound, locale);
                 break;
             case ICU_TAG:
-                out += `<${name}>${renderWithoutFormatter(node.children ?? [], params, locale, pound)}</${name}>`;
+                out += `<${name}>${renderWithoutFormatter(node.children ?? [], params, locale, pound, selected)}</${name}>`;
                 break;
             case ICU_SELECT: {
                 const options = node.options ?? {};
                 const branch = (supplied ? options[String(value)] : undefined) ?? options.other;
-                out += branch ? renderWithoutFormatter(branch.value, params, locale, pound) : `{${name}}`;
+                out += branch ? renderWithoutFormatter(branch.value, params, locale, pound, selected) : `{${name}}`;
                 break;
             }
             case ICU_PLURAL: {
@@ -492,7 +500,7 @@ function renderWithoutFormatter(nodes: IcuNode[], params: Record<string, unknown
                 if (Number.isNaN(count)) {
                     const other = options.other;
                     // `#` has no count to render, so show the argument name instead.
-                    out += other ? renderWithoutFormatter(other.value, params, locale, `{${name}}`) : `{${name}}`;
+                    out += other ? renderWithoutFormatter(other.value, params, locale, `{${name}}`, selected) : `{${name}}`;
                     break;
                 }
                 const adjusted = count - (node.offset ?? 0);
@@ -505,12 +513,14 @@ function renderWithoutFormatter(nodes: IcuNode[], params: Record<string, unknown
                     }
                 }
                 branch = branch ?? options.other;
-                out += branch ? renderWithoutFormatter(branch.value, params, locale, adjusted) : `{${name}}`;
+                out += branch ? renderWithoutFormatter(branch.value, params, locale, adjusted, selected) : `{${name}}`;
                 break;
             }
             default:
                 // Plain, number, date and time arguments.
-                out += supplied ? formatScalar(value, locale) : `{${name}}`;
+                if (!supplied) out += `{${name}}`;
+                else if (node.type === ICU_ARGUMENT && selected.has(name!) && isNumeric(value)) out += String(value);
+                else out += formatScalar(value, locale);
         }
     }
     return out;

@@ -57,7 +57,7 @@ const HEADER = [
 // Not green on purpose: a provisional and a partial row. --structure-only must still
 // exit 0, because a sound file full of honest provisional rows is correct.
 const GOOD = [
-    '| CAT-1 | implemented | n/a (pure) | `translations` lookup suite. |',
+    '| CAT-1 | implemented | n/a (pure) | Graded against `docs/sdk-spec.mdx` blob `5c5c0723`. `translations` lookup suite. |',
     '| GATE-1 | provisional | mock | `grant-lane` capability. Waits on: CONF-2 shared contract fixture. |',
     '| GATE-3 | partial | - | No test yet. |',
     '| HINT-2 | n/a (profile: server) | - | Profile server. |',
@@ -97,6 +97,11 @@ describe('the checker can fail, for each class of defect', () => {
         ['implemented naming no test that exists', replaceRow(0, '| CAT-1 | implemented | n/a (pure) | `no-such-test-file` suite. |'), 'names no test that exists'],
         ['an em dash where the tier needs a hyphen', replaceRow(2, `| GATE-3 | partial | ${EM_DASH} | No test yet. |`), 'is not one of'],
         ['delegated, which is for bindings only', replaceRow(2, '| GATE-3 | delegated | - | Rests elsewhere. |'), 'bindings only'],
+        [
+            'a row graded against a spec blob other than the header\'s',
+            replaceRow(0, '| CAT-1 | implemented | n/a (pure) | Graded against `docs/sdk-spec.mdx` blob `2f5c755b`. `translations` lookup suite. |'),
+            "cites spec blob 2f5c755b, not the header's 5c5c0723",
+        ],
     ])('%s', (_label, rows, message) => {
         const r = run(['--structure-only', '--file', writeDoc(rows as string[])]);
         expect(r.code, r.out).toBe(1);

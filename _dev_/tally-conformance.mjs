@@ -16,6 +16,7 @@
  *   - header row  | **Profiles** | all, browser |          words from: all, browser, server, binding
  *   - ONE status table whose header begins  | Rule | Status | Tier | Evidence |
  *   - ONE rule id per row, every id in the spec, no ranges, family rows or compound ids
+ *   - a row naming the spec blob it was graded against names the header's
  *   - status: implemented | provisional | delegated | partial | not implemented |
  *             held (strip ruling) | waived | n/a (profile: <p>) | n/a (architecture: <reason>)
  *   - tier:   live | contract | mock | n/a (pure) | -
@@ -121,6 +122,18 @@ for (const row of rows) {
     }
     if (seen.has(row.id)) err(row, `${row.id} is already rowed at :${seen.get(row.id)}`);
     else seen.set(row.id, row.line);
+}
+
+// ---------------------------------------------------------------- one spec revision
+// The header alone fixes every row's rule text, so a row that names the spec blob it was
+// graded against names the header's: a row citing another blob was graded against text
+// the file does not cite.
+if (citedBlob) {
+    for (const row of rows) {
+        for (const m of row.evidence.matchAll(/docs\/sdk-spec\.mdx`?\s+blob\s+`?([0-9a-f]{7,40})\b/g)) {
+            if (!citedBlob.startsWith(m[1])) err(row, `cites spec blob ${m[1]}, not the header's ${citedBlob.slice(0, 8)}`);
+        }
+    }
 }
 
 // ---------------------------------------------------------------- vocabulary, and status against tier

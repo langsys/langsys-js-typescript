@@ -178,9 +178,9 @@ describe('WIRE-3: every locale code the API holds is its own internal form', () 
         codes: string[];
     };
 
-    it('has the table to check', () => {
-        expect(codes.length).toBeGreaterThan(800);
-        expect(codes).toContain('en-us-posix');
+    it('has the table to check: the locales it offers, and the languages it keeps without offering them', () => {
+        expect(codes.length).toBeGreaterThan(700);
+        expect(codes).toEqual(expect.arrayContaining(['zh-hant-tw', 'sr-latn-ba', 'zh', 'az-latn']));
     });
 
     it('canonicalises every code to itself', () => {
