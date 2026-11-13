@@ -60,6 +60,9 @@ export {
     RESOLVED_MARKER_ATTR,
     RESOLVED_MARKER_ATTR_LEGACY,
     RESOLVED_MARKER_ATTRS,
+    // A nested host's own category (MARK-4)
+    CATEGORY_MARKER_ATTR,
+    CATEGORY_MARKER_ATTRS,
     // A host filled from its content's previous category says which identity (MOVE-5)
     PREVIOUS_CONTENT_BLOCK_MARKER_ATTR,
     PREVIOUS_CONTENT_BLOCK_MARKER_ATTRS,

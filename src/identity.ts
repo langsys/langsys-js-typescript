@@ -242,6 +242,15 @@ export const RESOLVED_MARKER_ATTR_LEGACY = 'data-langsys-resolved';
 export const RESOLVED_MARKER_ATTRS = [RESOLVED_MARKER_ATTR, RESOLVED_MARKER_ATTR_LEGACY] as const;
 
 /**
+ * The category a nested `data-ls-phrase` or `data-ls-contentblock` host names for itself
+ * (MARK-4): the host registers and renders under it instead of the enclosing block's. A
+ * binding that builds a nested host's node writes this name, so it reads the one the
+ * core reads rather than restating it.
+ */
+export const CATEGORY_MARKER_ATTR = 'data-ls-category';
+export const CATEGORY_MARKER_ATTRS = [CATEGORY_MARKER_ATTR, 'data-langsys-category'] as const;
+
+/**
  * MOVE-5: a host a renderer filled from the content's PREVIOUS category (MOVE-4)
  * says which identity it was filled from, beside its current one. A block carries
  * the previous category's `custom_id`; a phrase carries the previous category

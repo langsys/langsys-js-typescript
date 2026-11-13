@@ -301,6 +301,8 @@ describe('the export list is a contract', () => {
     // langsys-js-server imports these by name and swaps its vendored copy for
     // them. A removal should fail here, not in their build.
     const EXPECTED = [
+        'CATEGORY_MARKER_ATTR',
+        'CATEGORY_MARKER_ATTRS',
         'CONTENT_BLOCK_MARKER_ATTR',
         'CONTENT_BLOCK_MARKER_ATTRS',
         'CONTENT_BLOCK_MARKER_ATTR_LEGACY',

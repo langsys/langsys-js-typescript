@@ -102,7 +102,7 @@ What it holds:
 
 - **Ids and keys:** `generateCustomId`, `canonicalContentBlockJson`, `encodeRichPhrase`, `md5`.
 - **The tokenizer's rules:** `TRANSLATABLE_ATTRIBUTES` and `NON_TRANSLATABLE_ELEMENTS`.
-- **The marker attributes:** `PHRASE_MARKER_ATTR`, `CONTENT_BLOCK_MARKER_ATTR`, `RESOLVED_MARKER_ATTR` and their `*_LEGACY` and `*_ATTRS` forms, and `VAR_PARAM_ATTR`.
+- **The marker attributes:** `PHRASE_MARKER_ATTR`, `CONTENT_BLOCK_MARKER_ATTR`, `RESOLVED_MARKER_ATTR` and their `*_LEGACY` and `*_ATTRS` forms; `CATEGORY_MARKER_ATTR` (a nested host's own category), `PREVIOUS_CATEGORY_MARKER_ATTR` and `PREVIOUS_CONTENT_BLOCK_MARKER_ATTR` and their `*_ATTRS` forms; and `VAR_PARAM_ATTR`. A binding that builds a host's node writes these names instead of spelling the attributes out.
 - **Locales:** `canonicalizeLocale`.
 - **Interpolation and naming:** `interpolate`, `defaultedArguments`, `isICU` and `derivePlaceholderNames`.
 - **Legacy keys:** `createLegacyKeys` and its converters.

@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as main from '../src/index.js';
+import { hostCategory } from '../src/content-block.js';
 import * as pure from '../src/pure.js';
 
 /**
@@ -21,6 +22,8 @@ type Entry = Record<string, unknown>;
 const markerNames = (entry: Entry) => Object.keys(entry).filter((name) => name.includes('_MARKER_ATTR')).sort();
 
 const EXPECTED = [
+    'CATEGORY_MARKER_ATTR',
+    'CATEGORY_MARKER_ATTRS',
     'CONTENT_BLOCK_MARKER_ATTR',
     'CONTENT_BLOCK_MARKER_ATTR_LEGACY',
     'CONTENT_BLOCK_MARKER_ATTRS',
@@ -44,7 +47,7 @@ function parity(mainEntry: Entry, pureEntry: Entry): string[] {
 }
 
 describe('marker constants are exported from both entries, with the same value', () => {
-    it('/pure carries the thirteen marker constants being checked', () => {
+    it('/pure carries the fifteen marker constants being checked', () => {
         expect(markerNames(pure as Entry)).toEqual(EXPECTED);
     });
 
@@ -66,6 +69,18 @@ describe('marker constants are exported from both entries, with the same value',
         expect(parity({ ...(main as Entry), PHRASE_MARKER_ATTR: 'data-other' }, pure as Entry)).toEqual([
             "main entry's PHRASE_MARKER_ATTR differs from /pure's",
         ]);
+    });
+
+    /**
+     * MARK-4: a binding that builds a nested host's node writes `CATEGORY_MARKER_ATTR` on it, so
+     * the exported spellings must be the ones a nested host's own category is read from.
+     */
+    it('a nested host names its own category with the exported spellings, canonical first', () => {
+        const host = (attributes: Record<string, string>) => ({ getAttribute: (name: string) => attributes[name] ?? null }) as unknown as Element;
+        expect(main.CATEGORY_MARKER_ATTRS[0]).toBe(main.CATEGORY_MARKER_ATTR);
+        expect(main.CATEGORY_MARKER_ATTRS.map((name) => hostCategory(host({ [name]: 'Help' })))).toEqual(['Help', 'Help']);
+        expect(hostCategory(host({ [main.CATEGORY_MARKER_ATTRS[1]]: 'Legacy', [main.CATEGORY_MARKER_ATTR]: 'Help' }))).toBe('Help');
+        expect(hostCategory(host({ 'data-category': 'Help' }))).toBeNull();
     });
 });
 

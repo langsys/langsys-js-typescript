@@ -38,6 +38,7 @@ import type { iTranslations } from './types/translations.js';
 import { groupRuns, isMarkerOnly, runNodes, runSource, runToken, runValues, type MarkerNode, type RunItem, type VarRun } from './var-markers.js';
 import {
     blockContentMatches,
+    CATEGORY_MARKER_ATTRS,
     historicalCustomIds,
     PREVIOUS_CATEGORY_MARKER_ATTRS,
     readMarker,
@@ -154,10 +155,6 @@ export function readContentBlockMarker(element: Element): ContentBlockMarker | n
     return null;
 }
 
-/** The attributes a nested host names its own category with, canonical first. */
-export const CATEGORY_MARKER_ATTRS = ['data-ls-category', 'data-langsys-category'];
-
-/** A host's own category, from `data-ls-category` (or `data-langsys-category`), or null. */
 /**
  * The category and previous category a nested host is its own unit under (MOVE-1,
  * MOVE-4): a host naming its own `data-ls-category` takes its own previous category
@@ -175,6 +172,7 @@ export function nestedHostCategories(
     return { category: own, previousCategory: readMarker(element, PREVIOUS_CATEGORY_MARKER_ATTRS) ?? undefined };
 }
 
+/** A host's own category, from `data-ls-category` (or `data-langsys-category`), or null. */
 export function hostCategory(element: Element): string | null {
     for (const attr of CATEGORY_MARKER_ATTRS) {
         const value = element.getAttribute(attr);

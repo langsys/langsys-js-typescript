@@ -2,6 +2,7 @@
 
 ### What's new
 
+- **The attribute a nested host names its own category with is exported** (MARK-4): `CATEGORY_MARKER_ATTR` (`data-ls-category`) and `CATEGORY_MARKER_ATTRS` (with langsys-php's `data-langsys-category`), from the main entry and `/pure`, beside the other marker attributes. A binding that builds a nested `Phrase` or block host with a category of its own writes the name the core reads.
 - **Server messages can move to another category without losing their translations** (spec 8.7.1, MSG-5, MSG-6). Set `messagesPreviousCategory` in `init()` beside `messagesCategory`, to the category the server registered its templates under before (`''` if they had none), the same as the server's setting. `renderServerMessage` then calls `t()` with `inCategory(messagesCategory, { previousCategory })`, so a template not yet translated under the new category renders the old category's translation, and falls back to the entry's `message` only when neither has one. Whether a template is registered is still decided under the new category alone: a template the catalog lacks there registers under it with `previous_category`, so the API moves its translations. Once the catalog has the templates' translations under the new category the option has no effect and can be removed. Nothing changes when it is not set.
 
 ### Fixed
