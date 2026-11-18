@@ -59,6 +59,14 @@ count === 0
     : t('Ready to import {count} new events.', 'Import', { count });
 ```
 
+- **A sentence that differs in your own language is two phrases too.** Langsys makes the forms a language needs for one sentence, not a choice the source itself makes: a sentence that says his or her, or names iOS or Android, is a phrase for each, chosen in code:
+
+```ts
+isIos
+    ? t('Update the app from the App Store.', 'Settings')
+    : t('Update the app from Google Play.', 'Settings');
+```
+
 **Gender.** In a language with grammatical gender, Langsys can turn `{name}` into `{name_gender, select, …}` in the translation. Pass `name_gender` beside `name` when you know it; it's typed as an optional param for every placeholder:
 
 ```ts

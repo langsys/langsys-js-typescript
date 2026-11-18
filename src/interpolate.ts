@@ -12,7 +12,7 @@ export { normalizeMarkupPlaceholders };
 /**
  * Detects ICU MessageFormat syntax in a translation string.
  *
- *   - Matches `{var, plural, …}`, `{var, select, …}`, `{var, selectordinal, …}`,
+ *   - Matches a translation's `{var, plural, …}`, `{var, select, …}`, `{var, selectordinal, …}`,
  *     `{var, number, …}`, `{var, date, …}`, `{var, time, …}`.
  *   - Also matches the style-less forms `{var, number}`, `{var, date}`,
  *     `{var, time}` — valid ICU with the locale-default style.
@@ -67,9 +67,9 @@ function escapeForRegExp(key: string): string {
 /**
  * Params keys that have NO matching placeholder in `texts`.
  *
- * A key counts as used when it appears as `{key}`, as the argument of an ICU
- * slot (`{key, plural, …}`), or as `%key%`. Surrounding whitespace is tolerated
- * in the brace forms.
+ * A key counts as used when it appears as `{key}`, as the name of an ICU
+ * argument with a format (a plural, a select, a number), or as `%key%`.
+ * Surrounding whitespace is tolerated in the brace forms.
  *
  * BOTH SPELLINGS, because `interpolate` resolves both. It used to accept the
  * brace forms only, on the stated assumption that texts arrive canonical
