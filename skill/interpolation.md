@@ -59,7 +59,7 @@ count === 0
     : t('Ready to import {count} new events.', 'Import', { count });
 ```
 
-- **A sentence that differs in your own language is two phrases too.** Langsys makes the forms a language needs for one sentence, not a choice the source itself makes: a sentence that says his or her, or names iOS or Android, is a phrase for each, chosen in code:
+- **A sentence that differs in the source language itself is two phrases too.** Langsys makes the forms a language needs for one sentence, not a choice the source itself makes: a sentence that says his or her, or names iOS or Android, is a phrase for each, chosen in code:
 
 ```ts
 isIos

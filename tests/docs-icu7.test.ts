@@ -2,9 +2,11 @@
 // and never writes a `plural`, `select` or `selectordinal` into a phrase. No network.
 //
 // The surfaces are every file the package ships that a developer or an agent can read, as
-// `npm pack` lists them: the README, the skill, the type declarations an editor shows, and the
-// built code with its doc comments. Beside them, everything else in the repository except the
-// source and the tests: the guides, the example and any demo added later. A construct is allowed
+// `npm pack` lists them: the README, the skill, the type declarations an editor shows with their
+// doc comments, and the built code. Beside them, every other file in the repository except the
+// source, the tests and the root files named below with their reasons: the guides, the example,
+// the scripts and any demo added later. A file of a kind it neither reads nor names fails it, so a
+// guide in a new format is read or named, never skipped. A construct is allowed
 // only in a passage named in EXEMPT below, which says which of the three roles ICU has in
 // documentation it serves. A new ICU example fails here until someone decides it belongs in one of
 // them and names it. CHANGELOG.md records what earlier releases did and is outside the rule.
@@ -31,19 +33,19 @@ const EXEMPT: readonly ExemptPassage[] = [
     {
         file: 'README.md',
         role: 'catalog',
-        text: 'The translations Langsys sends hold those forms as ICU MessageFormat (`{count, plural, one {# item} other {# items}}`, `{name_gender, select, …}`)',
+        text: "The translations Langsys sends hold those forms as ICU MessageFormat (`{count, plural, one {# item} other {# items}}`, `{name_gender, select, …}`), which `t()` renders with the active locale's CLDR plural rules (Arabic's six categories, Russian's four, etc.), alongside plain `{name}` slots.",
         mark: 'The translations Langsys sends',
     },
     {
         file: 'README.md',
         role: 'catalog',
-        text: 'Langsys can turn a plain `{name}` into `{name_gender, select, …}` in the translation',
+        text: 'In a language with grammatical gender, Langsys can turn a plain `{name}` into `{name_gender, select, …}` in the translation.',
         mark: 'in the translation',
     },
     {
         file: 'skill/interpolation.md',
         role: 'catalog',
-        text: 'Langsys can turn `{name}` into `{name_gender, select, …}` in the translation',
+        text: 'In a language with grammatical gender, Langsys can turn `{name}` into `{name_gender, select, …}` in the translation.',
         mark: 'in the translation',
     },
     // The doc comments an editor shows from the type declarations: what the `_gender` companions,
@@ -51,38 +53,38 @@ const EXEMPT: readonly ExemptPassage[] = [
     {
         file: 'dist/pure-[hash].d.ts',
         role: 'catalog',
-        text: 'Langsys promotes a plain\n * `{username}` to `{username_gender, select, …}` in gendered target locales',
+        text: 'Langsys promotes a plain\n * `{username}` to `{username_gender, select, …}` in gendered target locales, so the\n * argument exists in the translation but never in the phrase you wrote.',
         mark: 'Langsys promotes',
     },
     {
         file: 'dist/pure-[hash].d.ts',
         role: 'catalog',
-        text: "Matches a translation's `{var, plural, …}`, `{var, select, …}`, `{var, selectordinal, …}`",
+        text: "Matches a translation's `{var, plural, …}`, `{var, select, …}`, `{var, selectordinal, …}`,\n *     `{var, number, …}`, `{var, date, …}`, `{var, time, …}`.",
         mark: "a translation's",
     },
     {
         file: 'dist/pure-[hash].d.ts',
         role: 'catalog',
-        text: 'Langsys\n * promotes a plain `{name}` to `{name_gender, select, …}` in gendered target',
+        text: 'Langsys\n * promotes a plain `{name}` to `{name_gender, select, …}` in gendered target\n * locales, so an app passes the gender beside the value (`GenderParamsFor` types\n * it), and the source text a caller checks never names it.',
         mark: 'Langsys',
     },
     {
         file: 'dist/pure-[hash].d.ts',
         role: 'catalog',
-        text: 'ICU MessageFormat (target string contains `{var, plural|select|…, …}`)',
+        text: "ICU MessageFormat (target string contains `{var, plural|select|…, …}`):\n *     parsed and formatted via `intl-messageformat`, which knows every\n *     target locale's plural rules (Arabic's 6 categories, Russian's 4,\n *     etc.) and gender-select branches.",
         mark: 'target string',
     },
     // Role: what MIG-4 converts a legacy plural file into, which the SDK registers, not the developer.
     {
         file: 'README.md',
         role: 'mig-4',
-        text: '`vue-i18n`: `car | cars` becomes `{count, plural, =1 {car} other {cars}}`',
+        text: '`vue-i18n`: `car | cars` becomes `{count, plural, =1 {car} other {cars}}`, and three forms add `=0`.',
         mark: 'becomes',
     },
     {
         file: 'skill/migration.md',
         role: 'mig-4',
-        text: '`vue-i18n`: `car | cars` becomes `{count, plural, =1 {car} other {cars}}`',
+        text: '`vue-i18n`: `car | cars` becomes `{count, plural, =1 {car} other {cars}}`, and three forms add `=0`.',
         mark: 'becomes',
     },
     // The converter's own code, in every bundle: the plural it builds from a file's forms.
@@ -93,7 +95,7 @@ const EXEMPT: readonly ExemptPassage[] = [
         role: 'counter-example',
         text: "t('{count, plural, one {# new message} other {# new messages}}', 'Inbox', { count });",
         mark: '❌',
-        flatBeside: '✅',
+        flatBeside: "t('You have {count} new messages'",
     },
     {
         // The Quick reference's Don't column, with the flat phrase in the Do column of the same row.
@@ -117,10 +119,18 @@ const SHIPPED_READ = /^(README\.md|package\.json|skill\/.+\.md|dist\/[^/]+\.(?:d
 const SHIPPED_OUTSIDE: ReadonlyArray<readonly [RegExp, string]> = [
     [/^CHANGELOG\.md$/, 'a changelog records what earlier releases did'],
     [/^LICENSE$/, 'the licence'],
-    [/^dist\/[^/]+\.map$/, "a source map, which carries src/ as written for a debugger to show beside the build; the doc comments a developer reads ship again in the declarations and the bundles, which are read"],
+    [/^dist\/[^/]+\.map$/, "a source map, which carries src/ as written for a debugger to show beside the build; the doc comments of what the package exports ship again in the declarations, which are read"],
 ];
 
-const TEXT = /\.(md|mdx|ts|tsx|mts|cts|js|jsx|mjs|cjs|json|html|htm|vue|svelte|astro|css)$/;
+/** The kinds of file it reads in the repository: every text format a guide, an example, a demo or a script is written in. */
+const TEXT = /\.(md|mdx|markdown|txt|ts|tsx|mts|cts|js|jsx|mjs|cjs|json|html|htm|vue|svelte|astro|css|yml|yaml|sh)$/;
+
+/** Files in the repository it doesn't read, each kind for its reason. Any other file it doesn't read fails it, so a new kind is read or named here. */
+const UNREAD_KINDS: ReadonlyArray<readonly [RegExp, string]> = [
+    [/(^|\/)LICENSE$/, 'the licence'],
+    [/(^|\/)\.gitignore$/, "git's list of files it ignores"],
+    [/(^|\/)\.DS_Store$/, "Finder's folder metadata, which git ignores"],
+];
 
 /** Directories at the root outside the rule, each for its reason. Every other directory is read, a new example or demo included. */
 const OUTSIDE_DIRS = new Map<string, string>([
@@ -140,15 +150,26 @@ const OUTSIDE = new Map<string, string>([
     ['package-lock.json', 'the dependency lock, generated'],
 ]);
 
-function walk(dir: string): string[] {
-    return readdirSync(join(ROOT, dir)).flatMap((name) => {
+/** Every file under `root` but the directories and root files named outside the rule. */
+function walk(root: string, dir = ''): string[] {
+    return readdirSync(join(root, dir)).flatMap((name) => {
         const path = dir === '' ? name : `${dir}/${name}`;
         if (dir === '' ? OUTSIDE_DIRS.has(name) || OUTSIDE.has(name) : name === 'node_modules') return [];
-        return statSync(join(ROOT, path)).isDirectory() ? walk(path) : TEXT.test(name) ? [path] : [];
+        return statSync(join(root, path)).isDirectory() ? walk(root, path) : [path];
     });
 }
 
-const SURFACES = [...new Set([...SHIPPED.filter((p) => SHIPPED_READ.test(p)), ...walk('')])];
+/** The walked files it reads, and those it neither reads nor names a reason for. */
+function placeFiles(paths: readonly string[]): { read: string[]; unplaced: string[] } {
+    return {
+        read: paths.filter((p) => TEXT.test(p)),
+        unplaced: paths.filter((p) => !TEXT.test(p) && !UNREAD_KINDS.some(([kind]) => kind.test(p))),
+    };
+}
+
+const REPOSITORY = placeFiles(walk(ROOT));
+
+const SURFACES = [...new Set([...SHIPPED.filter((p) => SHIPPED_READ.test(p)), ...REPOSITORY.read])];
 
 const scanFile = (path: string) => scanSurface(surfaceName(path), readFileSync(join(ROOT, path), 'utf8'), EXEMPT);
 
@@ -169,6 +190,8 @@ describe('ICU-7: documentation shows phrases flat', () => {
             ...BUNDLES,
             'example/index.html',
             '_dev_/PUBLISHING.md',
+            '_dev_/publish.sh',
+            '.github/workflows/ci.yml',
             'contract-fixture/README.md',
             'contract-fixture/forwarder.mjs',
         ]) {
@@ -185,6 +208,22 @@ describe('ICU-7: documentation shows phrases flat', () => {
         expect(SHIPPED).toContain('skill/SKILL.md');
         expect(SHIPPED).toContain('CHANGELOG.md');
         expect(SHIPPED.filter((p) => SHIPPED_READ.test(p)).length).toBeGreaterThan(20);
+    });
+
+    it('reads every other file in the repository, or names its kind with a reason', () => {
+        expect(REPOSITORY.unplaced).toEqual([]);
+        const dir = mkdtempSync(join(tmpdir(), 'icu7-walk-'));
+        try {
+            for (const path of ['LICENSE', 'demo/.DS_Store', 'demo/notes.txt', 'demo/guide.markdown', 'demo/guide.adoc', 'demo/node_modules/x/index.js']) {
+                mkdirSync(dirname(join(dir, path)), { recursive: true });
+                writeFileSync(join(dir, path), '');
+            }
+            const placed = placeFiles(walk(dir));
+            expect(placed.read.sort()).toEqual(['demo/guide.markdown', 'demo/notes.txt']);
+            expect(placed.unplaced).toEqual(['demo/guide.adoc']);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     it('names every declaration file it reads as an entry or as a chunk whose hash it replaces', () => {
@@ -225,6 +264,10 @@ describe('ICU-7: the check fails on what it exists to catch', () => {
         ['a construct a doc comment wraps', " * Write `{count,\n * plural, one {# file} other {# files}}` for the count."],
         ['a construct a blockquote wraps', '> Write `{count,\n> plural, one {# file} other {# files}}` for the count.'],
         ['a construct a line comment wraps', '// t(`{count,\n//   plural, one {# file} other {# files}}`)'],
+        ['an argument with an offset', "t('{count, plural, offset:1 one {You and one other} other {You and # others}}', 'Feed', { count });"],
+        ['a construct elided in prose', 'Write `{count, plural, …}` and Langsys fills it in.'],
+        ['a construct elided with three dots', 'Write `{count, plural, ...}` and Langsys fills it in.'],
+        ['keywords written as alternatives', 'Write `{var, plural|select, …}` in the phrase.'],
     ])('fails on %s', (_name, text) => {
         const findings = scanSurface('example/index.html', text, []);
         expect(findings).toHaveLength(1);
@@ -272,12 +315,32 @@ describe('ICU-7: the check fails on what it exists to catch', () => {
         expect(ICU_CONSTRUCT.flags).toContain('g');
     });
 
+    it.each([
+        ['object shorthand', '({ value, select }) => select(value)'],
+        ['a destructured prop', 'export function LocalePicker({ locales, select }) {'],
+        ['a destructuring with more names after it', 'const { value, select, other } = props;'],
+        ['a destructuring prettier wraps', 'const {\n  value,\n  select,\n} = props;'],
+        ['a property named plural', 'return { text, plural: true };'],
+        ['a Svelte each block', '{#each options as {name, select}}'],
+        ['a CSS selector list', '@media (max-width: 40em) {\n  input, select {\n    font: inherit;\n  }\n}'],
+        ['minified code', 'function f({a,select:b}){return{a,select,b:{c:1}}}'],
+    ])('passes code that names a select or a plural: %s', (_name, code) => {
+        expect(scanSurface('example/App.tsx', code, [])).toEqual([]);
+    });
+
+    it('quotes the text around a construct, not its whole line, which in a minified bundle is the whole bundle', () => {
+        const findings = scanSurface('dist/langsys.browser.mjs', `${'a;'.repeat(40000)}${planted}${'b;'.repeat(40000)}`, []);
+        expect(findings).toHaveLength(1);
+        expect(findings[0].problem).toContain('{count, plural, one {# item}');
+        expect(findings[0].problem.length).toBeLessThan(300);
+    });
+
     const counterExample: ExemptPassage = {
         file: 'x.md',
         role: 'counter-example',
         text: "t('{count, plural, one {#} other {#}}', 'A', { count });",
         mark: '❌',
-        flatBeside: '✅',
+        flatBeside: "t('You have {count} new messages'",
     };
     const marked = ["t('You have {count} new messages', 'A', { count });  // ✅", "t('{count, plural, one {#} other {#}}', 'A', { count });  // ❌ ICU written by hand"].join('\n');
 
@@ -293,6 +356,28 @@ describe('ICU-7: the check fails on what it exists to catch', () => {
     it('fails a counter-example whose flat replacement is gone', () => {
         const findings = scanSurface('x.md', marked.split('\n')[1], [counterExample]);
         expect(findings.map((f) => f.problem)).toEqual([expect.stringContaining('no flat replacement')]);
+    });
+
+    it("fails the skill's counter-example once the line beside it keeps its ✅ but no longer holds the phrase", () => {
+        const real = readFileSync(join(ROOT, 'skill/invariants.md'), 'utf8');
+        const edited = real.replace(/^t\('You have \{count\} new messages', 'Inbox', \{ count \}\);\s+\/\/ ✅.*$/m, '// ✅ see the README for the phrase to write');
+        expect(edited).not.toBe(real);
+        expect(scanSurface('skill/invariants.md', edited, EXEMPT).map((f) => f.problem)).toEqual([expect.stringContaining('no flat replacement')]);
+    });
+
+    it('fails a catalog passage with a clause added to its sentence', () => {
+        const real = readFileSync(join(ROOT, 'skill/interpolation.md'), 'utf8');
+        const added = real.replace('`{name_gender, select, …}` in the translation.', '`{name_gender, select, …}` in the translation, and you may write the same select into your own phrase.');
+        expect(added).not.toBe(real);
+        expect(scanSurface('skill/interpolation.md', added, EXEMPT).map((f) => f.problem)).toEqual([
+            expect.stringContaining('not found'),
+            expect.stringContaining('ICU construct in a phrase'),
+        ]);
+    });
+
+    it('fails an exempt passage that holds no construct, since it exempts nothing', () => {
+        const stale: ExemptPassage = { file: 'x.md', role: 'catalog', text: 'Langsys sends `{count} files` in the translation.', mark: 'Langsys' };
+        expect(scanSurface('x.md', stale.text, [stale]).map((f) => f.problem)).toEqual([expect.stringContaining('holds no ICU construct')]);
     });
 
     const row: ExemptPassage = { file: 'x.md', role: 'counter-example', text: '`{n, plural, …}` written by hand', mark: 'written by hand', flatBeside: "t('{n} files'" };

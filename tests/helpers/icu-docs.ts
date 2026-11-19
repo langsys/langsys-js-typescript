@@ -12,9 +12,13 @@ import { sep } from 'node:path';
 /**
  * An ICU argument that selects a branch: `{count, plural, …}`, `{name_gender, select, …}`, `{0, plural, …}`.
  * The argument is any name ICU takes (a number, or letters of any script), and the gaps between its parts may
- * cross a line break into a doc comment's `*`, a blockquote's `>` or a line comment's `//`.
+ * cross a line break into a doc comment's `*`, a blockquote's `>` or a line comment's `//`. After the keyword
+ * comes what only ICU writes there: a comma, then a branch's key and its `{` (`one {`, `=0 {`, an `offset:1`
+ * first), or an ellipsis. So code that names a `select` or a `plural` (`({ value, select }) =>`,
+ * `{ text, plural: true }`, a CSS `input, select {`) is not a construct, and the built bundles stay readable.
  */
-export const ICU_CONSTRUCT = /\{[\s*>/]*[^\s{},*>/]+[\s*>/]*,[\s*>/]*(?:plural|select|selectordinal)\b/g;
+export const ICU_CONSTRUCT =
+    /\{[\s*>/]*[^\s{},*>/]+[\s*>/]*,[\s*>/]*(?:plural|select|selectordinal)(?:\|[^\s{},]*)*[\s*>/]*,[\s*>/]*(?:…|\.\.\.|(?:offset:\s*\d+[\s*>/]+)?[^\s{},:*>/]+[\s*>/]*\{)/g;
 
 export type ExemptRole = 'catalog' | 'mig-4' | 'counter-example';
 
@@ -23,9 +27,10 @@ export interface ExemptPassage {
     file: string;
     role: ExemptRole;
     /**
-     * Text the passage must contain exactly once in the file. Every construct it exempts sits inside it, and so
-     * do the words that give it its role (who makes the form, or that a translation holds it), so rewording
-     * them is a new passage, decided again.
+     * Text the passage must contain exactly once in the file: in prose, its whole sentence. Every construct it
+     * exempts sits inside it, and so do the words that give it its role (who makes the form, or that a
+     * translation holds it), so a word changed in it or a clause added to it is a new passage, decided again.
+     * It must hold a construct, or it exempts nothing.
      */
     text: string;
     /** The passage's first line must also hold this, which is what shows it for what it is (`❌`, or the words that say a translation holds it). */
@@ -66,7 +71,17 @@ export function surfaceName(path: string): string {
 const lineOf = (text: string, index: number): number => text.slice(0, index).split('\n').length;
 const holdsConstruct = (text: string): boolean => new RegExp(ICU_CONSTRUCT.source).test(text);
 
-/** What is wrong in one surface: an ICU construct no exempt passage covers, or an exempt passage that is missing, repeated or no longer marked. */
+/** The text around `at` on its line, cut to about 160 characters, since a minified bundle is one line. */
+function excerpt(text: string, at: number): string {
+    const start = text.lastIndexOf('\n', at - 1) + 1;
+    const next = text.indexOf('\n', at);
+    const end = next === -1 ? text.length : next;
+    const from = Math.max(start, at - 60);
+    const to = Math.min(end, at + 100);
+    return `${from > start ? '…' : ''}${text.slice(from, to).trim()}${to < end ? '…' : ''}`;
+}
+
+/** What is wrong in one surface: an ICU construct no exempt passage covers, or an exempt passage that is missing, repeated, no longer marked or holding no construct. */
 export function scanSurface(file: string, text: string, exempt: readonly ExemptPassage[]): Finding[] {
     const findings: Finding[] = [];
     const lines = text.split('\n');
@@ -83,6 +98,9 @@ export function scanSurface(file: string, text: string, exempt: readonly ExemptP
             findings.push({ file, line, problem: `exempt passage (${passage.role}) appears more than once: ${JSON.stringify(passage.text)}` });
         }
         spans.push([first, first + passage.text.length]);
+        if (!holdsConstruct(passage.text)) {
+            findings.push({ file, line, problem: `exempt passage (${passage.role}) holds no ICU construct, so it exempts nothing: ${JSON.stringify(passage.text)}` });
+        }
         const own = lines[line - 1] ?? '';
         if (!own.includes(passage.mark)) {
             findings.push({ file, line, problem: `exempt passage (${passage.role}) lost its marking ${JSON.stringify(passage.mark)}` });
@@ -102,8 +120,7 @@ export function scanSurface(file: string, text: string, exempt: readonly ExemptP
     for (const match of text.matchAll(ICU_CONSTRUCT)) {
         const at = match.index ?? 0;
         if (!spans.some(([from, to]) => at >= from && at < to)) {
-            const line = lineOf(text, at);
-            findings.push({ file, line, problem: `ICU construct in a phrase, not an exempt passage: ${(lines[line - 1] ?? '').trim()}` });
+            findings.push({ file, line: lineOf(text, at), problem: `ICU construct in a phrase, not an exempt passage: ${excerpt(text, at)}` });
         }
     }
     return findings;
