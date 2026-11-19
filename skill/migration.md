@@ -29,6 +29,7 @@ With several files, the first that holds a key answers.
 Values are converted to Langsys syntax as they are read:
 
 - **Placeholders**, in every format: `{{name}}`, `:name`, `%{name}` and `%(name)s` become `{name}`, and `%%` is a literal `%`.
+- **Numbers** in a key's params print as plain digits, as i18next and vue-i18n print them: `t('footer.copyright', { year: 2026 })` on `© {{year}}` shows `© 2026` in every locale, `#` in a plural included, and the plural still selects by the number. A call that is not a key hit formats numbers for the locale as always.
 - **Plurals**, by format:
   - `vue-i18n`: `car | cars` becomes `{count, plural, =1 {car} other {cars}}`, and three forms add `=0`.
   - `i18next`: `items_one` / `items_other` become one plural under `items`, by CLDR category. The older `items` / `items_plural` pair works too.

@@ -482,7 +482,9 @@ export class Translations {
 
         // In the legacy-key mode the argument is resolved as a key first (MIG-2):
         // a hit becomes the key's converted source value, never the key string.
-        if (this.legacyKeys) ({ phrase, category } = this.resolveLegacyKey(phrase, category));
+        // A hit also prints its number params as plain digits, as the source framework did (MIG-4).
+        let legacyHit = false;
+        if (this.legacyKeys) ({ phrase, category, hit: legacyHit } = this.resolveLegacyKey(phrase, category));
 
         const cats = view.catalog();
         // '__uncategorized__' is a server-internal bucket name used only
@@ -545,7 +547,7 @@ export class Translations {
         // rendered a select or plural as its raw source, where ICU-1 renders the
         // `other` branch and ICU-3 shows `{count}` in place of a `#` with no count.
         // Plain text, braces included, comes back exactly as written.
-        return interpolate(translated, params ?? {}, view.locale());
+        return interpolate(translated, params ?? {}, view.locale(), { plainNumbers: legacyHit });
     }
 
     /**
@@ -588,18 +590,18 @@ export class Translations {
      * the conversion does not recognise registers as written and warns at every
      * log level, naming the file and the key (MIG-4).
      */
-    private resolveLegacyKey(arg: string, category: string): { phrase: string; category: string } {
+    private resolveLegacyKey(arg: string, category: string): { phrase: string; category: string; hit: boolean } {
         const hit = this.legacyKeys!.resolve(arg);
         if (!hit) {
             if (logger.debugEnabled && this.warnOnce(`miss\0${arg}`)) {
                 logger.warn(`"${arg}" is not a key in the legacy source files, so it registers as literal source text.`);
             }
-            return { phrase: arg, category };
+            return { phrase: arg, category, hit: false };
         }
         if (!hit.recognised && this.warnOnce(`value\0${hit.file}\0${hit.key}`)) {
             logger.warn(`The legacy key "${hit.key}" in ${hit.file} ${hit.issue}, so its value registers exactly as written.`);
         }
-        return { phrase: hit.phrase, category: category || hit.category || '' };
+        return { phrase: hit.phrase, category: category || hit.category || '', hit: true };
     }
 
     private warnOnce(key: string): boolean {

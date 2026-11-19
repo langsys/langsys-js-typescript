@@ -593,3 +593,39 @@ describe('a <name>_gender companion counts as used wherever name is a placeholde
         }
     });
 });
+
+describe('interpolate — plainNumbers (MIG-4: a legacy key prints numbers as plain digits)', () => {
+    const plainNumbers = true;
+
+    it('the simple path writes a number as String(n)', () => {
+        expect(interpolate('© {year} Northwind', { year: 2026 }, 'en', { plainNumbers })).toBe('© 2026 Northwind');
+        expect(interpolate('Total {n}', { n: 1234.5 }, 'de-DE', { plainNumbers })).toBe('Total 1234.5');
+    });
+
+    it('the ICU path writes {n}, # and {n, number} as String(n) and still selects by the number', () => {
+        expect(interpolate('{count, plural, one {# item} other {# items}}', { count: 1 }, 'en', { plainNumbers })).toBe('1 item');
+        expect(interpolate('{count, plural, one {# item} other {# items}}', { count: 1234 }, 'en', { plainNumbers })).toBe('1234 items');
+        expect(interpolate('{count, plural, one {# item} other {{count} items}} in {year}', { count: 1234, year: 2026 }, 'fr', { plainNumbers })).toBe(
+            '1234 items in 2026'
+        );
+        expect(interpolate('{n, number} pts', { n: 12345 }, 'en', { plainNumbers })).toBe('12345 pts');
+    });
+
+    it('a recovered missing argument keeps the rest plain', () => {
+        const onDefaulted = () => {};
+        expect(interpolate('{g, select, male {He} other {They}} paid {n}', { n: 12345 }, 'en', { plainNumbers, onDefaulted })).toBe('They paid 12345');
+    });
+
+    it('the render without the formatter writes them plain too (ICU-6)', () => {
+        const onFormatterFailure = () => {};
+        expect(interpolate('{n, plural, one {<b># item</b>} other {<b># items</b>}}', { n: 1234 }, 'de-DE', { plainNumbers, onFormatterFailure })).toBe(
+            '<b>1234 items</b>'
+        );
+    });
+
+    it('control: without the option the same calls are grouped for the locale', () => {
+        expect(interpolate('© {year} Northwind', { year: 2026 }, 'en')).toBe('© 2,026 Northwind');
+        expect(interpolate('{count, plural, one {# item} other {# items}}', { count: 1234 }, 'en')).toBe('1,234 items');
+        expect(interpolate('{n, number} pts', { n: 12345 }, 'en')).toBe('12,345 pts');
+    });
+});

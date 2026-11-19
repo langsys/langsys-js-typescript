@@ -252,6 +252,48 @@ describe('the mode in t()', () => {
         expect(text).toContain('cart.count');
     });
 
+    describe('MIG-4: a hit prints its number params as plain digits', () => {
+        const FOOTER: LegacyKeyFile[] = [
+            {
+                name: 'en.json',
+                format: 'i18next',
+                data: { footer: { copyright: '© {{year}} Northwind' }, cart: { items_one: '{{count}} item', items_other: '{{count}} items' } },
+            },
+        ];
+
+        it.each(['en', 'fr', 'es'])('a year renders 2026 in %s, never grouped', (locale) => {
+            tr.setLegacyKeys(FOOTER);
+            currentlyLoadedLocale.set(locale);
+            expect(t('footer.copyright', { year: 2026 })).toBe('© 2026 Northwind');
+        });
+
+        it('a converted plural selects by the number and prints # as plain digits', () => {
+            tr.setLegacyKeys(FOOTER);
+            expect(t('cart.items', { count: 1 })).toBe('1 item');
+            expect(t('cart.items', { count: 1234 })).toBe('1234 items');
+        });
+
+        it('a translation served for a hit prints its numbers the same way', () => {
+            tr.setLegacyKeys(FOOTER);
+            sTranslations.set({
+                footer: { __category__: 'footer', __symbol__: 'footer', '© {year} Northwind': '© {year} Northwind, tous droits réservés' },
+            } as never);
+            currentlyLoadedLocale.set('fr');
+            tr.settle();
+            expect(t('footer.copyright', { year: 2026 })).toBe('© 2026 Northwind, tous droits réservés');
+        });
+
+        it('control: the same text called as a literal is grouped for the locale', () => {
+            tr.setLegacyKeys(FOOTER);
+            expect(t('© {year} Northwind', 'footer', { year: 2026 })).toBe('© 2,026 Northwind');
+        });
+
+        it('control: a miss is grouped for the locale', () => {
+            tr.setLegacyKeys(FOOTER);
+            expect(t('Order {id}', { id: 12345 })).toBe('Order 12,345');
+        });
+    });
+
     it('MIG-6: a changed value is simply a new phrase', () => {
         tr.setLegacyKeys([{ name: 'en.json', data: { cta: { buy: 'Buy now' } } }]);
         t('cta.buy');

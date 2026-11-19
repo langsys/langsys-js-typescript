@@ -519,6 +519,7 @@ t('Welcome back!');            // not a key: literal source text, as always
 Values are converted to Langsys syntax as they are read:
 
 - **Placeholders**, whatever the format: `{{name}}`, `:name`, `%{name}` and `%(name)s` become `{name}`, and `%%` is a literal `%`.
+- **Numbers** in a key's params print as plain digits, as i18next and vue-i18n print them: `t('footer.copyright', { year: 2026 })` on `© {{year}}` shows `© 2026` in every locale, `#` in a plural included, and the plural still selects by the number. A call that is not a key hit formats numbers for the locale (`© 2,026` in English), as always.
 - **Plurals**, by the file's `format`:
     - `vue-i18n`: `car | cars` becomes `{count, plural, =1 {car} other {cars}}`, and three forms add `=0`. This keeps vue's selection by exact count.
     - `i18next`: `items_one` / `items_other` become one plural under `items`, by CLDR category. The older `items` / `items_plural` pair works too.

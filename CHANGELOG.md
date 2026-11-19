@@ -1,3 +1,9 @@
+## 0.7.5 - unreleased
+
+### Fixed
+
+- **A legacy key prints its number params as plain digits** (spec MIG-4). With `legacyKeys`, `t('footer.copyright', { year: 2026 })` on i18next's `© {{year}} Northwind` showed `© 2,026` in English and `© 2 026` in French, because every number param was formatted with the locale's grouping, while i18next, vue-i18n, Laravel, Rails and gettext print it as is. A key hit now prints `© 2026` in every locale, its translation too, and `#` in a converted plural, which still selects by the number. A call that is not a key hit formats numbers for the locale as before. `interpolate()` takes the same behaviour as the option `plainNumbers`.
+
 ## 0.7.4 - 2026-11-13
 
 ### Upgrading from 0.7.3

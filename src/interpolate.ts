@@ -190,9 +190,14 @@ export function interpolate(
     options: InterpolateOptions = {},
 ): string {
     template = adoptPercentPlaceholders(template, params);
+    const plain = options.plainNumbers === true;
 
     if (isICU(template)) {
         const resolved = locale || 'en';
+        // A plain `{n}` is written as `String(n)` by the formatter itself, so with plain
+        // numbers it is left plain, and `#` and `{n, number}` get formatters that do the same.
+        const message = (source: string | IcuNode[]) =>
+            new IntlMessageFormat(source as never, resolved, undefined, plain ? { formatters: PLAIN_NUMBER_FORMATTERS as never } : undefined);
         // A null value does NOT throw — `intl-messageformat` coerces it (null
         // becomes 0, so `{count, plural…}` renders "0 items"). That would make a
         // bug indistinguishable from valid data: a real empty cart and a failure
@@ -204,7 +209,8 @@ export function interpolate(
         let formatterError: unknown;
         if (!hasNullParam) {
             try {
-                return formatIcu(numbersFormatted(new IntlMessageFormat(template, resolved), params, resolved), params, resolved);
+                const parsed = message(template);
+                return formatIcu(plain ? parsed : numbersFormatted(parsed, params, resolved), params, resolved, plain);
             } catch (error) {
                 formatterError = error;
             }
@@ -218,9 +224,9 @@ export function interpolate(
         try {
             ast = (new IntlMessageFormat(template, resolved) as unknown as { ast?: unknown }).ast;
         } catch {
-            return simpleInterpolate(template, params, locale);
+            return simpleInterpolate(template, params, locale, plain);
         }
-        if (!Array.isArray(ast)) return simpleInterpolate(template, params, locale);
+        if (!Array.isArray(ast)) return simpleInterpolate(template, params, locale, plain);
 
         // A missing argument throws. Recover the sentence rather than dumping
         // ICU source to the page — see `_recoverMissingArgs`.
@@ -232,7 +238,7 @@ export function interpolate(
         }
         if (defaulted.length || formatterError === undefined) {
             try {
-                return formatIcu(new IntlMessageFormat(withNumberArgs(recovered, params) as never, resolved), params, resolved);
+                return formatIcu(message(plain ? recovered : withNumberArgs(recovered, params)), params, resolved, plain);
             } catch (error) {
                 formatterError = error;
             }
@@ -243,9 +249,9 @@ export function interpolate(
         // the formatter, and say so at every log level.
         if (options.onFormatterFailure) options.onFormatterFailure(formatterError, template, resolved);
         else noteFormatterFailure(template, resolved, formatterError);
-        return renderWithoutFormatter(ast as IcuNode[], params, resolved);
+        return renderWithoutFormatter(ast as IcuNode[], params, resolved, plain);
     }
-    return simpleInterpolate(template, params, locale);
+    return simpleInterpolate(template, params, locale, plain);
 }
 
 /**
@@ -289,7 +295,20 @@ export function defaultedArguments(template: string, params: Record<string, unkn
 export interface InterpolateOptions {
     onDefaulted?: (names: string[], template: string, locale: string) => void;
     onFormatterFailure?: (error: unknown, template: string, locale: string) => void;
+    /**
+     * Numbers print as plain digits (`String(n)`), with no grouping, `#` in a plural included;
+     * a plural still selects by the number. A legacy key hit renders this way (MIG-4), as
+     * i18next, vue-i18n, Laravel, Rails and gettext print a number.
+     */
+    plainNumbers?: boolean;
 }
+
+/** intl-messageformat's formatters with numbers written as `String(n)`, for `plainNumbers`. */
+const PLAIN_NUMBER_FORMATTERS = {
+    getNumberFormat: () => ({ format: (value: number | bigint) => String(value) }),
+    getDateTimeFormat: (...args: ConstructorParameters<typeof Intl.DateTimeFormat>) => new Intl.DateTimeFormat(...args),
+    getPluralRules: (...args: ConstructorParameters<typeof Intl.PluralRules>) => new Intl.PluralRules(...args),
+};
 
 /** ICU AST node types we care about (from `@formatjs/icu-messageformat-parser`). */
 const ICU_LITERAL = 0;
@@ -469,6 +488,7 @@ function renderWithoutFormatter(
     nodes: IcuNode[],
     params: Record<string, unknown>,
     locale: string,
+    plain: boolean,
     pound?: number | string,
     selected: Set<string> = selectNames(nodes)
 ): string {
@@ -483,15 +503,15 @@ function renderWithoutFormatter(
                 out += node.value ?? '';
                 break;
             case ICU_POUND:
-                out += pound === undefined ? '#' : typeof pound === 'string' ? pound : formatScalar(pound, locale);
+                out += pound === undefined ? '#' : typeof pound === 'string' ? pound : formatScalar(pound, locale, plain);
                 break;
             case ICU_TAG:
-                out += `<${name}>${renderWithoutFormatter(node.children ?? [], params, locale, pound, selected)}</${name}>`;
+                out += `<${name}>${renderWithoutFormatter(node.children ?? [], params, locale, plain, pound, selected)}</${name}>`;
                 break;
             case ICU_SELECT: {
                 const options = node.options ?? {};
                 const branch = (supplied ? options[String(value)] : undefined) ?? options.other;
-                out += branch ? renderWithoutFormatter(branch.value, params, locale, pound, selected) : `{${name}}`;
+                out += branch ? renderWithoutFormatter(branch.value, params, locale, plain, pound, selected) : `{${name}}`;
                 break;
             }
             case ICU_PLURAL: {
@@ -500,7 +520,7 @@ function renderWithoutFormatter(
                 if (Number.isNaN(count)) {
                     const other = options.other;
                     // `#` has no count to render, so show the argument name instead.
-                    out += other ? renderWithoutFormatter(other.value, params, locale, `{${name}}`, selected) : `{${name}}`;
+                    out += other ? renderWithoutFormatter(other.value, params, locale, plain, `{${name}}`, selected) : `{${name}}`;
                     break;
                 }
                 const adjusted = count - (node.offset ?? 0);
@@ -513,14 +533,14 @@ function renderWithoutFormatter(
                     }
                 }
                 branch = branch ?? options.other;
-                out += branch ? renderWithoutFormatter(branch.value, params, locale, adjusted, selected) : `{${name}}`;
+                out += branch ? renderWithoutFormatter(branch.value, params, locale, plain, adjusted, selected) : `{${name}}`;
                 break;
             }
             default:
                 // Plain, number, date and time arguments.
                 if (!supplied) out += `{${name}}`;
                 else if (node.type === ICU_ARGUMENT && selected.has(name!) && isNumeric(value)) out += String(value);
-                else out += formatScalar(value, locale);
+                else out += formatScalar(value, locale, plain);
         }
     }
     return out;
@@ -598,15 +618,16 @@ function isNumeric(value: unknown): boolean {
  * `true` or `false`, and any value that is not a string is written as the simple path
  * writes it (`formatScalar`).
  */
-function formatIcu(message: IntlMessageFormat, params: Record<string, unknown>, locale: string): string {
+function formatIcu(message: IntlMessageFormat, params: Record<string, unknown>, locale: string, plain = false): string {
     const scalars = Object.fromEntries(Object.entries(params ?? {}).map(([name, value]) => [name, typeof value === 'boolean' ? String(value) : value]));
     const out: unknown = message.format(scalars as never);
     if (typeof out === 'string') return out;
-    return Array.isArray(out) ? out.map((part) => (typeof part === 'string' ? part : formatScalar(part, locale))).join('') : formatScalar(out, locale);
+    return Array.isArray(out) ? out.map((part) => (typeof part === 'string' ? part : formatScalar(part, locale, plain))).join('') : formatScalar(out, locale, plain);
 }
 
-/** A supplied value as the simple path renders it: CLDR numbers and medium dates. */
-function formatScalar(value: unknown, locale: string): string {
+/** A supplied value as the simple path renders it: CLDR numbers (plain digits with `plain`) and medium dates. */
+function formatScalar(value: unknown, locale: string, plain = false): string {
+    if (plain && (typeof value === 'number' || typeof value === 'bigint')) return String(value);
     try {
         if (value instanceof Date) return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(value);
         if (typeof value === 'number' || typeof value === 'bigint') return new Intl.NumberFormat(locale).format(value);
@@ -616,7 +637,7 @@ function formatScalar(value: unknown, locale: string): string {
     return value instanceof Date ? value.toISOString() : String(value);
 }
 
-function simpleInterpolate(template: string, params: Record<string, unknown>, locale?: string): string {
+function simpleInterpolate(template: string, params: Record<string, unknown>, locale?: string, plain = false): string {
     // The `[^{},]` character class excludes `{`, `}`, and `,` from placeholder
     // names so we don't accidentally consume ICU-shaped slots that somehow
     // routed through this path (e.g. malformed ICU after fall-through).
@@ -637,6 +658,7 @@ function simpleInterpolate(template: string, params: Record<string, unknown>, lo
             }
         }
         if (typeof value === 'number' || typeof value === 'bigint') {
+            if (plain) return String(value);
             try {
                 return new Intl.NumberFormat(locale || 'en').format(value);
             } catch {

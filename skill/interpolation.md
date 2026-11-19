@@ -32,7 +32,7 @@ t('Hello, {name}!', 'Greetings', { name: 'x', extra: 'y' });  // ❌ 'extra' is 
 
 Param values are `string | number | Date | boolean`.
 
-- **Numbers** format with `Intl.NumberFormat` in the catalog's locale: `1234.5` is `1.234,5` in `de-de`.
+- **Numbers** format with `Intl.NumberFormat` in the catalog's locale: `1234.5` is `1.234,5` in `de-de`. A legacy key hit is the exception: its numbers print as plain digits (see migration.md).
 - **Dates** format with `Intl.DateTimeFormat`, medium style: `14.03.2026` in `de-de`.
 - **Strings** pass through untouched. Pass an id or a code as a string to keep it free of grouping separators.
 
