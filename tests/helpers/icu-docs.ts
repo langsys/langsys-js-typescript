@@ -6,6 +6,9 @@
 // flat phrase may share its counter-example's line (a Do / Don't table row), a build chunk is named
 // without its hash, and a construct is found across a comment's or a blockquote's line breaks.
 
+import { execFileSync } from 'node:child_process';
+import { sep } from 'node:path';
+
 /**
  * An ICU argument that selects a branch: `{count, plural, …}`, `{name_gender, select, …}`, `{0, plural, …}`.
  * The argument is any name ICU takes (a number, or letters of any script), and the gaps between its parts may
@@ -38,6 +41,16 @@ export interface Finding {
     file: string;
     line: number;
     problem: string;
+}
+
+/**
+ * Every file the package at `root` ships, as `npm pack` lists them, sorted. npm's own rules decide, so what
+ * comes out is what publishes: a `.DS_Store` stays out, a negated or globbed `files` entry is honoured, and
+ * package.json, the README and the licence are in whatever `files` says.
+ */
+export function shippedFiles(root: string): string[] {
+    const out = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return (JSON.parse(out) as Array<{ files: Array<{ path: string }> }>)[0].files.map((f) => f.path.split(sep).join('/')).sort();
 }
 
 /**

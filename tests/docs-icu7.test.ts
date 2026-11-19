@@ -12,12 +12,12 @@
 // The shipped files are read from `dist/`, so `npm run build` precedes this test, as it does
 // `no-private-fields`; a missing build fails it rather than skipping the declarations.
 
-import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, sep } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ICU_CONSTRUCT, scanSurface, surfaceName, type ExemptPassage } from './helpers/icu-docs';
+import { ICU_CONSTRUCT, scanSurface, shippedFiles, surfaceName, type ExemptPassage } from './helpers/icu-docs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -108,9 +108,7 @@ const EXEMPT: readonly ExemptPassage[] = [
 if (!existsSync(join(ROOT, 'dist'))) throw new Error('dist/ is missing: run `npm run build` before this test, which reads the shipped files');
 
 /** Every file the package ships, as `npm pack` lists them. */
-const SHIPPED: string[] = (
-    JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })) as Array<{ files: Array<{ path: string }> }>
-)[0].files.map((f) => f.path.split(sep).join('/'));
+const SHIPPED = shippedFiles(ROOT);
 
 /** The shipped files a developer or an agent reads, which the rule covers. */
 const SHIPPED_READ = /^(README\.md|package\.json|skill\/.+\.md|dist\/[^/]+\.(?:d\.ts|d\.mts|js|mjs))$/;
@@ -330,6 +328,28 @@ describe('ICU-7: the check fails on what it exists to catch', () => {
         expect(surfaceName('dist/index.d.mts')).toBe('dist/index.d.ts');
         expect(surfaceName('dist/index.mjs')).toBe('dist/index.mjs');
         expect(surfaceName('skill/value-markers.md')).toBe('skill/value-markers.md');
+    });
+
+    it('lists the shipped files as npm publishes them: no .DS_Store, and a negated files entry honoured', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'icu7-pack-'));
+        try {
+            const files: Record<string, string> = {
+                'package.json': JSON.stringify({ name: 'probe', version: '1.0.0', files: ['dist', '!dist/*.map', 'skill', '!skill/drafts'] }),
+                'README.md': '# Probe\n',
+                'skill/a.md': 'Write `You have {count} new messages`.\n',
+                'skill/.DS_Store': '',
+                'skill/drafts/x.md': '',
+                'dist/index.js': '',
+                'dist/index.js.map': '',
+            };
+            for (const [path, text] of Object.entries(files)) {
+                mkdirSync(dirname(join(dir, path)), { recursive: true });
+                writeFileSync(join(dir, path), text);
+            }
+            expect(shippedFiles(dir)).toEqual(['README.md', 'dist/index.js', 'package.json', 'skill/a.md']);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     it('does not read the changelog', () => {
