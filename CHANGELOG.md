@@ -1,3 +1,9 @@
+## 0.7.5 - 2026-11-25
+
+### Fixed
+
+- **The README and the skill say when a sentence is two phrases in the source language itself.** A sentence that differs before any translation, one that says his or her or names iOS or Android, is a phrase for each, chosen in code, as a sentence that says something different at zero is: `isIos ? t('Update the app from the App Store.', 'Settings') : t('Update the app from Google Play.', 'Settings')`. Langsys makes the forms each language needs for one sentence, never a choice the source text makes. The skill says it in its rules (rule 2), its invariants (invariant 3) and its interpolation page. The editor hover text for `isICU` and `findUnusedParamKeys` describes the ICU a translation holds and shows no phrase written as ICU. Only documentation changed; the code is the same as 0.7.4's.
+
 ## 0.7.4 - 2026-11-13
 
 ### Upgrading from 0.7.3

@@ -46,7 +46,7 @@ t('{count, plural, one {# new message} other {# new messages}}', 'Inbox', { coun
 
 Langsys builds each language's forms from the flat phrase, the base language included, so English renders `You have 1 new message` without a branch in your code. A hand-written plural gains nothing and puts ICU syntax in front of everyone who reads or edits the phrase in the Translation Manager.
 
-A sentence that says something different at zero is its own phrase, chosen in code, never an `=0` branch.
+A sentence that says something different at zero is its own phrase, chosen in code, never an `=0` branch. So is a sentence that differs in the source language itself (his or her, iOS or Android): a phrase for each, chosen in code.
 
 ## 4. Phrase first, category second
 
